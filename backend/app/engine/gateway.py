@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -11,54 +12,82 @@ class ModelGateway(Protocol):
     def analyze_response(self, text: str) -> dict[str, Any]: ...
 
 
+def _normalized(text: str) -> str:
+    lowered = text.lower()
+    return "".join(
+        char for char in unicodedata.normalize("NFD", lowered)
+        if unicodedata.category(char) != "Mn"
+    )
+
+
 @dataclass
 class DeterministicAlphaGateway:
     """No LLM. Validates routing/rules/workflow before a model provider is added."""
 
     def classify(self, text: str) -> dict[str, Any]:
-        t = text.lower()
-        electricity = any(w in t for w in ["luz", "electric", "comercializadora", "endesa", "iberdrola", "naturgy", "repsol", "factura eléctrica", "factura electrica", "cups"])
-        maintenance = any(w in t for w in ["mantenimiento", "servicio", "protección", "proteccion", "asistencia"])
-        switch = any(w in t for w in ["cambié", "cambie", "cambiar", "cambio", "baja", "me fui", "otra compañía", "otra compania"])
-        never = any(w in t for w in ["nunca contrat", "no contraté", "no contrate", "sin contratar", "no lo pedí", "no lo pedi"])
+        # Accent-insensitive routing avoids treating normal Spanish variants
+        # (eléctrica/electrica, revisión/revision) as different intents.
+        t = _normalized(text)
+        electricity = any(w in t for w in ["luz", "electric", "comercializadora", "endesa", "iberdrola", "naturgy", "repsol", "factura electrica", "cups", "contador"])
+        maintenance = any(w in t for w in ["mantenimiento", "servicio", "proteccion", "asistencia"])
+        switch = any(w in t for w in ["cambie", "cambiar", "cambio", "baja", "me fui", "otra compania"])
+        never = any(w in t for w in ["nunca contrat", "no contrate", "sin contratar", "no lo pedi"])
         duplicate = any(w in t for w in ["dos veces", "duplicado", "duplicada", "doble cargo", "doble cobro", "me lo han cobrado dos"])
-        overbill = any(w in t for w in ["cobrado de más", "cobrado de mas", "facturado de más", "facturado de mas", "factura incorrecta", "importe incorrecto", "me cobran más", "me cobran mas"])
+        overbill = any(w in t for w in ["cobrado de mas", "facturado de mas", "factura incorrecta", "importe incorrecto", "me cobran mas"])
         unauthorized_switch = any(w in t for w in [
-            "me cambiaron de compañía", "me cambiaron de compania", "me han cambiado de compañía", "me han cambiado de compania",
-            "cambio sin permiso", "cambio sin mi permiso", "sin consentimiento", "no autoricé el cambio", "no autorice el cambio",
-            "no acepté cambiar", "no acepte cambiar", "comercializadora que no contraté", "comercializadora que no contrate",
+            "me cambiaron de compania", "me han cambiado de compania",
+            "cambio sin permiso", "cambio sin mi permiso", "sin consentimiento", "no autorice el cambio",
+            "no acepte cambiar", "comercializadora que no contrate",
             "cups incorrecto", "cups equivocado", "cambio de comercializadora no solicitado",
         ])
         termination_penalty = any(w in t for w in [
-            "penalización", "penalizacion", "penalidad", "permanencia", "cargo por cancelar",
+            "penalizacion", "penalidad", "permanencia", "cargo por cancelar",
             "cargo por cambiar", "me cobran por irme", "me cobran por cambiar", "cobro por rescindir",
-            "penalización por rescisión", "penalizacion por rescision", "penalización por baja", "penalizacion por baja",
+            "penalizacion por rescision", "penalizacion por baja",
         ])
-        purchase = any(w in t for w in ["compré", "compre", "comprado", "compra", "tienda", "vendedor", "producto", "pedido", "televisor", "tv", "móvil", "movil", "teléfono", "telefono", "ordenador", "portátil", "portatil", "lavadora", "nevera", "electrodoméstico", "electrodomestico"])
-        conformity = any(w in t for w in ["garantía", "garantia", "defecto", "defectuoso", "avería", "averia", "averiado", "roto", "no funciona", "dejó de funcionar", "dejo de funcionar", "rechazan la garantía", "rechazan la garantia"])
+        reading_regularization = any(w in t for w in [
+            "lectura estimada", "consumo estimado", "lecturas estimadas", "consumos estimados",
+            "regularizacion", "me regularizan", "factura de regularizacion",
+            "lectura real", "fallo de lectura", "no pudieron leer el contador", "no pudieron acceder al contador",
+            "estimaron el consumo", "estimacion del consumo",
+        ])
+        contract_change = any(w in t for w in [
+            "subida sin avisar", "subida de precio", "subida del precio",
+            "subieron el precio sin avisar", "me ha subido el precio", "me han subido el precio", "me subieron el precio", "me subio el precio",
+            "me cambiaron el precio", "me ha cambiado el precio", "me han cambiado el precio",
+            "cambio de precio", "cambio de condiciones", "cambiaron las condiciones", "me ha cambiado las condiciones", "me han cambiado las condiciones",
+            "modificaron el contrato", "modificacion del contrato",
+            "revision de precio", "revision de precios", "actualizacion de precio", "formula de revision",
+        ])
+        purchase = any(w in t for w in ["compre", "comprado", "compra", "tienda", "vendedor", "producto", "pedido", "televisor", "tv", "movil", "telefono", "ordenador", "portatil", "lavadora", "nevera", "electrodomestico"])
+        conformity = any(w in t for w in ["garantia", "defecto", "defectuoso", "averia", "averiado", "roto", "no funciona", "dejo de funcionar", "rechazan la garantia"])
         repair_followup = any(w in t for w in [
-            "ya lo repararon", "ya la repararon", "después de reparar", "despues de reparar", "tras la reparación", "tras la reparacion",
-            "volvió a fallar", "volvio a fallar", "sigue fallando", "otra vez falla", "segunda reparación", "segunda reparacion",
-            "lleva en reparación", "lleva en reparacion", "sigue en reparación", "sigue en reparacion", "reparación fallida", "reparacion fallida",
+            "ya lo repararon", "ya la repararon", "despues de reparar", "tras la reparacion",
+            "volvio a fallar", "sigue fallando", "otra vez falla", "segunda reparacion",
+            "lleva en reparacion", "sigue en reparacion", "reparacion fallida",
         ])
         mismatch = any(w in t for w in [
             "producto equivocado", "me enviaron otro", "me mandaron otro", "no corresponde con lo comprado", "no coincide con lo comprado",
-            "distinto a lo anunciado", "distinto de lo anunciado", "no es como se anunciaba", "no es lo que pedí", "no es lo que pedi",
+            "distinto a lo anunciado", "distinto de lo anunciado", "no es como se anunciaba", "no es lo que pedi",
             "incompleto", "faltan piezas", "faltan accesorios", "falta una pieza", "cantidad incorrecta", "vino otro modelo",
         ])
         non_delivery = any(w in t for w in [
-            "no ha llegado", "no me ha llegado", "no nos ha llegado", "no llegó", "no llego", "no llega",
+            "no ha llegado", "no me ha llegado", "no nos ha llegado", "no llego", "no llega",
             "no recibido", "no he recibido", "no lo he recibido", "no la he recibido", "no hemos recibido",
-            "no lo recibí", "no lo recibi", "no me entregan", "no me lo entregan", "no entregado", "sin entregar",
+            "no lo recibi", "no me entregan", "no me lo entregan", "no entregado", "sin entregar",
             "pedido perdido", "pedido no entregado", "sigue sin llegar", "sigue sin entregar",
         ])
-        distance = any(w in t for w in ["online", "internet", "web", "a distancia", "por teléfono", "por telefono", "pedido"])
-        withdrawal = any(w in t for w in ["desist", "quiero devolver", "quiero devolverlo", "me arrepentí", "me arrepenti", "devolver la compra", "derecho de devolución", "derecho de devolucion", "14 días", "14 dias"])
+        distance = any(w in t for w in ["online", "internet", "web", "a distancia", "por telefono", "pedido"])
+        withdrawal = any(w in t for w in ["desist", "quiero devolver", "quiero devolverlo", "me arrepenti", "devolver la compra", "derecho de devolucion", "14 dias"])
 
         if electricity and unauthorized_switch:
             return {"vertical": "electricity", "family": "E03", "confidence": 0.96}
         if electricity and termination_penalty:
             return {"vertical": "electricity", "family": "E05", "confidence": 0.95}
+        if electricity and contract_change:
+            return {"vertical": "electricity", "family": "E07", "confidence": 0.94}
+        if electricity and reading_regularization:
+            return {"vertical": "electricity", "family": "E06", "confidence": 0.93}
         if electricity and duplicate:
             return {"vertical": "electricity", "family": "E02-B", "confidence": 0.96}
         if electricity and overbill:
@@ -87,30 +116,36 @@ class DeterministicAlphaGateway:
         return out
 
     def analyze_response(self, text: str) -> dict[str, Any]:
-        t = text.lower()
-        if any(x in t for x in ["aceptamos", "estimamos su reclamación", "estimamos la reclamacion", "devolveremos", "procedemos a devolver", "procedemos a reparar", "procedemos a sustituir", "restableceremos su contrato anterior"]):
+        t = _normalized(text)
+        if any(x in t for x in ["aceptamos", "estimamos su reclamacion", "devolveremos", "procedemos a devolver", "procedemos a reparar", "procedemos a sustituir", "restableceremos su contrato anterior"]):
             return {"type": "ACCEPTANCE", "arguments": []}
         if "independiente" in t and any(x in t for x in ["contrato", "servicio", "mantenimiento"]):
             return {"type": "DENIAL", "arguments": ["INDEPENDENT_ADDON_CONTRACT"]}
-        if any(x in t for x in ["solicitó mantener", "solicito mantener", "pidió mantener", "pidio mantener"]):
+        if any(x in t for x in ["solicito mantener", "pidio mantener"]):
             return {"type": "DENIAL", "arguments": ["EXPRESS_KEEP_REQUEST"]}
-        if any(x in t for x in ["consta su consentimiento", "aceptó el servicio", "acepto el servicio", "consentimiento expreso", "aceptó el cambio", "acepto el cambio", "grabación de consentimiento", "grabacion de consentimiento"]):
+        if any(x in t for x in ["consta su consentimiento", "acepto el servicio", "consentimiento expreso", "acepto el cambio", "grabacion de consentimiento"]):
             return {"type": "DENIAL", "arguments": ["CONSENT_EVIDENCE"]}
         if any(x in t for x in ["el cups es correcto", "cups correcto", "corresponde a su cups", "cups coincide"]):
             return {"type": "DENIAL", "arguments": ["CUPS_CORRECT_ASSERTED"]}
-        if any(x in t for x in ["importe correcto", "facturación correcta", "facturacion correcta"]):
+        if any(x in t for x in ["la estimacion era procedente", "estimacion permitida", "no fue posible acceder al contador", "no pudimos acceder al contador"]):
+            return {"type": "DENIAL", "arguments": ["ESTIMATE_ALLOWED_ASSERTED"]}
+        if any(x in t for x in ["se aviso con un mes", "avisamos con un mes", "notificado con un mes", "preaviso de un mes"]):
+            return {"type": "DENIAL", "arguments": ["NOTICE_COMPLIANT_ASSERTED"]}
+        if any(x in t for x in ["revision prevista en el contrato", "formula prevista en el contrato", "clausula de revision"]):
+            return {"type": "DENIAL", "arguments": ["CONTRACTUAL_PRICE_FORMULA_ASSERTED"]}
+        if any(x in t for x in ["importe correcto", "facturacion correcta"]):
             return {"type": "DENIAL", "arguments": ["CORRECT_AMOUNT_DISPUTED"]}
         if any(x in t for x in ["cargos distintos", "facturas distintas", "recibos distintos"]):
             return {"type": "DENIAL", "arguments": ["DIFFERENT_DEBTS"]}
-        if any(x in t for x in ["contrato a precio fijo", "precio fijo"]) and any(x in t for x in ["primer año", "primera anualidad", "primera prórroga", "primera prorroga", "antes de la renovación", "antes de la renovacion"]):
+        if any(x in t for x in ["contrato a precio fijo", "precio fijo"]) and any(x in t for x in ["primer ano", "primera anualidad", "primera prorroga", "antes de la renovacion"]):
             return {"type": "DENIAL", "arguments": ["FIXED_PRICE_FIRST_YEAR_ASSERTED"]}
-        if any(x in t for x in ["mal uso", "golpe", "humedad", "daño accidental", "dano accidental", "manipulación", "manipulacion"]):
+        if any(x in t for x in ["mal uso", "golpe", "humedad", "dano accidental", "manipulacion"]):
             return {"type": "DENIAL", "arguments": ["MISUSE_OR_ACCIDENTAL_DAMAGE"]}
-        if any(x in t for x in ["fuera de garantía", "fuera de garantia", "garantía vencida", "garantia vencida"]):
+        if any(x in t for x in ["fuera de garantia", "garantia vencida"]):
             return {"type": "DENIAL", "arguments": ["OUTSIDE_LEGAL_GUARANTEE"]}
-        if any(x in t for x in ["contacte con el fabricante", "diríjase al fabricante", "dirijase al fabricante", "hable con el fabricante"]):
+        if any(x in t for x in ["contacte con el fabricante", "dirijase al fabricante", "hable con el fabricante"]):
             return {"type": "DENIAL", "arguments": ["REFER_TO_MANUFACTURER"]}
-        if any(x in t for x in ["coincide con lo pedido", "coincide con el pedido", "corresponde con lo comprado", "producto correcto", "artículo correcto", "articulo correcto"]):
+        if any(x in t for x in ["coincide con lo pedido", "coincide con el pedido", "corresponde con lo comprado", "producto correcto", "articulo correcto"]):
             return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
