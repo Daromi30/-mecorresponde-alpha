@@ -1,3 +1,6 @@
+from app.config import settings
+
+
 def create_case(client):
     r=client.post("/api/cases",json={"message":"Me cambié de compañía de luz y me siguen cobrando un mantenimiento"}); assert r.status_code==200
     return r.json()["id"]
@@ -22,10 +25,24 @@ def test_full_diagnosis_api(client):
     body=r.json(); assert body["viability"]=="HIGH"; assert body["claimable_amount"]==17.98
     r=client.get(f"/api/cases/{cid}"); assert r.json()["status"]=="DIAGNOSED"
 
-def test_submission_deadline_is_provisional_without_holiday_calendar(client):
+def test_submission_exposes_verified_legal_period_without_inventing_calendar_date(client):
     cid=create_case(client); complete(client,cid); client.post(f"/api/cases/{cid}/diagnose")
     r=client.post(f"/api/cases/{cid}/submission",json={"submitted_on":"2026-09-01","channel":"web"}); assert r.status_code==200
-    assert r.json()["deadline_status"]=="PROVISIONAL_CALENDAR"
+    body=r.json()
+    assert body["deadline"] is None
+    assert body["deadline_status"]=="LEGAL_PERIOD_ONLY"
+    assert body["legal_response_period_business_days"]==15
+    assert body["legal_basis"]["article"]=="55.3"
+    assert body["legal_basis"]["official_url"].startswith("https://www.boe.es/")
+    assert "no calcula una fecha exacta" in body["warning"]
+
+
+def test_submission_never_treats_a_partial_holiday_list_as_proof_of_exact_due_date(client, monkeypatch):
+    monkeypatch.setattr(settings, "legal_holidays_csv", "2026-10-12,2026-12-08")
+    cid=create_case(client); complete(client,cid); client.post(f"/api/cases/{cid}/diagnose")
+    r=client.post(f"/api/cases/{cid}/submission",json={"submitted_on":"2026-09-01","channel":"web"}); assert r.status_code==200
+    assert r.json()["deadline"] is None
+    assert r.json()["deadline_status"]=="LEGAL_PERIOD_ONLY"
 
 def test_response_analysis(client):
     cid=create_case(client)
