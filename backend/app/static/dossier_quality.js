@@ -83,4 +83,5 @@
   // expanding the legacy monolithic HTML. The page CSP only permits self scripts.
   loadEnhancement('/demo/account_deletion.js', 'mcr-account-deletion');
   loadEnhancement('/demo/deadline_guidance.js', 'mcr-deadline-guidance');
+  loadEnhancement('/demo/documentation.js', 'mcr-documentation');
 })();
