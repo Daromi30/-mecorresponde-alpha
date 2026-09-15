@@ -12,6 +12,7 @@ from sqlalchemy import func, select, text
 
 from .config import settings
 from .db import engine, SessionLocal
+from .engine.model_contracts import ModelOutputRejected
 from .family_bootstrap import install_all_families
 from .migrations import upgrade_database
 from .models import LegalSource
@@ -153,6 +154,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(ModelOutputRejected)
+async def rejected_model_output_handler(request: Request, exc: ModelOutputRejected):
+    # Never echo untrusted model output or its rejected legal content to the client/logs.
+    logger.error("MECORRESPONDE intelligence output rejected at %s", request.url.path)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": (
+                "No hemos podido interpretar este contenido de forma segura. "
+                "No se ha generado ninguna conclusión jurídica a partir de esa salida."
+            )
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.middleware("http")
