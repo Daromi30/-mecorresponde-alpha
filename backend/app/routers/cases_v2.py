@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import get_db
+from ..documents import save_upload
 from ..engine.deadlines import add_business_days
 from ..models import Action, Case, Deadline, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
@@ -16,8 +17,9 @@ from ..schemas_v2 import (
 )
 from ..services_v2 import (
     analyze_company_response, audit, confirm_document_fact, create_case, create_human_review,
-    diagnose, get_next_question, prepare_claim_package, save_upload, upsert_fact,
+    diagnose, get_next_question, prepare_claim_package, upsert_fact,
 )
+from ..storage import UnsafeDocumentUpload
 
 router = APIRouter(prefix="/api/cases", tags=["cases"])
 
@@ -163,16 +165,19 @@ def charges(case_id: str, payload: ChargesInput, db: Session = Depends(get_db)):
 @router.post("/{case_id}/documents")
 async def documents(case_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
-    data = await file.read()
-    if len(data) > 15 * 1024 * 1024:
-        raise HTTPException(413, "Max 15 MB in internal alpha")
-    document, extraction = save_upload(
-        db,
-        case,
-        file.filename or "upload",
-        file.content_type or "application/octet-stream",
-        data,
-    )
+    data = await file.read(settings.max_upload_bytes + 1)
+    if len(data) > settings.max_upload_bytes:
+        raise HTTPException(413, f"Max {settings.max_upload_bytes // (1024 * 1024)} MB in internal alpha")
+    try:
+        document, extraction = save_upload(
+            db,
+            case,
+            file.filename or "upload",
+            file.content_type or "application/octet-stream",
+            data,
+        )
+    except UnsafeDocumentUpload as exc:
+        raise HTTPException(422, str(exc)) from exc
     return {
         "document_id": document.id,
         "status": document.processing_status,
