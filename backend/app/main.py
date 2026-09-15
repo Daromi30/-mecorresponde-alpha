@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from .config import settings
 from .db import Base, engine, SessionLocal
@@ -21,7 +22,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.3.0-alpha", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.3.1-alpha", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -36,4 +37,13 @@ app.mount("/demo", StaticFiles(directory=str(static_dir), html=True), name="demo
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "mecorresponde-alpha", "version": "0.3.0-alpha"}
+    return {"status": "ok", "service": "mecorresponde-alpha", "version": "0.3.1-alpha"}
+
+
+@app.get("/health/db")
+def database_health():
+    """Verify that the configured relational database is reachable without exposing credentials."""
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+    backend = engine.url.get_backend_name()
+    return {"status": "ok", "database": backend, "persistent": backend == "postgresql"}
