@@ -18,6 +18,7 @@ SUPPORTED_FAMILIES = install_all_families()
 
 from .routers.admin import router as admin_router
 from .routers.cases_v2 import router as cases_router
+from .routers.sources import router as sources_router
 from .services_v2 import seed_legal
 from .storage import StorageConfigurationError, get_document_storage, storage_status
 
@@ -61,7 +62,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.4.4-alpha", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.4.5-alpha", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -102,6 +103,7 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
 
 
 app.include_router(cases_router)
+app.include_router(sources_router)
 app.include_router(admin_router)
 static_dir = Path(__file__).parent / "static"
 admin_static_dir = Path(__file__).parent / "admin_static"
@@ -114,7 +116,7 @@ def health():
     return {
         "status": "ok",
         "service": "mecorresponde-alpha",
-        "version": "0.4.4-alpha",
+        "version": "0.4.5-alpha",
         "families": len(SUPPORTED_FAMILIES),
     }
 
