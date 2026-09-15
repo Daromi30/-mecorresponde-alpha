@@ -17,6 +17,7 @@ PASSWORD_SCHEME = "pbkdf2_sha256"
 PASSWORD_ITERATIONS = 600_000
 SESSION_COOKIE = "mcr_session"
 SESSION_DAYS = 30
+MAX_ACTIVE_SESSIONS = 5
 
 
 def now() -> datetime:
@@ -71,7 +72,21 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _revoke_excess_sessions(db: Session, user: User) -> None:
+    active = db.scalars(
+        select(UserSession)
+        .where(UserSession.user_id == user.id, UserSession.revoked_at.is_(None))
+        .order_by(UserSession.created_at.desc())
+    ).all()
+    cutoff = now()
+    live = [session for session in active if _as_utc(session.expires_at) > cutoff]
+    # A new session is about to be issued, so retain at most N-1 existing ones.
+    for session in live[MAX_ACTIVE_SESSIONS - 1 :]:
+        session.revoked_at = cutoff
+
+
 def issue_session(db: Session, user: User, response: Response) -> UserSession:
+    _revoke_excess_sessions(db, user)
     token = secrets.token_urlsafe(32)
     expires_at = now() + timedelta(days=SESSION_DAYS)
     session = UserSession(
