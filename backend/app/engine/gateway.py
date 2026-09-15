@@ -25,15 +25,24 @@ class DeterministicAlphaGateway:
     """No LLM. Validates routing/rules/workflow before a model provider is added."""
 
     def classify(self, text: str) -> dict[str, Any]:
-        # Accent-insensitive routing avoids treating normal Spanish variants
-        # (eléctrica/electrica, revisión/revision) as different intents.
         t = _normalized(text)
-        electricity = any(w in t for w in ["luz", "electric", "comercializadora", "endesa", "iberdrola", "naturgy", "repsol", "factura electrica", "cups", "contador"])
+        electricity = any(w in t for w in ["luz", "electric", "comercializadora", "endesa", "iberdrola", "naturgy", "repsol", "factura electrica", "cups", "contador", "tarifa"])
         maintenance = any(w in t for w in ["mantenimiento", "servicio", "proteccion", "asistencia"])
         switch = any(w in t for w in ["cambie", "cambiar", "cambio", "baja", "me fui", "otra compania"])
         never = any(w in t for w in ["nunca contrat", "no contrate", "sin contratar", "no lo pedi"])
         duplicate = any(w in t for w in ["dos veces", "duplicado", "duplicada", "doble cargo", "doble cobro", "me lo han cobrado dos"])
         overbill = any(w in t for w in ["cobrado de mas", "facturado de mas", "factura incorrecta", "importe incorrecto", "me cobran mas"])
+        tariff_mismatch = "tarifa" in t and any(w in t for w in [
+            "distinta", "diferente", "incorrecta", "otra tarifa", "no contrate", "no contratada",
+        ])
+        pricing_mismatch = tariff_mismatch or any(w in t for w in [
+            "precio distinto al contratado", "precio diferente al contratado", "precio distinto de lo contratado",
+            "precio distinto al ofertado", "precio diferente al ofertado", "no respetan el precio", "no me respetan el precio",
+            "tarifa distinta a la contratada", "tarifa diferente a la contratada", "tarifa distinta", "tarifa diferente", "tarifa es distinta", "tarifa que no contrate", "tarifa incorrecta", "otra tarifa",
+            "no me aplican el descuento", "no respetan el descuento", "no me respetan el descuento", "descuento no aplicado",
+            "me quito un descuento", "me quitaron un descuento", "me han quitado un descuento", "me quitaron el descuento", "me han quitado el descuento",
+            "descuento prometido", "descuento que me prometieron", "descuento promocional", "promocion no aplicada", "promocion distinta", "descuento distinto",
+        ])
         unauthorized_switch = any(w in t for w in [
             "me cambiaron de compania", "me han cambiado de compania",
             "cambio sin permiso", "cambio sin mi permiso", "sin consentimiento", "no autorice el cambio",
@@ -84,6 +93,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E03", "confidence": 0.96}
         if electricity and termination_penalty:
             return {"vertical": "electricity", "family": "E05", "confidence": 0.95}
+        if electricity and pricing_mismatch:
+            return {"vertical": "electricity", "family": "E01", "confidence": 0.95}
         if electricity and contract_change:
             return {"vertical": "electricity", "family": "E07", "confidence": 0.94}
         if electricity and reading_regularization:
@@ -127,6 +138,8 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["CONSENT_EVIDENCE"]}
         if any(x in t for x in ["el cups es correcto", "cups correcto", "corresponde a su cups", "cups coincide"]):
             return {"type": "DENIAL", "arguments": ["CUPS_CORRECT_ASSERTED"]}
+        if any(x in t for x in ["el precio coincide con el contrato", "precio coincide con contrato", "tarifa coincide con contrato", "descuento aplicado correctamente", "promocion aplicada correctamente"]):
+            return {"type": "DENIAL", "arguments": ["PRICING_MATCHES_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["la estimacion era procedente", "estimacion permitida", "no fue posible acceder al contador", "no pudimos acceder al contador"]):
             return {"type": "DENIAL", "arguments": ["ESTIMATE_ALLOWED_ASSERTED"]}
         if any(x in t for x in ["se aviso con un mes", "avisamos con un mes", "notificado con un mes", "preaviso de un mes"]):
