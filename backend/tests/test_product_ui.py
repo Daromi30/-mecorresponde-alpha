@@ -1,4 +1,7 @@
 from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 
 
 def _ui() -> str:
@@ -31,3 +34,16 @@ def test_consumer_ui_does_not_claim_unsupported_document_upload():
     html = _ui()
     assert "Subir factura" not in html
     assert "type=\"file\"" not in html
+
+
+def test_consumer_ui_javascript_parses_when_node_is_available():
+    node = shutil.which("node")
+    if not node:
+        return
+    html = _ui()
+    script = html.split("<script>", 1)[1].split("</script>", 1)[0]
+    with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
+        handle.write(script)
+        path = handle.name
+    result = subprocess.run([node, "--check", path], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
