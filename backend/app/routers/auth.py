@@ -17,6 +17,7 @@ from ..auth import (
     verify_password,
 )
 from ..auth_models import User
+from ..auth_throttle import login_throttle
 from ..db import get_db
 from ..models import Case
 
@@ -82,15 +83,19 @@ def login(
     db: Session = Depends(get_db),
 ):
     email = normalize_email(payload.email)
+    login_throttle.check(email)
     user = db.scalar(select(User).where(User.email == email))
     if not user:
         # Spend roughly the same password-derivation work as a real lookup so
         # a missing account is less obvious from response timing.
         hash_password(payload.password)
+        login_throttle.fail(email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if user.disabled_at is not None or not verify_password(payload.password, user.password_hash):
+        login_throttle.fail(email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    login_throttle.success(email)
     issue_session(db, user, response)
     db.commit()
     return {"user": user_payload(user)}
