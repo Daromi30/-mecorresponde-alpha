@@ -103,6 +103,11 @@ def _render_product_home() -> str:
             f'"name":"MECORRESPONDE","url":"{website_url}"}}'
             "</script>\n"
         )
+    html = html.replace(
+        "</body>",
+        '<script src="/demo/dossier_quality.js"></script>\n</body>',
+        1,
+    )
     return html.replace("</head>", f"{metadata}</head>", 1)
 
 
