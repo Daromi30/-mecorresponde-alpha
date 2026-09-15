@@ -22,14 +22,10 @@ router = APIRouter(
 )
 
 
-# These are deliberately explicit capability switches. They must only become True
-# when the corresponding end-to-end capability exists and has been operationally
-# verified. A persistent SQL backend alone is not enough if the datastore can expire
-# or has no tested recovery path.
+# These capabilities require external/operational decisions and remain explicit
+# fail-closed gates until independently verified.
 DATABASE_LIFECYCLE_MANAGED = False
 DATABASE_RECOVERY_AVAILABLE = False
-ACCOUNT_PASSWORD_RECOVERY_AVAILABLE = False
-EMAIL_VERIFICATION_ENFORCED = False
 PRIVACY_INFORMATION_PUBLISHED = False
 
 
@@ -148,6 +144,8 @@ def _family_registry_check() -> dict[str, Any]:
 @router.get("/readiness")
 def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
     backend = engine.url.get_backend_name()
+    email_operational = settings.transactional_email_operational
+    verification_enforced = bool(email_operational and settings.email_verification_enforced)
     checks = [
         _check(
             "persistent_database",
@@ -216,25 +214,33 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
         ),
         _check(
             "password_recovery",
-            ACCOUNT_PASSWORD_RECOVERY_AVAILABLE,
+            email_operational,
             label="Recuperación de cuenta",
             detail=(
-                "Existe recuperación segura de cuenta."
-                if ACCOUNT_PASSWORD_RECOVERY_AVAILABLE
-                else "Las cuentas todavía no tienen recuperación segura de contraseña por email o enlace mágico."
+                "La recuperación de contraseña dispone de entrega transaccional configurada y verificada."
+                if email_operational
+                else "El flujo de recuperación está construido, pero la beta pública sigue bloqueada hasta conectar y verificar un proveedor transaccional."
             ),
             severity="PUBLIC_BETA_BLOCKER",
+            metadata={
+                "provider_configured": settings.transactional_email_ready,
+                "delivery_verified": settings.transactional_email_verified,
+            },
         ),
         _check(
             "email_verification",
-            EMAIL_VERIFICATION_ENFORCED,
+            verification_enforced,
             label="Verificación de email",
             detail=(
-                "El email de las cuentas se verifica antes de confiar en su titularidad."
-                if EMAIL_VERIFICATION_ENFORCED
-                else "La cuenta puede crearse sin demostrar todavía el control del email."
+                "La titularidad del email se exige antes de guardar expedientes en la cuenta."
+                if verification_enforced
+                else "El flujo de verificación está construido, pero no se considera operativo hasta verificar la entrega y activar su obligatoriedad."
             ),
             severity="PUBLIC_BETA_BLOCKER",
+            metadata={
+                "provider_operational": email_operational,
+                "enforcement_enabled": settings.email_verification_enforced,
+            },
         ),
         _check(
             "public_indexing",

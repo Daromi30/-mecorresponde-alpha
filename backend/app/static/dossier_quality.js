@@ -84,6 +84,7 @@
   loadEnhancement('/demo/alpha_data_guardrail.js', 'mcr-alpha-data-guardrail');
   loadEnhancement('/demo/account_deletion.js', 'mcr-account-deletion');
   loadEnhancement('/demo/account_export.js', 'mcr-account-export');
+  loadEnhancement('/demo/account_recovery.js', 'mcr-account-recovery');
   loadEnhancement('/demo/deadline_guidance.js', 'mcr-deadline-guidance');
   loadEnhancement('/demo/documentation.js', 'mcr-documentation');
 })();

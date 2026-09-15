@@ -28,6 +28,18 @@ class Settings(BaseSettings):
     # never be committed. Admin endpoints return 503 until it is configured.
     admin_api_token: str = ""
 
+    # Transactional account email is opt-in and fail-closed. The only implemented
+    # adapter is Brevo's HTTPS API; no SMTP dependency is introduced. A provider is
+    # not considered ready unless credentials, a verified sender and a HTTPS public
+    # base URL are all configured. No values are committed to the repository.
+    email_delivery_provider: str = "disabled"
+    brevo_api_key: str = ""
+    email_sender_email: str = ""
+    email_sender_name: str = "MECORRESPONDE"
+    auth_action_base_url: str = ""
+    transactional_email_verified: bool = False
+    email_verification_enforced: bool = False
+
     cors_origins: str = "http://localhost:3000"
     legal_holidays_csv: str = ""
 
@@ -45,6 +57,19 @@ class Settings(BaseSettings):
     @property
     def public_indexing_ready(self) -> bool:
         return self.public_indexing_enabled and self.public_base_url.strip().startswith("https://")
+
+    @property
+    def transactional_email_ready(self) -> bool:
+        return (
+            self.email_delivery_provider.strip().casefold() == "brevo"
+            and bool(self.brevo_api_key.strip())
+            and "@" in self.email_sender_email.strip()
+            and self.auth_action_base_url.strip().startswith("https://")
+        )
+
+    @property
+    def transactional_email_operational(self) -> bool:
+        return self.transactional_email_ready and self.transactional_email_verified
 
 
 settings = Settings()
