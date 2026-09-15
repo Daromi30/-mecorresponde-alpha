@@ -8,7 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 
 from .config import settings
-from .db import Base, engine, SessionLocal
+from .db import engine, SessionLocal
+from .migrations import upgrade_database
 from .models import LegalSource
 from .routers.cases_v2 import router as cases_router
 from .services_v2 import seed_legal
@@ -19,7 +20,7 @@ logger = logging.getLogger("uvicorn.error")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Path(settings.storage_dir).mkdir(parents=True, exist_ok=True)
-    Base.metadata.create_all(bind=engine)
+    upgrade_database()
     backend = engine.url.get_backend_name()
     with SessionLocal() as db:
         existing_sources = db.scalar(select(func.count()).select_from(LegalSource)) or 0
@@ -34,7 +35,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.3.3-alpha", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.3.4-alpha", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -49,7 +50,7 @@ app.mount("/demo", StaticFiles(directory=str(static_dir), html=True), name="demo
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "mecorresponde-alpha", "version": "0.3.3-alpha"}
+    return {"status": "ok", "service": "mecorresponde-alpha", "version": "0.3.4-alpha"}
 
 
 @app.get("/health/db")
