@@ -1,5 +1,6 @@
 import os
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["ADMIN_API_TOKEN"] = "test-admin-token"
 
 import pytest
 from fastapi.testclient import TestClient

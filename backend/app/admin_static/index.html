@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MECORRESPONDE · Backoffice Beta</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #111827; background:#f3f4f6; }
+    * { box-sizing: border-box; }
+    body { margin:0; }
+    header { background:#111827; color:white; padding:18px 22px; display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    header h1 { font-size:18px; margin:0; }
+    header small { color:#cbd5e1; }
+    main { max-width:1400px; margin:0 auto; padding:20px; }
+    .auth, .panel { background:white; border:1px solid #e5e7eb; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+    .auth { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+    input, textarea, button { font:inherit; }
+    input, textarea { border:1px solid #d1d5db; border-radius:8px; padding:9px 10px; }
+    input { min-width:280px; }
+    textarea { width:100%; min-height:110px; resize:vertical; }
+    button { border:0; border-radius:8px; padding:9px 12px; cursor:pointer; background:#111827; color:white; }
+    button.secondary { background:#e5e7eb; color:#111827; }
+    .status { font-size:13px; color:#6b7280; }
+    .grid { display:grid; grid-template-columns:minmax(320px, 420px) 1fr; gap:16px; align-items:start; }
+    .review { border:1px solid #e5e7eb; border-radius:10px; padding:12px; margin-top:10px; cursor:pointer; }
+    .review:hover { border-color:#9ca3af; }
+    .review strong { display:block; }
+    .meta { color:#6b7280; font-size:12px; margin-top:4px; }
+    .badge { display:inline-block; border-radius:999px; padding:3px 7px; background:#f3f4f6; font-size:11px; margin-right:4px; }
+    .badge.high { background:#fee2e2; color:#991b1b; }
+    section { margin-bottom:18px; }
+    h2 { font-size:16px; margin:0 0 10px; }
+    h3 { font-size:14px; margin:14px 0 7px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { text-align:left; vertical-align:top; border-bottom:1px solid #e5e7eb; padding:7px 6px; word-break:break-word; }
+    th { color:#6b7280; font-weight:600; }
+    pre { white-space:pre-wrap; word-break:break-word; background:#f9fafb; border:1px solid #e5e7eb; padding:10px; border-radius:8px; font-size:12px; }
+    .empty { color:#6b7280; padding:14px 0; }
+    .danger { color:#991b1b; }
+    @media (max-width: 900px) { .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<header>
+  <div><h1>MECORRESPONDE · Backoffice Beta</h1><small>Revisión humana de expedientes</small></div>
+  <div id="summary" class="status"></div>
+</header>
+<main>
+  <div class="auth">
+    <input id="token" type="password" autocomplete="off" placeholder="Token interno de administración" />
+    <button id="connect">Conectar</button>
+    <button id="refresh" class="secondary">Actualizar</button>
+    <span id="authStatus" class="status">No conectado</span>
+  </div>
+  <div class="grid">
+    <div class="panel">
+      <h2>Cola de revisión</h2>
+      <div id="queue" class="empty">Conecta para cargar la cola.</div>
+    </div>
+    <div class="panel">
+      <h2>Expediente</h2>
+      <div id="detail" class="empty">Selecciona una revisión.</div>
+    </div>
+  </div>
+</main>
+<script>
+const tokenEl = document.getElementById('token');
+const statusEl = document.getElementById('authStatus');
+const queueEl = document.getElementById('queue');
+const detailEl = document.getElementById('detail');
+const summaryEl = document.getElementById('summary');
+let currentReview = null;
+
+const saved = sessionStorage.getItem('mcr_admin_token');
+if (saved) tokenEl.value = saved;
+
+function esc(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+}
+function authHeaders() { return {'Authorization': 'Bearer ' + tokenEl.value.trim(), 'Content-Type':'application/json'}; }
+async function api(path, options={}) {
+  const response = await fetch(path, {...options, headers:{...authHeaders(), ...(options.headers||{})}, cache:'no-store'});
+  if (!response.ok) {
+    let message = response.status + ' ' + response.statusText;
+    try { const body = await response.json(); message = body.detail || message; } catch (_) {}
+    throw new Error(message);
+  }
+  return response.json();
+}
+
+async function connect() {
+  if (!tokenEl.value.trim()) return;
+  statusEl.textContent = 'Comprobando…';
+  try {
+    await api('/api/admin/health');
+    sessionStorage.setItem('mcr_admin_token', tokenEl.value.trim());
+    statusEl.textContent = 'Conectado';
+    await refreshAll();
+  } catch (e) {
+    statusEl.textContent = 'Acceso denegado';
+    statusEl.className = 'status danger';
+  }
+}
+
+async function refreshAll() {
+  statusEl.className = 'status';
+  const [stats, reviews] = await Promise.all([api('/api/admin/stats'), api('/api/admin/reviews?status=OPEN')]);
+  summaryEl.textContent = `${stats.total_cases} casos · ${stats.open_reviews} revisiones abiertas`;
+  renderQueue(reviews);
+}
+
+function renderQueue(items) {
+  if (!items.length) { queueEl.innerHTML = '<div class="empty">No hay revisiones abiertas.</div>'; return; }
+  queueEl.innerHTML = items.map(item => `
+    <div class="review" data-review="${esc(item.id)}" data-case="${esc(item.case_id)}">
+      <strong>${esc(item.case?.title || item.case_id)}</strong>
+      <div><span class="badge ${item.priority === 'HIGH' ? 'high' : ''}">${esc(item.priority)}</span><span class="badge">${esc(item.case?.family || 'sin familia')}</span></div>
+      <div class="meta">${esc(item.reason)} · ${esc(item.case?.status || '')}</div>
+    </div>`).join('');
+  queueEl.querySelectorAll('.review').forEach(el => el.addEventListener('click', () => loadCase(el.dataset.case, el.dataset.review)));
+}
+
+async function loadCase(caseId, reviewId) {
+  currentReview = reviewId;
+  detailEl.innerHTML = '<div class="empty">Cargando…</div>';
+  try {
+    const c = await api('/api/admin/cases/' + caseId);
+    renderCase(c, reviewId);
+  } catch (e) { detailEl.innerHTML = `<div class="danger">${esc(e.message)}</div>`; }
+}
+
+function rows(items, cells) {
+  if (!items?.length) return '<div class="empty">Sin datos.</div>';
+  return `<table><tbody>${items.map(x => `<tr>${cells.map(fn => `<td>${fn(x)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+function renderCase(c, reviewId) {
+  const review = (c.human_reviews || []).find(r => r.id === reviewId);
+  detailEl.innerHTML = `
+    <section>
+      <h3>${esc(c.title || c.id)}</h3>
+      <div><span class="badge">${esc(c.vertical)}</span><span class="badge">${esc(c.family)}</span><span class="badge">${esc(c.status)}</span></div>
+      <pre>${esc(c.raw_intake || '')}</pre>
+    </section>
+    <section><h3>Hechos</h3>${rows(c.facts, [x=>`<b>${esc(x.key)}</b>`, x=>esc(JSON.stringify(x.value)), x=>esc(x.state), x=>esc(x.created_by)])}</section>
+    <section><h3>Evidencias</h3>${rows(c.evidence, [x=>esc(x.source_type), x=>esc(x.document_id || ''), x=>esc(x.locator || ''), x=>esc(x.excerpt || '')])}</section>
+    <section><h3>Decisiones</h3>${rows(c.decisions, [x=>`<b>${esc(x.viability)}</b>`, x=>esc(x.scope_status), x=>`€ ${esc(x.claimable_amount ?? 0)}`, x=>esc(x.reasoning_summary)])}</section>
+    <section><h3>Documentos</h3>${rows(c.documents, [x=>esc(x.filename), x=>esc(x.processing_status), x=>`<code>${esc((x.sha256||'').slice(0,12))}…</code>`])}</section>
+    <section><h3>Auditoría reciente</h3>${rows((c.audit||[]).slice(0,25), [x=>esc(x.created_at), x=>`<b>${esc(x.event_type)}</b>`, x=>esc(JSON.stringify(x.payload))])}</section>
+    <section>
+      <h3>Completar revisión</h3>
+      <div class="meta">Motivo: ${esc(review?.reason || '')}</div>
+      <textarea id="decision" placeholder="Conclusión de la revisión, cambios necesarios, regla aplicable o motivo de escalado"></textarea>
+      <button id="completeReview">Completar revisión</button>
+    </section>`;
+  document.getElementById('completeReview').addEventListener('click', async () => {
+    const text = document.getElementById('decision').value.trim();
+    if (!text) return;
+    try {
+      await api('/api/admin/reviews/' + reviewId + '/complete', {method:'POST', body:JSON.stringify({reviewer_decision:text})});
+      await refreshAll();
+      detailEl.innerHTML = '<div class="empty">Revisión completada. El caso ha quedado listo para reanálisis.</div>';
+    } catch (e) { alert(e.message); }
+  });
+}
+
+document.getElementById('connect').addEventListener('click', connect);
+document.getElementById('refresh').addEventListener('click', () => refreshAll().catch(e => { statusEl.textContent=e.message; }));
+tokenEl.addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+</script>
+</body>
+</html>

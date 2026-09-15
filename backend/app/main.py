@@ -12,6 +12,7 @@ from .config import settings
 from .db import engine, SessionLocal
 from .migrations import upgrade_database
 from .models import LegalSource
+from .routers.admin import router as admin_router
 from .routers.cases_v2 import router as cases_router
 from .services_v2 import seed_legal
 from .storage import StorageConfigurationError, get_document_storage, storage_status
@@ -44,10 +45,14 @@ async def lifespan(app: FastAPI):
         )
     except StorageConfigurationError as exc:
         logger.error("MECORRESPONDE document storage misconfigured: %s", exc)
+    logger.info(
+        "MECORRESPONDE backoffice: configured=%s",
+        bool(settings.admin_api_token.strip()),
+    )
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.3.5-alpha", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.3.6-alpha", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -58,7 +63,7 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def persistent_document_storage_guard(request: Request, call_next):
+async def safety_headers_and_storage_guard(request: Request, call_next):
     path = request.url.path
     is_document_upload = (
         request.method.upper() == "POST"
@@ -80,17 +85,24 @@ async def persistent_document_storage_guard(request: Request, call_next):
                     "detail": "Document upload is disabled until persistent object storage is configured."
                 },
             )
-    return await call_next(request)
+    response = await call_next(request)
+    if path.startswith("/api/admin") or path.startswith("/backoffice"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
 
 
 app.include_router(cases_router)
+app.include_router(admin_router)
 static_dir = Path(__file__).parent / "static"
+admin_static_dir = Path(__file__).parent / "admin_static"
 app.mount("/demo", StaticFiles(directory=str(static_dir), html=True), name="demo")
+app.mount("/backoffice", StaticFiles(directory=str(admin_static_dir), html=True), name="backoffice")
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "mecorresponde-alpha", "version": "0.3.5-alpha"}
+    return {"status": "ok", "service": "mecorresponde-alpha", "version": "0.3.6-alpha"}
 
 
 @app.get("/health/db")

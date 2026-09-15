@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     s3_secret_access_key: str = ""
     s3_prefix: str = "mecorresponde"
 
+    # Internal beta backoffice. The value is required only at runtime and must
+    # never be committed. Admin endpoints return 503 until it is configured.
+    admin_api_token: str = ""
+
     cors_origins: str = "http://localhost:3000"
     legal_holidays_csv: str = ""
 
