@@ -23,7 +23,11 @@ router = APIRouter(
 
 
 # These are deliberately explicit capability switches. They must only become True
-# when the corresponding end-to-end product flow exists and has regression tests.
+# when the corresponding end-to-end capability exists and has been operationally
+# verified. A persistent SQL backend alone is not enough if the datastore can expire
+# or has no tested recovery path.
+DATABASE_LIFECYCLE_MANAGED = False
+DATABASE_RECOVERY_AVAILABLE = False
 ACCOUNT_PASSWORD_RECOVERY_AVAILABLE = False
 EMAIL_VERIFICATION_ENFORCED = False
 PRIVACY_INFORMATION_PUBLISHED = False
@@ -156,6 +160,28 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
             ),
             severity="BETA_BLOCKER",
             metadata={"backend": backend},
+        ),
+        _check(
+            "database_lifecycle_managed",
+            DATABASE_LIFECYCLE_MANAGED,
+            label="Ciclo de vida de la base de datos",
+            detail=(
+                "La base de datos no tiene una caducidad operativa sin gestionar."
+                if DATABASE_LIFECYCLE_MANAGED
+                else "Una base de datos que puede caducar o quedar inaccesible no es suficiente para una beta con datos reales, aunque sea PostgreSQL persistente mientras está activa."
+            ),
+            severity="BETA_BLOCKER",
+        ),
+        _check(
+            "database_recovery",
+            DATABASE_RECOVERY_AVAILABLE,
+            label="Recuperación y copias de seguridad",
+            detail=(
+                "Existe un mecanismo probado de copia y recuperación de la base de datos."
+                if DATABASE_RECOVERY_AVAILABLE
+                else "No debe dependerse de datos reales sin una vía probada de copia y recuperación ante borrado, corrupción o pérdida del datastore."
+            ),
+            severity="BETA_BLOCKER",
         ),
         _family_registry_check(),
         _legal_catalog_check(db),
