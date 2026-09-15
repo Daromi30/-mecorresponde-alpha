@@ -16,7 +16,9 @@ from .models import LegalSource
 
 SUPPORTED_FAMILIES = install_all_families()
 
+from .routers.account_cases import router as account_cases_router
 from .routers.admin import router as admin_router
+from .routers.auth import router as auth_router
 from .routers.cases_v2 import router as cases_router
 from .routers.sources import router as sources_router
 from .services_v2 import seed_legal
@@ -62,7 +64,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.4.5-alpha", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.5.0-alpha", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -96,13 +98,20 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
                 },
             )
     response = await call_next(request)
-    if path.startswith("/api/admin") or path.startswith("/backoffice"):
+    if (
+        path.startswith("/api/admin")
+        or path.startswith("/api/auth")
+        or path.startswith("/backoffice")
+    ):
         response.headers["Cache-Control"] = "no-store"
+    if path.startswith("/api/admin") or path.startswith("/backoffice"):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
     return response
 
 
 app.include_router(cases_router)
+app.include_router(account_cases_router)
+app.include_router(auth_router)
 app.include_router(sources_router)
 app.include_router(admin_router)
 static_dir = Path(__file__).parent / "static"
@@ -116,7 +125,7 @@ def health():
     return {
         "status": "ok",
         "service": "mecorresponde-alpha",
-        "version": "0.4.5-alpha",
+        "version": "0.5.0-alpha",
         "families": len(SUPPORTED_FAMILIES),
     }
 
