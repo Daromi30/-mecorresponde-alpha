@@ -31,6 +31,7 @@ from .routers.admin_review_resolution import router as admin_review_resolution_r
 from .routers.auth import router as auth_router
 from .routers.cases_v2 import router as cases_router
 from .routers.quality import router as quality_router
+from .routers.readiness import router as readiness_router
 from .routers.sources import router as sources_router
 from .services_v2 import seed_legal
 from .storage import StorageConfigurationError, get_document_storage, storage_status
@@ -165,7 +166,6 @@ app.add_middleware(
 
 @app.exception_handler(ModelOutputRejected)
 async def rejected_model_output_handler(request: Request, exc: ModelOutputRejected):
-    # Never echo untrusted model output or its rejected legal content to the client/logs.
     logger.error("MECORRESPONDE intelligence output rejected at %s", request.url.path)
     return JSONResponse(
         status_code=503,
@@ -260,6 +260,7 @@ app.include_router(auth_router)
 app.include_router(sources_router)
 app.include_router(admin_router)
 app.include_router(admin_review_resolution_router)
+app.include_router(readiness_router)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
