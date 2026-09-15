@@ -23,6 +23,11 @@ class DeterministicAlphaGateway:
         never = any(w in t for w in ["nunca contrat", "no contraté", "no contrate", "sin contratar", "no lo pedí", "no lo pedi"])
         duplicate = any(w in t for w in ["dos veces", "duplicado", "duplicada", "doble cargo", "doble cobro", "me lo han cobrado dos"])
         overbill = any(w in t for w in ["cobrado de más", "cobrado de mas", "facturado de más", "facturado de mas", "factura incorrecta", "importe incorrecto", "me cobran más", "me cobran mas"])
+        termination_penalty = any(w in t for w in [
+            "penalización", "penalizacion", "penalidad", "permanencia", "cargo por cancelar",
+            "cargo por cambiar", "me cobran por irme", "me cobran por cambiar", "cobro por rescindir",
+            "penalización por rescisión", "penalizacion por rescision", "penalización por baja", "penalizacion por baja",
+        ])
         purchase = any(w in t for w in ["compré", "compre", "comprado", "compra", "tienda", "vendedor", "producto", "pedido", "televisor", "tv", "móvil", "movil", "teléfono", "telefono", "ordenador", "portátil", "portatil", "lavadora", "nevera", "electrodoméstico", "electrodomestico"])
         conformity = any(w in t for w in ["garantía", "garantia", "defecto", "defectuoso", "avería", "averia", "averiado", "roto", "no funciona", "dejó de funcionar", "dejo de funcionar", "rechazan la garantía", "rechazan la garantia"])
         repair_followup = any(w in t for w in [
@@ -44,6 +49,8 @@ class DeterministicAlphaGateway:
         distance = any(w in t for w in ["online", "internet", "web", "a distancia", "por teléfono", "por telefono", "pedido"])
         withdrawal = any(w in t for w in ["desist", "quiero devolver", "quiero devolverlo", "me arrepentí", "me arrepenti", "devolver la compra", "derecho de devolución", "derecho de devolucion", "14 días", "14 dias"])
 
+        if electricity and termination_penalty:
+            return {"vertical": "electricity", "family": "E05", "confidence": 0.95}
         if electricity and duplicate:
             return {"vertical": "electricity", "family": "E02-B", "confidence": 0.96}
         if electricity and overbill:
@@ -85,6 +92,8 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["CORRECT_AMOUNT_DISPUTED"]}
         if any(x in t for x in ["cargos distintos", "facturas distintas", "recibos distintos"]):
             return {"type": "DENIAL", "arguments": ["DIFFERENT_DEBTS"]}
+        if any(x in t for x in ["contrato a precio fijo", "precio fijo"]) and any(x in t for x in ["primer año", "primera anualidad", "primera prórroga", "primera prorroga", "antes de la renovación", "antes de la renovacion"]):
+            return {"type": "DENIAL", "arguments": ["FIXED_PRICE_FIRST_YEAR_ASSERTED"]}
         if any(x in t for x in ["mal uso", "golpe", "humedad", "daño accidental", "dano accidental", "manipulación", "manipulacion"]):
             return {"type": "DENIAL", "arguments": ["MISUSE_OR_ACCIDENTAL_DAMAGE"]}
         if any(x in t for x in ["fuera de garantía", "fuera de garantia", "garantía vencida", "garantia vencida"]):
