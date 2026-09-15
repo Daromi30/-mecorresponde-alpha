@@ -32,7 +32,10 @@ class DeterministicAlphaGateway:
         never = any(w in t for w in ["nunca contrat", "no contrate", "sin contratar", "no lo pedi"])
         duplicate = any(w in t for w in ["dos veces", "duplicado", "duplicada", "doble cargo", "doble cobro", "me lo han cobrado dos"])
         overbill = any(w in t for w in ["cobrado de mas", "facturado de mas", "factura incorrecta", "importe incorrecto", "me cobran mas"])
-        pricing_mismatch = any(w in t for w in [
+        tariff_mismatch = "tarifa" in t and any(w in t for w in [
+            "distinta", "diferente", "incorrecta", "otra tarifa", "no contrate", "no contratada",
+        ])
+        pricing_mismatch = tariff_mismatch or any(w in t for w in [
             "precio distinto al contratado", "precio diferente al contratado", "precio distinto de lo contratado",
             "precio distinto al ofertado", "precio diferente al ofertado", "no respetan el precio", "no me respetan el precio",
             "tarifa distinta a la contratada", "tarifa diferente a la contratada", "tarifa distinta", "tarifa diferente", "tarifa es distinta", "tarifa que no contrate", "tarifa incorrecta", "otra tarifa",
