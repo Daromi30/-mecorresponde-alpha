@@ -22,6 +22,108 @@ def _date(value):
         return None
 
 
+def _c02_question(facts: dict[str, FactValue]) -> dict:
+    common = [
+        ("purchase.buyer_is_consumer", "¿Compraste el producto como particular, no para una actividad profesional o empresa?", "boolean"),
+        ("purchase.seller_is_business", "¿Lo compraste a una tienda, empresa o vendedor profesional?", "boolean"),
+        ("purchase.product_name", "¿Qué producto es?", "text"),
+        ("purchase.delivery_date", "¿Qué día te entregaron el producto?", "date"),
+        ("purchase.price", "¿Cuánto pagaste por el producto?", "money"),
+        ("purchase.conformity_attempts", "¿Cuántos intentos de reparación o sustitución ha realizado ya el vendedor?", "integer"),
+    ]
+    for key, question, input_type in common:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    try:
+        attempts = int(_value(facts, "purchase.conformity_attempts", 0) or 0)
+    except (TypeError, ValueError):
+        attempts = 0
+    if attempts < 1:
+        return {"done": True, "question": None, "field": None}
+
+    if "purchase.lack_after_conformity_attempt" not in facts:
+        return _ask(
+            "purchase.lack_after_conformity_attempt",
+            "Después del intento de reparación o sustitución, ¿el producto volvió a presentar una falta o sigue sin estar conforme?",
+            "boolean",
+        )
+
+    lack_after = _value(facts, "purchase.lack_after_conformity_attempt")
+    if lack_after is False and "purchase.repair_still_pending" not in facts:
+        return _ask(
+            "purchase.repair_still_pending",
+            "¿La reparación o sustitución sigue todavía pendiente de terminar?",
+            "boolean",
+        )
+
+    if "purchase.seller_declared_will_not_conform" not in facts:
+        return _ask(
+            "purchase.seller_declared_will_not_conform",
+            "¿El vendedor te ha dicho claramente que no va a reparar, sustituir o terminar de poner el producto en conformidad?",
+            "boolean",
+        )
+
+    pending = _value(facts, "purchase.repair_still_pending")
+    refusal = _value(facts, "purchase.seller_declared_will_not_conform")
+    if lack_after is False and pending is True:
+        if "purchase.repair_started_date" not in facts:
+            return _ask(
+                "purchase.repair_started_date",
+                "¿En qué fecha entregaste o pusiste el producto a disposición para esta reparación?",
+                "date",
+            )
+        return {"done": True, "question": None, "field": None}
+
+    if lack_after is True:
+        if "purchase.same_origin_after_repair" not in facts:
+            return _ask(
+                "purchase.same_origin_after_repair",
+                "¿El fallo que ha reaparecido parece ser el mismo o tener el mismo origen que el que se intentó reparar?",
+                "boolean",
+            )
+        if _value(facts, "purchase.same_origin_after_repair") is True and "purchase.repair_return_date" not in facts:
+            return _ask(
+                "purchase.repair_return_date",
+                "¿Qué día te devolvieron el producto después de aquella reparación o sustitución?",
+                "date",
+            )
+
+    if (lack_after is True or refusal is True) and "purchase.preferred_secondary_remedy" not in facts:
+        return _ask(
+            "purchase.preferred_secondary_remedy",
+            "Con el problema actual, ¿prefieres pedir la resolución de la compra, una reducción proporcional del precio o todavía no lo tienes decidido?",
+            "choice:termination|price_reduction|undecided",
+        )
+
+    if _value(facts, "purchase.preferred_secondary_remedy") == "termination" and "purchase.defect_material" not in facts:
+        return _ask(
+            "purchase.defect_material",
+            "¿El problema afecta de forma relevante al uso, funcionamiento o valor del producto, más allá de un detalle de escasa importancia?",
+            "boolean",
+        )
+    return {"done": True, "question": None, "field": None}
+
+
+def _c03_question(facts: dict[str, FactValue]) -> dict:
+    common = [
+        ("purchase.buyer_is_consumer", "¿Compraste como particular, no para una actividad profesional o empresa?", "boolean"),
+        ("purchase.seller_is_business", "¿Compraste a una tienda, empresa o vendedor profesional?", "boolean"),
+        ("purchase.product_name", "¿Qué producto compraste?", "text"),
+        ("purchase.delivery_date", "¿Qué día recibiste el producto?", "date"),
+        ("purchase.price", "¿Cuánto pagaste por el producto?", "money"),
+        ("purchase.mismatch_confirmed", "¿Confirmas que lo recibido es distinto, incompleto o no coincide con lo contratado/anunciado?", "boolean"),
+        ("purchase.contract_description", "Describe qué compraste o qué características/cantidad/accesorios estaban incluidos en el contrato o anuncio.", "text"),
+        ("purchase.received_description", "Describe qué recibiste realmente y qué diferencia concreta existe.", "text"),
+        ("purchase.seller_denied_conformity", "¿El vendedor ya se ha negado a corregir, completar o sustituir lo recibido?", "boolean"),
+        ("purchase.mismatch_material", "¿La diferencia afecta de forma relevante al uso, cantidad, calidad o valor, y no es solo un detalle menor?", "boolean"),
+    ]
+    for key, question, input_type in common:
+        if key not in facts:
+            return _ask(key, question, input_type)
+    return {"done": True, "question": None, "field": None}
+
+
 def _c04_question(facts: dict[str, FactValue]) -> dict:
     common = [
         ("purchase.buyer_is_consumer", "¿Hiciste el pedido como particular, no para una actividad profesional o empresa?", "boolean"),
@@ -122,6 +224,10 @@ def _c05_question(facts: dict[str, FactValue]) -> dict:
 
 
 def next_question(facts: dict[str, FactValue], family: str | None) -> dict:
+    if family == "C02":
+        return _c02_question(facts)
+    if family == "C03":
+        return _c03_question(facts)
     if family == "C04":
         return _c04_question(facts)
     if family == "C05":
