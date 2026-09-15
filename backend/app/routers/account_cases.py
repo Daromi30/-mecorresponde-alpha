@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import require_current_user
 from ..auth_models import User
+from ..config import settings
 from ..db import get_db
 from ..models import Case
 from ..security import CaseAccess, clear_case_access_cookie, require_case_access
@@ -24,6 +25,13 @@ def claim_case(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ):
+    if (
+        settings.email_verification_enforced
+        and settings.transactional_email_operational
+        and user.email_verified_at is None
+    ):
+        raise HTTPException(status_code=403, detail="Verify your email before saving cases to this account")
+
     case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
