@@ -26,11 +26,23 @@ def next_question(facts: dict[str, FactValue], family: str | None) -> dict:
             ("electricity.billing.same_debt", "¿Los dos cargos corresponden a la misma factura o deuda?", "boolean"),
             ("electricity.billing.duplicate_charges", "Añade los dos cargos que consideras duplicados.", "charges"),
         ],
+        "C01": [
+            ("purchase.buyer_is_consumer", "¿Compraste el producto como particular, no para una actividad profesional o empresa?", "boolean"),
+            ("purchase.seller_is_business", "¿Lo compraste a una tienda, empresa o vendedor profesional?", "boolean"),
+            ("purchase.second_hand", "¿El producto era de segunda mano?", "boolean"),
+            ("purchase.product_name", "¿Qué producto es?", "text"),
+            ("purchase.delivery_date", "¿Qué día te entregaron el producto?", "date"),
+            ("purchase.defect_manifested_date", "¿Cuándo apareció el defecto o dejó de funcionar correctamente?", "date"),
+            ("purchase.defect_description", "Describe brevemente qué falla o por qué no es conforme.", "text"),
+            ("purchase.accidental_damage_or_misuse", "¿Hubo algún golpe, humedad, manipulación o mal uso que pueda explicar el defecto?", "boolean"),
+            ("purchase.price", "¿Cuánto pagaste por el producto?", "money"),
+            ("purchase.seller_denied_conformity", "¿El vendedor ya se ha negado a reparar o sustituir el producto?", "boolean"),
+        ],
     }
     order = orders.get(family)
     if not order:
         return {"done": True, "question": None, "field": None, "message": "Este caso todavía no está automatizado en la alpha."}
-    for key, q, typ in order:
+    for key, question, input_type in order:
         if key not in facts:
-            return {"done": False, "question": q, "field": key, "input_type": typ}
+            return {"done": False, "question": question, "field": key, "input_type": input_type}
     return {"done": True, "question": None, "field": None}
