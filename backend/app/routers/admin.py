@@ -52,6 +52,18 @@ def _review_or_404(db: Session, review_id: str) -> HumanReview:
     return review
 
 
+def _distinct_cases_for_event(db: Session, event_type: str) -> int:
+    return int(
+        db.scalar(
+            select(func.count(func.distinct(AuditEvent.case_id))).where(
+                AuditEvent.event_type == event_type,
+                AuditEvent.case_id.is_not(None),
+            )
+        )
+        or 0
+    )
+
+
 @router.get("/health")
 def admin_health() -> dict[str, str]:
     return {"status": "ok", "surface": "backoffice"}
@@ -66,10 +78,32 @@ def admin_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
     human_review_cases = db.scalar(
         select(func.count()).select_from(Case).where(Case.status == "HUMAN_REVIEW")
     ) or 0
+    ready_to_submit = db.scalar(
+        select(func.count()).select_from(Case).where(Case.status == "READY_TO_SUBMIT")
+    ) or 0
+    waiting_response = db.scalar(
+        select(func.count()).select_from(Case).where(Case.status == "WAITING_RESPONSE")
+    ) or 0
+    needs_information = db.scalar(
+        select(func.count()).select_from(Case).where(Case.status == "NEEDS_INFORMATION")
+    ) or 0
+    verified_resolutions = db.scalar(
+        select(func.count()).select_from(Outcome).where(Outcome.verified_by_user.is_(True))
+    ) or 0
+    total_recovered = db.scalar(
+        select(func.coalesce(func.sum(Outcome.amount_recovered), 0.0)).where(
+            Outcome.verified_by_user.is_(True)
+        )
+    ) or 0.0
 
     family_rows = db.execute(
         select(Case.family, func.count(Case.id))
         .group_by(Case.family)
+        .order_by(func.count(Case.id).desc())
+    ).all()
+    vertical_rows = db.execute(
+        select(Case.vertical, func.count(Case.id))
+        .group_by(Case.vertical)
         .order_by(func.count(Case.id).desc())
     ).all()
     status_rows = db.execute(
@@ -78,12 +112,35 @@ def admin_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
         .order_by(func.count(Case.id).desc())
     ).all()
 
+    # Funnel stages are deduplicated by case. They are intentionally based on audited
+    # lifecycle events rather than page views, so beta metrics measure work the Motor
+    # actually completed rather than UI clicks.
+    funnel = {
+        "started": int(total_cases),
+        "diagnosed": _distinct_cases_for_event(db, "DIAGNOSIS_GENERATED"),
+        "action_prepared": _distinct_cases_for_event(db, "CLAIM_PACKAGE_PREPARED"),
+        "submitted": _distinct_cases_for_event(db, "CLAIM_SUBMITTED"),
+        "response_analyzed": _distinct_cases_for_event(db, "RESPONSE_ANALYZED"),
+        "resolved_verified": int(verified_resolutions),
+    }
+
     return {
-        "total_cases": total_cases,
-        "open_reviews": open_reviews,
-        "human_review_cases": human_review_cases,
-        "cases_by_family": {str(key or "UNCLASSIFIED"): count for key, count in family_rows},
-        "cases_by_status": {str(key): count for key, count in status_rows},
+        "total_cases": int(total_cases),
+        "open_reviews": int(open_reviews),
+        "human_review_cases": int(human_review_cases),
+        "ready_to_submit": int(ready_to_submit),
+        "waiting_response": int(waiting_response),
+        "needs_information": int(needs_information),
+        "verified_resolutions": int(verified_resolutions),
+        "total_recovered": round(float(total_recovered), 2),
+        "funnel": funnel,
+        "cases_by_vertical": {
+            str(key or "UNCLASSIFIED"): int(count) for key, count in vertical_rows
+        },
+        "cases_by_family": {
+            str(key or "UNCLASSIFIED"): int(count) for key, count in family_rows
+        },
+        "cases_by_status": {str(key): int(count) for key, count in status_rows},
     }
 
 
