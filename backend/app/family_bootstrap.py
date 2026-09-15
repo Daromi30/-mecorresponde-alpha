@@ -1,27 +1,37 @@
 from __future__ import annotations
 
 from . import services_v2 as svc
-from .energy_billing_contract_extensions import install_energy_billing_contract_extensions
-from .energy_extensions import install_energy_extensions
-from .energy_pricing_extensions import install_energy_pricing_extensions
 from .family_manifest import FAMILY_MANIFEST, supported_family_codes
-from .purchase_extensions import install_purchase_extensions
 
 _INSTALLED = False
 
 
 def install_all_families() -> tuple[str, ...]:
-    """Install every supported resolution family and fail fast if the runtime registry drifts.
+    """Install every supported resolution family and fail fast on registry drift.
 
-    The legacy extension modules still provide some family-specific renderers/questions,
-    but startup has a single entry point and a single manifest. New verticals should be
-    added through this boundary instead of adding imports to ``main.py``.
+    Imports are deliberately lazy and sequential. The current extension modules wrap
+    functions from ``services_v2`` at import time, so importing every extension before
+    installing the previous one would make them all capture the same base functions and
+    break the wrapper chain. This boundary preserves the current behaviour while giving
+    startup a single multivertical entry point. New families should ultimately register
+    directly here instead of adding another wrapper layer.
     """
     global _INSTALLED
     if not _INSTALLED:
+        from .purchase_extensions import install_purchase_extensions
+
         install_purchase_extensions()
+
+        from .energy_extensions import install_energy_extensions
+
         install_energy_extensions()
+
+        from .energy_billing_contract_extensions import install_energy_billing_contract_extensions
+
         install_energy_billing_contract_extensions()
+
+        from .energy_pricing_extensions import install_energy_pricing_extensions
+
         install_energy_pricing_extensions()
         _INSTALLED = True
 
