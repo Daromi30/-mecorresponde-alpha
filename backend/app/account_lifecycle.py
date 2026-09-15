@@ -28,6 +28,10 @@ from .security import CaseAccess
 from .storage import get_document_storage
 
 
+class AccountDeletionStorageError(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True)
 class AccountDeletionResult:
     cases_deleted: int
@@ -54,9 +58,15 @@ def delete_account_and_owned_data(db: Session, user: User) -> AccountDeletionRes
         db.scalars(select(Document).where(Document.case_id.in_(case_ids))).all()
     )
     if documents:
-        storage = get_document_storage()
-        for document in documents:
-            storage.delete_bytes(document.storage_key)
+        try:
+            storage = get_document_storage()
+            for document in documents:
+                storage.delete_bytes(document.storage_key)
+        except Exception as exc:
+            db.rollback()
+            raise AccountDeletionStorageError(
+                "Could not remove all document objects; account deletion was not committed"
+            ) from exc
 
     document_ids = [document.id for document in documents]
     if document_ids:
