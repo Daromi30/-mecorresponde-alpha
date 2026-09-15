@@ -259,7 +259,6 @@ def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get
         "reference": payload.reference_number,
         "channel": payload.channel,
     })
-
     if case.vertical != "electricity":
         db.commit()
         return {
@@ -268,7 +267,6 @@ def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get
             "deadline_status": "NOT_CONFIGURED",
             "warning": "No se aplica un plazo sectorial no verificado a esta familia.",
         }
-
     holiday_set: set[date] = set()
     if settings.legal_holidays_csv:
         for raw in settings.legal_holidays_csv.split(","):
@@ -297,27 +295,17 @@ def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get
 def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
     result = analyze_company_response(db, case, payload.text)
-
     if result["type"] == "UNKNOWN":
         review = create_human_review(
-            db,
-            case,
-            reason="UNRECOGNIZED_COMPANY_RESPONSE",
-            priority="HIGH",
+            db, case, reason="UNRECOGNIZED_COMPANY_RESPONSE", priority="HIGH",
             context={"text": payload.text[:2000]},
         )
-        action = Action(
-            case_id=case.id,
-            type="HUMAN_REVIEW",
-            status="OPEN",
-            payload_json={"reason": review.reason},
-        )
+        action = Action(case_id=case.id, type="HUMAN_REVIEW", status="OPEN", payload_json={"reason": review.reason})
         db.add(action)
         db.flush()
         case.current_action_id = action.id
         db.commit()
         return {"analysis": result, "case_status": case.status, "updated_diagnosis": None}
-
     if result["type"] == "ACCEPTANCE":
         action = Action(case_id=case.id, type="VERIFY_EXECUTION", status="OPEN", payload_json={})
         db.add(action)
@@ -327,9 +315,8 @@ def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)
         audit(db, case.id, "CLAIM_ACCEPTED_PENDING_EXECUTION", {"action_id": action.id})
         db.commit()
         return {"analysis": result, "case_status": case.status, "updated_diagnosis": None}
-
     updated = None
-    if case.family in {"E04-A", "E04-B", "E02-A", "E02-B", "C01", "C02", "C03", "C04", "C05"}:
+    if case.family in {"E04-A", "E04-B", "E02-A", "E02-B", "E05", "C01", "C02", "C03", "C04", "C05"}:
         try:
             diagnosis, _, _ = diagnose(db, case)
             updated = diagnosis.to_dict()
@@ -342,9 +329,7 @@ def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)
 def reviews(case_id: str, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
     rows = db.scalars(
-        select(HumanReview)
-        .where(HumanReview.case_id == case.id)
-        .order_by(HumanReview.created_at.desc())
+        select(HumanReview).where(HumanReview.case_id == case.id).order_by(HumanReview.created_at.desc())
     ).all()
     return [
         {
@@ -360,12 +345,7 @@ def reviews(case_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{case_id}/reviews/{review_id}/complete")
-def complete_review(
-    case_id: str,
-    review_id: str,
-    payload: HumanReviewComplete,
-    db: Session = Depends(get_db),
-):
+def complete_review(case_id: str, review_id: str, payload: HumanReviewComplete, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
     review = db.get(HumanReview, review_id)
     if not review or review.case_id != case.id:
@@ -384,10 +364,8 @@ def complete_review(
 def outcome(case_id: str, payload: OutcomeInput, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
     existing = db.scalars(select(Outcome).where(Outcome.case_id == case.id)).first()
-    if existing:
-        outcome_row = existing
-    else:
-        outcome_row = Outcome(case_id=case.id, result_type=payload.result_type)
+    outcome_row = existing if existing else Outcome(case_id=case.id, result_type=payload.result_type)
+    if not existing:
         db.add(outcome_row)
     outcome_row.result_type = payload.result_type
     outcome_row.amount_recovered = payload.amount_recovered
@@ -397,9 +375,6 @@ def outcome(case_id: str, payload: OutcomeInput, db: Session = Depends(get_db)):
         outcome_row.resolved_at = datetime.now(timezone.utc)
     else:
         case.status = "RESOLVED_PENDING_EXECUTION"
-    audit(db, case.id, "OUTCOME_RECORDED", {
-        "result": payload.result_type,
-        "verified": payload.verified_by_user,
-    })
+    audit(db, case.id, "OUTCOME_RECORDED", {"result": payload.result_type, "verified": payload.verified_by_user})
     db.commit()
     return {"case_status": case.status, "verified": outcome_row.verified_by_user}
