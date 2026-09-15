@@ -7,6 +7,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import settings
 from app.db import Base, normalize_database_url
+import app.identity  # noqa: F401
 import app.models  # noqa: F401
 import app.reviews  # noqa: F401
 import app.security  # noqa: F401
