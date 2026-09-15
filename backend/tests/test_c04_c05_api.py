@@ -1,3 +1,6 @@
+from app.services_v2 import EVALUATORS
+
+
 def post_fact(client, cid, key, value, state="confirmed", user_confirmed=True):
     response = client.post(
         f"/api/cases/{cid}/facts",
@@ -10,6 +13,11 @@ def post_fact(client, cid, key, value, state="confirmed", user_confirmed=True):
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def test_resolution_registry_contains_purchase_families():
+    assert "C04" in EVALUATORS
+    assert "C05" in EVALUATORS
 
 
 def test_classifier_routes_c04_non_delivery(client):
@@ -38,7 +46,9 @@ def build_c04_termination_case(client):
         json={"message": "Compré una cafetera online y no me ha llegado el pedido"},
     )
     assert created.status_code == 200
-    cid = created.json()["id"]
+    body = created.json()
+    assert body["family"] == "C04", body
+    cid = body["id"]
     facts = {
         "purchase.buyer_is_consumer": True,
         "purchase.seller_is_business": True,
@@ -54,6 +64,9 @@ def build_c04_termination_case(client):
     }
     for key, value in facts.items():
         post_fact(client, cid, key, value)
+    current = client.get(f"/api/cases/{cid}")
+    assert current.status_code == 200
+    assert current.json()["family"] == "C04", current.json()
     return cid
 
 
@@ -75,10 +88,13 @@ def test_c04_end_to_end_termination_and_refund_claim(client):
 
 
 def test_c04_overdue_without_extra_period_builds_delivery_demand_not_refund(client):
-    created = client.post(
+    created_response = client.post(
         "/api/cases",
         json={"message": "Compré un pedido online y no lo he recibido"},
-    ).json()
+    )
+    assert created_response.status_code == 200
+    created = created_response.json()
+    assert created["family"] == "C04", created
     cid = created["id"]
     facts = {
         "purchase.buyer_is_consumer": True,
@@ -94,11 +110,13 @@ def test_c04_overdue_without_extra_period_builds_delivery_demand_not_refund(clie
     }
     for key, value in facts.items():
         post_fact(client, cid, key, value)
-    diagnosis = client.post(f"/api/cases/{cid}/diagnose").json()
+    diagnosis_response = client.post(f"/api/cases/{cid}/diagnose")
+    assert diagnosis_response.status_code == 200, diagnosis_response.text
+    diagnosis = diagnosis_response.json()
     assert diagnosis["claimable_amount"] == 0.0
     assert diagnosis["next_action"] == "GIVE_ADDITIONAL_DELIVERY_PERIOD"
     claim = client.post(f"/api/cases/{cid}/prepare-claim")
-    assert claim.status_code == 200
+    assert claim.status_code == 200, claim.text
     assert claim.json()["claim_type"] == "C04_ADDITIONAL_DELIVERY_DEMAND"
     assert claim.json()["amount"] == 0.0
 
@@ -109,7 +127,9 @@ def build_c05_notice_case(client):
         json={"message": "Compré unos auriculares online y quiero devolver la compra dentro de 14 días"},
     )
     assert created.status_code == 200
-    cid = created.json()["id"]
+    body = created.json()
+    assert body["family"] == "C05", body
+    cid = body["id"]
     facts = {
         "purchase.buyer_is_consumer": True,
         "purchase.seller_is_business": True,
@@ -145,10 +165,13 @@ def test_c05_end_to_end_withdrawal_notice(client):
 
 
 def test_c05_overdue_refund_end_to_end(client):
-    created = client.post(
+    created_response = client.post(
         "/api/cases",
         json={"message": "Compré unos auriculares online, desistí y quiero la devolución"},
-    ).json()
+    )
+    assert created_response.status_code == 200
+    created = created_response.json()
+    assert created["family"] == "C05", created
     cid = created["id"]
     facts = {
         "purchase.buyer_is_consumer": True,
