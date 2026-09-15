@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from . import services_v2 as svc
+from .engine.guarded_gateway import GuardedModelGateway
 from .family_manifest import FAMILY_MANIFEST, supported_family_codes
 
 _INSTALLED = False
@@ -18,6 +19,11 @@ def install_all_families() -> tuple[str, ...]:
     """
     global _INSTALLED
     if not _INSTALLED:
+        # Any present or future model provider must pass through the strict structured
+        # intelligence boundary before its output can reach the resolution engine.
+        if not isinstance(svc.gateway, GuardedModelGateway):
+            svc.gateway = GuardedModelGateway(svc.gateway)
+
         from .purchase_extensions import install_purchase_extensions
 
         install_purchase_extensions()
