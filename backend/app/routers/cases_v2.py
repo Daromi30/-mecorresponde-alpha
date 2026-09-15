@@ -329,7 +329,10 @@ def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)
         return {"analysis": result, "case_status": case.status, "updated_diagnosis": None}
 
     updated = None
-    if case.family in {"E04-A", "E04-B", "E02-A", "E02-B", "C01", "C04", "C05"}:
+    if case.family in {
+        "E02-A", "E02-B", "E04-A", "E04-B", "E05",
+        "C01", "C02", "C03", "C04", "C05",
+    }:
         try:
             diagnosis, _, _ = diagnose(db, case)
             updated = diagnosis.to_dict()
