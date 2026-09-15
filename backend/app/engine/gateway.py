@@ -25,7 +25,12 @@ class DeterministicAlphaGateway:
         overbill = any(w in t for w in ["cobrado de más", "cobrado de mas", "facturado de más", "facturado de mas", "factura incorrecta", "importe incorrecto", "me cobran más", "me cobran mas"])
         purchase = any(w in t for w in ["compré", "compre", "comprado", "compra", "tienda", "vendedor", "producto", "pedido", "televisor", "tv", "móvil", "movil", "teléfono", "telefono", "ordenador", "portátil", "portatil", "lavadora", "nevera", "electrodoméstico", "electrodomestico"])
         conformity = any(w in t for w in ["garantía", "garantia", "defecto", "defectuoso", "avería", "averia", "averiado", "roto", "no funciona", "dejó de funcionar", "dejo de funcionar", "rechazan la garantía", "rechazan la garantia"])
-        non_delivery = any(w in t for w in ["no ha llegado", "no llegó", "no llego", "no llega", "no recibido", "no he recibido", "no me entregan", "no entregado", "sin entregar", "pedido perdido"])
+        non_delivery = any(w in t for w in [
+            "no ha llegado", "no me ha llegado", "no nos ha llegado", "no llegó", "no llego", "no llega",
+            "no recibido", "no he recibido", "no lo he recibido", "no la he recibido", "no hemos recibido",
+            "no lo recibí", "no lo recibi", "no me entregan", "no me lo entregan", "no entregado", "sin entregar",
+            "pedido perdido", "pedido no entregado", "sigue sin llegar", "sigue sin entregar",
+        ])
         distance = any(w in t for w in ["online", "internet", "web", "a distancia", "por teléfono", "por telefono", "pedido"])
         withdrawal = any(w in t for w in ["desist", "quiero devolver", "quiero devolverlo", "me arrepentí", "me arrepenti", "devolver la compra", "derecho de devolución", "derecho de devolucion", "14 días", "14 dias"])
 
