@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..documents import save_upload
-from ..engine.deadlines import add_business_days
 from ..models import Action, Case, Deadline, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
 from ..schemas_v2 import (
@@ -265,29 +264,40 @@ def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get
             "status": case.status,
             "deadline": None,
             "deadline_status": "NOT_CONFIGURED",
+            "legal_response_period_business_days": None,
+            "legal_basis": None,
             "warning": "No se aplica un plazo sectorial no verificado a esta familia.",
         }
-    holiday_set: set[date] = set()
-    if settings.legal_holidays_csv:
-        for raw in settings.legal_holidays_csv.split(","):
-            if raw.strip():
-                holiday_set.add(date.fromisoformat(raw.strip()))
-    target = add_business_days(payload.submitted_on, 15, holiday_set)
-    status = "ACTIVE" if settings.legal_holidays_csv else "PROVISIONAL_CALENDAR"
+
+    # Article 55.3 of RD 88/2026 establishes a maximum response period of
+    # fifteen business days. The legal period is verified; an exact calendar
+    # date is not emitted until MECORRESPONDE can prove the applicable business-
+    # day calendar for the individual case. A configured list of holidays alone
+    # is not enough to justify a legal due date across jurisdictions.
     db.add(Deadline(
         case_id=case.id,
         deadline_type="ELECTRICITY_COMPLAINT_RESPONSE",
         trigger_event="VERIFIED_INITIAL_CLAIM_SUBMISSION",
         trigger_date=payload.submitted_on,
-        computed_date=target,
-        status=status,
+        calendar_type="BUSINESS_DAYS_UNCOMPUTED",
+        computed_date=None,
+        status="LEGAL_PERIOD_ONLY",
     ))
     db.commit()
     return {
         "status": case.status,
-        "deadline": target,
-        "deadline_status": status,
-        "warning": None if status == "ACTIVE" else "Calendar is provisional until official applicable holidays are configured.",
+        "deadline": None,
+        "deadline_status": "LEGAL_PERIOD_ONLY",
+        "legal_response_period_business_days": 15,
+        "legal_basis": {
+            "source": "Real Decreto 88/2026",
+            "article": "55.3",
+            "official_url": "https://www.boe.es/eli/es/rd/2026/02/11/88",
+        },
+        "warning": (
+            "El plazo legal verificado es de 15 días hábiles. "
+            "MECORRESPONDE no calcula una fecha exacta de vencimiento sin un calendario aplicable verificado."
+        ),
     }
 
 

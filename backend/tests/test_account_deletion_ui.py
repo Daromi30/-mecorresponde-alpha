@@ -14,7 +14,8 @@ def test_product_home_loads_account_deletion_module(client):
 
     quality = (STATIC / "dossier_quality.js").read_text(encoding="utf-8")
     assert "/demo/account_deletion.js" in quality
-    assert "data-mcr-account-deletion" in quality
+    assert "mcr-account-deletion" in quality
+    assert "loadEnhancement" in quality
 
 
 def test_account_deletion_ui_requires_password_and_explicit_confirmation():

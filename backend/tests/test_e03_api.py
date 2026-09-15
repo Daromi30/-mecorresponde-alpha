@@ -135,7 +135,7 @@ def test_e03_supplier_consent_argument_reanalyzes_case(client):
     )
 
 
-def test_e03_electricity_submission_keeps_sector_complaint_deadline_path(client):
+def test_e03_electricity_submission_keeps_verified_sector_period_without_exact_date(client):
     cid = create_e03(client)
     fill_e03(client, cid, amount=10.0)
     assert client.post(f"/api/cases/{cid}/diagnose").status_code == 200
@@ -145,5 +145,8 @@ def test_e03_electricity_submission_keeps_sector_complaint_deadline_path(client)
         json={"submitted_on": "2026-09-15", "channel": "web"},
     )
     assert response.status_code == 200, response.text
-    assert response.json()["deadline"] is not None
-    assert response.json()["deadline_status"] in {"ACTIVE", "PROVISIONAL_CALENDAR"}
+    body = response.json()
+    assert body["deadline"] is None
+    assert body["deadline_status"] == "LEGAL_PERIOD_ONLY"
+    assert body["legal_response_period_business_days"] == 15
+    assert body["legal_basis"]["article"] == "55.3"
