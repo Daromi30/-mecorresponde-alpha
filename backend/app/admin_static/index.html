@@ -227,5 +227,6 @@ document.getElementById('connect').addEventListener('click', connect);
 document.getElementById('refresh').addEventListener('click', () => refreshAll().catch(e => { statusEl.textContent=e.message; }));
 tokenEl.addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
 </script>
+<script src="structured_review.js"></script>
 </body>
 </html>
