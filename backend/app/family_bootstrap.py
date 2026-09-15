@@ -3,6 +3,7 @@ from __future__ import annotations
 from . import services_v2 as svc
 from .engine.guarded_gateway import GuardedModelGateway
 from .family_manifest import FAMILY_MANIFEST, supported_family_codes
+from .legal_source_registry import reconcile_legal_sources
 
 _INSTALLED = False
 
@@ -39,6 +40,18 @@ def install_all_families() -> tuple[str, ...]:
         from .energy_pricing_extensions import install_energy_pricing_extensions
 
         install_energy_pricing_extensions()
+
+        # Extension modules have now built the final seed wrapper chain. Add provenance
+        # reconciliation last so corrections to official source metadata are also applied
+        # to databases that already contain the source rows.
+        previous_seed = svc.seed_legal
+
+        def seed_with_reviewed_provenance(db):
+            rules = previous_seed(db)
+            reconcile_legal_sources(db)
+            return rules
+
+        svc.seed_legal = seed_with_reviewed_provenance
         _INSTALLED = True
 
     expected = set(supported_family_codes())
