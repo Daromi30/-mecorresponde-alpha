@@ -9,8 +9,10 @@ from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from .auth import get_user_from_request
 from .config import settings
 from .db import Base, get_db
+from .models import Case
 
 
 class CaseAccess(Base):
@@ -49,10 +51,26 @@ def set_case_access_cookie(response: Response, case_id: str, token: str) -> None
     response.headers["Cache-Control"] = "no-store"
 
 
+def clear_case_access_cookie(response: Response, case_id: str) -> None:
+    response.delete_cookie(
+        key=case_cookie_name(case_id),
+        path=f"/api/cases/{case_id}",
+        secure=settings.render,
+        httponly=True,
+        samesite="strict",
+    )
+    response.headers["Cache-Control"] = "no-store"
+
+
 def require_case_access(request: Request, db: Session = Depends(get_db)) -> None:
-    """Protect every route containing a case_id while leaving case creation public."""
+    """Protect case routes with either case capability or authenticated ownership."""
     case_id = request.path_params.get("case_id")
     if not case_id:
+        return
+
+    case = db.get(Case, case_id)
+    user = get_user_from_request(request, db)
+    if case and user and case.user_id == user.id:
         return
 
     access = db.get(CaseAccess, case_id)
