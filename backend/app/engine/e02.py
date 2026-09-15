@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
 
 from .common import EngineResult, FactValue, raw, verified
 
@@ -11,8 +10,9 @@ CC_URL = "https://www.boe.es/buscar/act.php?id=BOE-A-1889-4763"
 
 
 def evaluate_e02a(facts: dict[str, FactValue]) -> EngineResult:
-    sources = [{"title":"Real Decreto 88/2026, art. 45.2", "url":RD88_URL}]
+    sources = [{"title": "Real Decreto 88/2026, art. 45.2", "url": RD88_URL}]
     missing: list[str] = []
+    counterarguments: list[dict] = []
     invoice_date = raw(facts, "electricity.billing.invoice_date")
     if not invoice_date:
         missing.append("electricity.billing.invoice_date")
@@ -20,8 +20,10 @@ def evaluate_e02a(facts: dict[str, FactValue]) -> EngineResult:
         invoice_date = date.fromisoformat(invoice_date)
     billed = raw(facts, "electricity.billing.billed_amount")
     due = raw(facts, "electricity.billing.correct_amount")
-    if billed is None: missing.append("electricity.billing.billed_amount")
-    if due is None: missing.append("electricity.billing.correct_amount")
+    if billed is None:
+        missing.append("electricity.billing.billed_amount")
+    if due is None:
+        missing.append("electricity.billing.correct_amount")
     if invoice_date and invoice_date < BILLING_RULE_START:
         return EngineResult(
             viability="PROFESSIONAL_REVIEW", scope_status="LEGACY_REVIEW", claimable_amount=None,
@@ -38,7 +40,7 @@ def evaluate_e02a(facts: dict[str, FactValue]) -> EngineResult:
             failed_conditions=[], calculation=None, sources=sources,
         )
     over = round(max(float(billed) - float(due), 0), 2)
-    calc = {"type":"billed_minus_correct", "billed":float(billed), "correct":float(due), "result":over}
+    calc = {"type": "billed_minus_correct", "billed": float(billed), "correct": float(due), "result": over}
     if over <= 0:
         return EngineResult(
             viability="LOW", scope_status="SUPPORTED", claimable_amount=0.0, worth_pursuing="NO_PAID_MANAGEMENT",
@@ -47,19 +49,24 @@ def evaluate_e02a(facts: dict[str, FactValue]) -> EngineResult:
             failed_conditions=["billed_amount_not_above_correct_amount"], calculation=calc, sources=sources,
         )
     confidence_high = verified(facts, "electricity.billing.billed_amount") and verified(facts, "electricity.billing.correct_amount")
+    if raw(facts, "company.asserts_correct_amount", False):
+        counterarguments.append({"type": "CORRECT_AMOUNT_DISPUTED", "status": "open", "impact": "critical", "origin": "company_response"})
+    elif not confidence_high:
+        counterarguments.append({"type": "CORRECT_AMOUNT_MAY_BE_DISPUTED", "status": "open", "impact": "critical"})
+    open_critical = any(c["impact"] == "critical" and c["status"] == "open" for c in counterarguments)
     return EngineResult(
-        viability="HIGH" if confidence_high else "MEDIUM", scope_status="SUPPORTED", claimable_amount=over,
+        viability="MEDIUM" if open_critical else "HIGH", scope_status="SUPPORTED", claimable_amount=over,
         worth_pursuing="YES_IF_LOW_COST" if over < 30 else "YES",
         reasoning_summary=(
-            f"La factura supera en {over:.2f} € el importe que consta como debido. El artículo 45.2 del RD 88/2026 prevé la devolución de las cantidades indebidamente facturadas en la primera facturación siguiente y, en su ámbito, intereses."
+            f"La factura supera en {over:.2f} € el importe que consta como debido. El artículo 45.2 del RD 88/2026 prevé la devolución de cantidades indebidamente facturadas dentro de su ámbito temporal."
         ),
-        counterarguments=[{"type":"CORRECT_AMOUNT_MAY_BE_DISPUTED","status":"open" if not confidence_high else "rebutted","impact":"critical"}],
-        missing_facts=[], next_action="PREPARE_INITIAL_CLAIM", rule_result="APPLIES", failed_conditions=[], calculation=calc, sources=sources,
+        counterarguments=counterarguments, missing_facts=[], next_action="PREPARE_INITIAL_CLAIM",
+        rule_result="APPLIES", failed_conditions=[], calculation=calc, sources=sources,
     )
 
 
 def evaluate_e02b(facts: dict[str, FactValue]) -> EngineResult:
-    sources = [{"title":"Código Civil, art. 1895", "url":CC_URL}]
+    sources = [{"title": "Código Civil, art. 1895", "url": CC_URL}]
     charges = raw(facts, "electricity.billing.duplicate_charges")
     if not charges:
         return EngineResult(
@@ -73,7 +80,7 @@ def evaluate_e02b(facts: dict[str, FactValue]) -> EngineResult:
         return EngineResult(
             viability="INSUFFICIENT_INFORMATION", scope_status="SUPPORTED", claimable_amount=None,
             worth_pursuing="NEEDS_INFORMATION", reasoning_summary="Dos cargos de importe similar no bastan: hay que confirmar que ambos pagan la misma factura o deuda.",
-            counterarguments=[{"type":"CHARGES_MAY_REFER_TO_DIFFERENT_DEBTS","status":"open","impact":"critical"}],
+            counterarguments=[{"type": "CHARGES_MAY_REFER_TO_DIFFERENT_DEBTS", "status": "open", "impact": "critical"}],
             missing_facts=["electricity.billing.same_debt"], next_action="CONFIRM_SAME_DEBT", rule_result="PENDING",
             failed_conditions=[], calculation=None, sources=sources,
         )
@@ -81,7 +88,7 @@ def evaluate_e02b(facts: dict[str, FactValue]) -> EngineResult:
         return EngineResult(
             viability="LOW", scope_status="SUPPORTED", claimable_amount=0.0, worth_pursuing="NO_PAID_MANAGEMENT",
             reasoning_summary="Los cargos corresponden a deudas distintas, por lo que no hay duplicidad acreditada.",
-            counterarguments=[{"type":"DIFFERENT_DEBTS","status":"confirmed","impact":"critical"}], missing_facts=[],
+            counterarguments=[{"type": "DIFFERENT_DEBTS", "status": "confirmed", "impact": "critical"}], missing_facts=[],
             next_action="EXPLAIN_NO_DUPLICATE", rule_result="FAILED", failed_conditions=["same_debt=false"], calculation=None, sources=sources,
         )
     verified_charges = [c for c in charges if c.get("evidence_verified", False)]
@@ -94,14 +101,18 @@ def evaluate_e02b(facts: dict[str, FactValue]) -> EngineResult:
         )
     amounts = sorted(float(c.get("amount", 0)) for c in verified_charges)
     duplicate_amount = round(min(amounts[-2:]), 2)
-    calc = {"type":"one_duplicate_payment", "charges":verified_charges, "result":duplicate_amount}
+    calc = {"type": "one_duplicate_payment", "charges": verified_charges, "result": duplicate_amount}
+    counterarguments: list[dict] = []
+    if raw(facts, "company.asserts_different_debts", False):
+        counterarguments.append({"type": "DIFFERENT_DEBTS", "status": "open", "impact": "critical", "origin": "company_response"})
+    open_critical = bool(counterarguments)
     return EngineResult(
-        viability="HIGH" if verified(facts, "electricity.billing.same_debt") else "MEDIUM",
+        viability="MEDIUM" if open_critical or not verified(facts, "electricity.billing.same_debt") else "HIGH",
         scope_status="SUPPORTED", claimable_amount=duplicate_amount,
         worth_pursuing="YES_IF_LOW_COST" if duplicate_amount < 30 else "YES",
         reasoning_summary=(
             f"Hay dos cargos acreditados vinculados a la misma deuda; se identifica {duplicate_amount:.2f} € como pago duplicado a restituir. Este supuesto se trata como cobro indebido y no se equipara automáticamente a la regla sectorial de sobrefacturación del artículo 45."
         ),
-        counterarguments=[], missing_facts=[], next_action="PREPARE_INITIAL_CLAIM", rule_result="APPLIES",
+        counterarguments=counterarguments, missing_facts=[], next_action="PREPARE_INITIAL_CLAIM", rule_result="APPLIES",
         failed_conditions=[], calculation=calc, sources=sources,
     )
