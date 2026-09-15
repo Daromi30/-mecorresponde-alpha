@@ -1,6 +1,6 @@
 import json
 
-from app.models import Evidence, Fact
+from app.models import Case, Evidence, Fact
 from app.services_v2 import create_human_review
 
 
@@ -60,7 +60,7 @@ def test_quality_profile_distinguishes_documentary_support_and_human_review(clie
         json={"message": "Compré un televisor y la tienda me rechaza la garantía porque está averiado"},
     )
     case_id = created.json()["id"]
-    case = db.get(__import__("app.models", fromlist=["Case"]).Case, case_id)
+    case = db.get(Case, case_id)
     assert case is not None
 
     fact = Fact(
