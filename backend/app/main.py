@@ -27,6 +27,7 @@ SEO_DESCRIPTION = (
 
 from .routers.account_cases import router as account_cases_router
 from .routers.admin import router as admin_router
+from .routers.admin_review_resolution import router as admin_review_resolution_router
 from .routers.auth import router as auth_router
 from .routers.cases_v2 import router as cases_router
 from .routers.quality import router as quality_router
@@ -253,6 +254,7 @@ app.include_router(account_cases_router)
 app.include_router(auth_router)
 app.include_router(sources_router)
 app.include_router(admin_router)
+app.include_router(admin_review_resolution_router)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
