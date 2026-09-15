@@ -1,5 +1,6 @@
 import os
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["CASE_ACCESS_REQUIRED"] = "false"
 
 import pytest
 from fastapi.testclient import TestClient
