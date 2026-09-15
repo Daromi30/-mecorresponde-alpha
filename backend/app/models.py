@@ -134,7 +134,7 @@ class RuleEvaluation(Base):
     result: Mapped[str] = mapped_column(String(30))
     missing_conditions: Mapped[list[Any]] = mapped_column(JSON, default=list)
     failed_conditions: Mapped[list[Any]] = mapped_column(JSON, default=list)
-    engine_version: Mapped[str] = mapped_column(String(30), default="e04b-1")
+    engine_version: Mapped[str] = mapped_column(String(30), default="engine-v1")
     evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -146,7 +146,7 @@ class Counterargument(Base):
     origin: Mapped[str] = mapped_column(String(30), default="known_rule")
     description: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(30), default="open")
-    impact: Mapped[str] = mapped_column(String(20), default="material")
+    impact: Mapped[str] = mapped_column(String(40), default="material")
 
 
 class Calculation(Base):
@@ -226,6 +226,19 @@ class Outcome(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     verified_by_user: Mapped[bool] = mapped_column(Boolean, default=False)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class HumanReview(Base):
+    __tablename__ = "human_reviews"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    reason: Mapped[str] = mapped_column(String(120))
+    priority: Mapped[str] = mapped_column(String(20), default="NORMAL")
+    status: Mapped[str] = mapped_column(String(30), default="OPEN", index=True)
+    reviewer_decision: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changes_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AuditEvent(Base):
