@@ -29,6 +29,7 @@ from .routers.account_cases import router as account_cases_router
 from .routers.admin import router as admin_router
 from .routers.auth import router as auth_router
 from .routers.cases_v2 import router as cases_router
+from .routers.quality import router as quality_router
 from .routers.sources import router as sources_router
 from .services_v2 import seed_legal
 from .storage import StorageConfigurationError, get_document_storage, storage_status
@@ -247,6 +248,7 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
 
 
 app.include_router(cases_router)
+app.include_router(quality_router)
 app.include_router(account_cases_router)
 app.include_router(auth_router)
 app.include_router(sources_router)
