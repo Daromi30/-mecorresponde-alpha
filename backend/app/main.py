@@ -10,20 +10,11 @@ from sqlalchemy import func, select, text
 
 from .config import settings
 from .db import engine, SessionLocal
+from .family_bootstrap import install_all_families
 from .migrations import upgrade_database
 from .models import LegalSource
-from .purchase_extensions import install_purchase_extensions
 
-install_purchase_extensions()
-
-from .energy_extensions import install_energy_extensions
-install_energy_extensions()
-
-from .energy_billing_contract_extensions import install_energy_billing_contract_extensions
-install_energy_billing_contract_extensions()
-
-from .energy_pricing_extensions import install_energy_pricing_extensions
-install_energy_pricing_extensions()
+SUPPORTED_FAMILIES = install_all_families()
 
 from .routers.admin import router as admin_router
 from .routers.cases_v2 import router as cases_router
@@ -62,10 +53,15 @@ async def lifespan(app: FastAPI):
         "MECORRESPONDE backoffice: configured=%s",
         bool(settings.admin_api_token.strip()),
     )
+    logger.info(
+        "MECORRESPONDE resolution_families: count=%s codes=%s",
+        len(SUPPORTED_FAMILIES),
+        ",".join(SUPPORTED_FAMILIES),
+    )
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.4.3-alpha", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.4.4-alpha", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -115,7 +111,12 @@ app.mount("/backoffice", StaticFiles(directory=str(admin_static_dir), html=True)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "mecorresponde-alpha", "version": "0.4.3-alpha"}
+    return {
+        "status": "ok",
+        "service": "mecorresponde-alpha",
+        "version": "0.4.4-alpha",
+        "families": len(SUPPORTED_FAMILIES),
+    }
 
 
 @app.get("/health/db")
