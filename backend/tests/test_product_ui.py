@@ -30,6 +30,27 @@ def test_consumer_ui_supports_generic_multifamily_intake():
     assert "/api/cases/${caseId}/outcome" in html
 
 
+def test_consumer_ui_keeps_accounts_optional_and_can_recover_cases():
+    html = _ui()
+    assert "No necesitas registrarte para empezar" in html
+    assert "Guardar este expediente" in html
+    assert "Mis expedientes" in html
+    assert "/api/auth/me" in html
+    assert "/api/auth/${accountMode}" in html
+    assert "/api/auth/cases" in html
+    assert "/api/cases/${caseId}/claim" in html
+    assert "localStorage" not in html
+    assert "sessionStorage" not in html
+    assert "todavía no hay recuperación de contraseña por email" in html
+
+
+def test_consumer_ui_keeps_official_legal_sources_visible():
+    html = _ui()
+    assert "Fuentes jurídicas verificables" in html
+    assert "official_url" in html
+    assert "Abrir fuente oficial" in html
+
+
 def test_consumer_ui_does_not_claim_unsupported_document_upload():
     html = _ui()
     assert "Subir factura" not in html
