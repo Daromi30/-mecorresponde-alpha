@@ -28,6 +28,7 @@ class DocumentStorage(Protocol):
 
     def put_bytes(self, key: str, data: bytes, *, content_type: str, sha256: str) -> None: ...
     def get_bytes(self, key: str) -> bytes: ...
+    def delete_bytes(self, key: str) -> None: ...
 
 
 class LocalDocumentStorage:
@@ -58,6 +59,13 @@ class LocalDocumentStorage:
 
     def get_bytes(self, key: str) -> bytes:
         return self._path(key).read_bytes()
+
+    def delete_bytes(self, key: str) -> None:
+        path = self._path(key)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return
 
 
 class S3DocumentStorage:
@@ -107,6 +115,9 @@ class S3DocumentStorage:
     def get_bytes(self, key: str) -> bytes:
         response = self.client.get_object(Bucket=self.bucket, Key=self._key(key))
         return response["Body"].read()
+
+    def delete_bytes(self, key: str) -> None:
+        self.client.delete_object(Bucket=self.bucket, Key=self._key(key))
 
 
 def get_document_storage() -> DocumentStorage:

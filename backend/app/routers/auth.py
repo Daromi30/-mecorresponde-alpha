@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..account_lifecycle import AccountDeletionStorageError, delete_account_and_owned_data
 from ..auth import (
     clear_session_cookie,
     get_session_from_request,
@@ -47,6 +49,13 @@ class AuthCredentials(BaseModel):
         if len(value) > 128:
             raise ValueError("Password is too long")
         return value
+
+
+class DeleteAccountRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(min_length=10, max_length=128)
+    confirmation: Literal["DELETE"]
 
 
 def user_payload(user: User) -> dict:
@@ -141,4 +150,35 @@ def my_cases(
             }
             for case in cases
         ]
+    }
+
+
+@router.delete("/account")
+def delete_account(
+    payload: DeleteAccountRequest,
+    response: Response,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+):
+    # A valid session is not enough for destructive account deletion. Require the
+    # password again and reuse the login throttle to limit online guessing.
+    login_throttle.check(user.email)
+    if not verify_password(payload.password, user.password_hash):
+        login_throttle.fail(user.email)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    login_throttle.success(user.email)
+
+    try:
+        result = delete_account_and_owned_data(db, user)
+    except AccountDeletionStorageError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Account deletion could not safely remove stored documents; no deletion was committed",
+        ) from exc
+
+    clear_session_cookie(response)
+    return {
+        "status": "deleted",
+        "cases_deleted": result.cases_deleted,
+        "documents_deleted": result.documents_deleted,
     }
