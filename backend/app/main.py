@@ -14,9 +14,12 @@ from .migrations import upgrade_database
 from .models import LegalSource
 from .purchase_extensions import install_purchase_extensions
 
-# Register vertical slices before routers bind service callables. This keeps the
-# core modular monolith generic while new families plug into the shared Motor.
+# Register vertical slices before routers bind service callables. The order is
+# deliberate: later extensions wrap the already-installed shared services.
 install_purchase_extensions()
+
+from .energy_extensions import install_energy_extensions
+install_energy_extensions()
 
 from .routers.admin import router as admin_router
 from .routers.cases_v2 import router as cases_router
@@ -58,7 +61,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.4.0-alpha", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.4.1-alpha", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -108,7 +111,7 @@ app.mount("/backoffice", StaticFiles(directory=str(admin_static_dir), html=True)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "mecorresponde-alpha", "version": "0.4.0-alpha"}
+    return {"status": "ok", "service": "mecorresponde-alpha", "version": "0.4.1-alpha"}
 
 
 @app.get("/health/db")
