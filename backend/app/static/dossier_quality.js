@@ -69,4 +69,13 @@
     if (panel) panel.classList.add('hidden');
     return result;
   };
+
+  // Product enhancements stay split into small same-origin modules rather than
+  // expanding the legacy monolithic HTML. The page CSP only permits self scripts.
+  if (!document.querySelector('script[data-mcr-account-deletion]')) {
+    const script = document.createElement('script');
+    script.src = '/demo/account_deletion.js';
+    script.dataset.mcrAccountDeletion = 'true';
+    document.body.appendChild(script);
+  }
 })();
