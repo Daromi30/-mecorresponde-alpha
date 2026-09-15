@@ -26,6 +26,7 @@ router = APIRouter(
 # when the corresponding end-to-end product flow exists and has regression tests.
 ACCOUNT_PASSWORD_RECOVERY_AVAILABLE = False
 EMAIL_VERIFICATION_ENFORCED = False
+PRIVACY_INFORMATION_PUBLISHED = False
 
 
 def _check(
@@ -170,6 +171,23 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
             severity="BETA_BLOCKER",
         ),
         _storage_check(),
+        _check(
+            "privacy_information",
+            PRIVACY_INFORMATION_PUBLISHED,
+            label="Información de privacidad para usuarios reales",
+            detail=(
+                "La información de privacidad revisada está publicada en el momento de recogida de datos."
+                if PRIVACY_INFORMATION_PUBLISHED
+                else "No debe abrirse una beta con datos personales reales hasta identificar al responsable y publicar información revisada sobre fines, base jurídica, conservación, destinatarios/transferencias y derechos."
+            ),
+            severity="BETA_BLOCKER",
+            metadata={
+                "official_guidance": [
+                    "https://www.aepd.es/derechos-y-deberes/conoce-tus-derechos/derecho-de-informacion",
+                    "https://eur-lex.europa.eu/eli/reg/2016/679/oj",
+                ]
+            },
+        ),
         _check(
             "password_recovery",
             ACCOUNT_PASSWORD_RECOVERY_AVAILABLE,
