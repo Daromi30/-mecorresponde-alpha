@@ -31,11 +31,20 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     legal_holidays_csv: str = ""
 
+    # SEO remains fail-closed until both flags are intentionally configured.
+    # This prevents an unfinished Render alpha from being indexed by mistake.
+    public_indexing_enabled: bool = False
+    public_base_url: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [x.strip() for x in self.cors_origins.split(",") if x.strip()]
+
+    @property
+    def public_indexing_ready(self) -> bool:
+        return self.public_indexing_enabled and self.public_base_url.strip().startswith("https://")
 
 
 settings = Settings()

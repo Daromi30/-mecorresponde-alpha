@@ -1,11 +1,12 @@
 import logging
 from contextlib import asynccontextmanager
+from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 
@@ -17,6 +18,11 @@ from .models import LegalSource
 
 SUPPORTED_FAMILIES = install_all_families()
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+SEO_TITLE = "MECORRESPONDE | Comprueba si te corresponde reclamar"
+SEO_DESCRIPTION = (
+    "Comprueba si tienes base para reclamar, cuánto hay en juego, si te compensa "
+    "y cuál es el siguiente paso."
+)
 
 from .routers.account_cases import router as account_cases_router
 from .routers.admin import router as admin_router
@@ -27,6 +33,8 @@ from .services_v2 import seed_legal
 from .storage import StorageConfigurationError, get_document_storage, storage_status
 
 logger = logging.getLogger("uvicorn.error")
+static_dir = Path(__file__).parent / "static"
+admin_static_dir = Path(__file__).parent / "admin_static"
 
 
 def _normalized_origin(value: str) -> str:
@@ -59,6 +67,40 @@ def _cross_site_block_response() -> JSONResponse:
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     return response
+
+
+def _public_base_url() -> str:
+    return settings.public_base_url.strip().rstrip("/")
+
+
+def _render_product_home() -> str:
+    html = (static_dir / "index.html").read_text(encoding="utf-8")
+    robots = "index,follow" if settings.public_indexing_ready else "noindex,nofollow"
+    html = html.replace(
+        '<meta name="robots" content="noindex,nofollow">',
+        f'<meta name="robots" content="{robots}">',
+        1,
+    )
+    html = html.replace("<title>MECORRESPONDE</title>", f"<title>{SEO_TITLE}</title>", 1)
+
+    metadata = (
+        f'<meta name="description" content="{escape(SEO_DESCRIPTION, quote=True)}">\n'
+    )
+    if settings.public_indexing_ready:
+        canonical = escape(f"{_public_base_url()}/", quote=True)
+        website_url = escape(f"{_public_base_url()}/", quote=True)
+        metadata += (
+            f'<link rel="canonical" href="{canonical}">\n'
+            f'<meta property="og:title" content="{escape(SEO_TITLE, quote=True)}">\n'
+            f'<meta property="og:description" content="{escape(SEO_DESCRIPTION, quote=True)}">\n'
+            f'<meta property="og:type" content="website">\n'
+            f'<meta property="og:url" content="{canonical}">\n'
+            '<script type="application/ld+json">'
+            '{"@context":"https://schema.org","@type":"WebSite",'
+            f'"name":"MECORRESPONDE","url":"{website_url}"}}'
+            "</script>\n"
+        )
+    return html.replace("</head>", f"{metadata}</head>", 1)
 
 
 @asynccontextmanager
@@ -94,6 +136,11 @@ async def lifespan(app: FastAPI):
         "MECORRESPONDE resolution_families: count=%s codes=%s",
         len(SUPPORTED_FAMILIES),
         ",".join(SUPPORTED_FAMILIES),
+    )
+    logger.info(
+        "MECORRESPONDE public_indexing: ready=%s base_url_configured=%s",
+        settings.public_indexing_ready,
+        bool(_public_base_url()),
     )
     yield
 
@@ -151,7 +198,14 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
     )
     if sensitive_api:
         response.headers["Cache-Control"] = "no-store"
-    if path.startswith("/api/admin") or path.startswith("/backoffice"):
+
+    always_noindex = (
+        path.startswith("/api/")
+        or path.startswith("/health")
+        or path.startswith("/demo")
+        or path.startswith("/backoffice")
+    )
+    if always_noindex or (path == "/" and not settings.public_indexing_ready):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
 
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -160,7 +214,7 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
     response.headers.setdefault(
         "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
     )
-    if path.startswith("/demo") or path.startswith("/backoffice"):
+    if path == "/" or path.startswith("/demo") or path.startswith("/backoffice"):
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self' 'unsafe-inline'; "
@@ -180,8 +234,35 @@ app.include_router(account_cases_router)
 app.include_router(auth_router)
 app.include_router(sources_router)
 app.include_router(admin_router)
-static_dir = Path(__file__).parent / "static"
-admin_static_dir = Path(__file__).parent / "admin_static"
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def product_home():
+    return HTMLResponse(_render_product_home())
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+def robots_txt():
+    lines = ["User-agent: *", "Allow: /"]
+    if settings.public_indexing_ready:
+        lines.append(f"Sitemap: {_public_base_url()}/sitemap.xml")
+    return PlainTextResponse("\n".join(lines) + "\n")
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+def sitemap_xml():
+    if not settings.public_indexing_ready:
+        return Response(status_code=404)
+    loc = escape(f"{_public_base_url()}/")
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"<url><loc>{loc}</loc></url>"
+        "</urlset>"
+    )
+    return Response(content=xml, media_type="application/xml")
+
+
 app.mount("/demo", StaticFiles(directory=str(static_dir), html=True), name="demo")
 app.mount("/backoffice", StaticFiles(directory=str(admin_static_dir), html=True), name="backoffice")
 
