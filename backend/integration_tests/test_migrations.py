@@ -30,12 +30,13 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id) is not None
         revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0003_optional_accounts"
+        assert revision == "0004_email_action_tokens"
 
     tables = set(inspect(engine).get_table_names())
     assert "case_access" in tables
     assert "users" in tables
     assert "user_sessions" in tables
+    assert "email_action_tokens" in tables
 
     # 2) The migration chain must also bootstrap a fresh database.
     Base.metadata.drop_all(bind=engine)
@@ -48,6 +49,7 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     assert "case_access" in tables
     assert "users" in tables
     assert "user_sessions" in tables
+    assert "email_action_tokens" in tables
     assert "documents" in tables
     assert "human_reviews" in tables
     assert "legal_rule_versions" in tables
