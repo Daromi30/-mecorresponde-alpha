@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import hashlib
-import re
 from datetime import date, datetime, timezone
-from pathlib import Path
 from typing import Any
 
-from pypdf import PdfReader
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .config import settings
 from .engine.c01 import evaluate_c01
+from .engine.c04 import evaluate_c04
+from .engine.c05 import evaluate_c05
 from .engine.common import FactValue
 from .engine.e02 import evaluate_e02a, evaluate_e02b
 from .engine.e04a import evaluate_e04a
@@ -19,11 +16,23 @@ from .engine.e04b import evaluate_e04b
 from .engine.gateway import DeterministicAlphaGateway
 from .engine.questions import next_question
 from .models import (
-    AIRun, Action, AuditEvent, Calculation, Case, Communication, Counterargument,
-    Decision, Document, DocumentExtraction, Evidence, Fact, LegalRuleVersion,
-    LegalSource, RuleEvaluation,
+    AIRun,
+    Action,
+    AuditEvent,
+    Calculation,
+    Case,
+    Communication,
+    Counterargument,
+    Decision,
+    Document,
+    Evidence,
+    Fact,
+    LegalRuleVersion,
+    LegalSource,
+    RuleEvaluation,
 )
 from .reviews import HumanReview
+
 
 gateway = DeterministicAlphaGateway()
 
@@ -68,6 +77,8 @@ def create_case(db: Session, message: str) -> Case:
         "E02-A": "Posible sobrefacturación eléctrica",
         "E02-B": "Posible cobro duplicado",
         "C01": "Producto defectuoso o garantía rechazada",
+        "C04": "Pedido no entregado",
+        "C05": "Desistimiento o devolución de compra a distancia",
     }
     case = Case(
         status="INTAKE",
@@ -134,19 +145,26 @@ def upsert_fact(
     db.add(fact)
     db.flush()
     if created_by in {"user", "company", "human"}:
-        db.add(Evidence(
-            case_id=case.id,
-            fact_id=fact.id,
-            source_type=created_by,
-            strength="strong" if user_confirmed or created_by == "human" else "medium",
-        ))
-    audit(db, case.id, "FACT_RECORDED", {
-        "fact_id": fact.id,
-        "key": key,
-        "state": state,
-        "source": created_by,
-        "supersedes": prev.id if prev else None,
-    })
+        db.add(
+            Evidence(
+                case_id=case.id,
+                fact_id=fact.id,
+                source_type=created_by,
+                strength="strong" if user_confirmed or created_by == "human" else "medium",
+            )
+        )
+    audit(
+        db,
+        case.id,
+        "FACT_RECORDED",
+        {
+            "fact_id": fact.id,
+            "key": key,
+            "state": state,
+            "source": created_by,
+            "supersedes": prev.id if prev else None,
+        },
+    )
     case.status = "INTAKE"
     db.commit()
     db.refresh(fact)
@@ -241,46 +259,102 @@ def seed_legal(db: Session) -> dict[str, LegalRuleVersion]:
     )
     return {
         "ELEC_ADDON_END_WITH_SUPPLY": _ensure_rule(
-            db, "ELEC_ADDON_END_WITH_SUPPLY", 1, date(2026, 2, 12),
-            "RD88_2026", "32.4",
+            db,
+            "ELEC_ADDON_END_WITH_SUPPLY",
+            1,
+            date(2026, 2, 12),
+            "RD88_2026",
+            "32.4",
             {"contracted_with_supply": True, "supply_ended": True, "express_keep_request": False},
             {"additional_service_should_end_with_supply": True},
             "Los servicios adicionales contratados junto con el suministro se extinguen con éste salvo indicación expresa del consumidor.",
         ),
         "UNSOLICITED_SERVICE_NO_PAYMENT": _ensure_rule(
-            db, "UNSOLICITED_SERVICE_NO_PAYMENT", 1, date(2014, 3, 29),
-            "TRLGDCU", "66 quáter",
+            db,
+            "UNSOLICITED_SERVICE_NO_PAYMENT",
+            1,
+            date(2014, 3, 29),
+            "TRLGDCU",
+            "66 quáter",
             {"service_not_requested": True, "payment_claimed": True},
             {"consumer_not_obliged_to_pay": True},
             "No puede exigirse pago por servicios no solicitados; la falta de respuesta no equivale a consentimiento.",
         ),
         "ADDITIONAL_PAYMENT_EXPRESS_CONSENT": _ensure_rule(
-            db, "ADDITIONAL_PAYMENT_EXPRESS_CONSENT", 1, date(2014, 3, 29),
-            "TRLGDCU", "60 bis",
+            db,
+            "ADDITIONAL_PAYMENT_EXPRESS_CONSENT",
+            1,
+            date(2014, 3, 29),
+            "TRLGDCU",
+            "60 bis",
             {"additional_payment": True},
             {"express_consent_required": True, "burden_on_business": True},
             "Los pagos adicionales requieren consentimiento expreso y el empresario debe probar su obtención.",
         ),
         "ELEC_OVERBILL_REFUND": _ensure_rule(
-            db, "ELEC_OVERBILL_REFUND", 1, date(2026, 6, 12),
-            "RD88_2026", "45.2",
+            db,
+            "ELEC_OVERBILL_REFUND",
+            1,
+            date(2026, 6, 12),
+            "RD88_2026",
+            "45.2",
             {"billed_above_due": True},
             {"refund_in_next_bill": True, "interest": "legal_interest_plus_150bp"},
             "Las cantidades facturadas por encima de las debidas deben devolverse conforme al artículo dentro de su ámbito temporal.",
         ),
         "UNDUE_PAYMENT_RESTITUTION": _ensure_rule(
-            db, "UNDUE_PAYMENT_RESTITUTION", 1, date(1889, 8, 16),
-            "CODIGO_CIVIL", "1895",
+            db,
+            "UNDUE_PAYMENT_RESTITUTION",
+            1,
+            date(1889, 8, 16),
+            "CODIGO_CIVIL",
+            "1895",
             {"payment_not_due": True, "delivered_by_error": True},
             {"restitution_required": True},
             "El cobro de lo que no había derecho a cobrar y fue entregado por error genera obligación de restitución.",
         ),
         "GOODS_CONFORMITY_CURRENT": _ensure_rule(
-            db, "GOODS_CONFORMITY_CURRENT", 1, date(2022, 1, 1),
-            "TRLGDCU", "117-121",
+            db,
+            "GOODS_CONFORMITY_CURRENT",
+            1,
+            date(2022, 1, 1),
+            "TRLGDCU",
+            "117-121",
             {"consumer_purchase": True, "seller_is_business": True, "lack_of_conformity": True},
             {"primary_remedies": ["repair", "replacement"], "manifestation_period_years": 3, "presumption_years": 2},
             "Régimen vigente de conformidad de bienes: responsabilidad del empresario, puesta en conformidad, remedios y reglas temporales.",
+        ),
+        "GOODS_DELIVERY_CURRENT": _ensure_rule(
+            db,
+            "GOODS_DELIVERY_CURRENT",
+            1,
+            date(2022, 1, 1),
+            "TRLGDCU",
+            "66 bis",
+            {"consumer_purchase": True, "seller_is_business": True, "goods_not_delivered": True},
+            {
+                "default_delivery_limit_days": 30,
+                "additional_period_normally_required_before_termination": True,
+                "immediate_termination_exceptions": ["seller_refusal", "essential_delivery_date"],
+                "business_bears_proof_of_compliance": True,
+            },
+            "La falta de entrega no genera automáticamente resolución inmediata en todos los casos: como regla se requiere un plazo adicional adecuado, salvo negativa del empresario o fecha esencial; el empresario soporta la carga de probar el cumplimiento del artículo.",
+        ),
+        "DISTANCE_WITHDRAWAL_CURRENT": _ensure_rule(
+            db,
+            "DISTANCE_WITHDRAWAL_CURRENT",
+            1,
+            date(2022, 5, 28),
+            "TRLGDCU",
+            "102-108",
+            {"consumer_distance_contract": True, "article_103_exception": False},
+            {
+                "ordinary_withdrawal_days": 14,
+                "missing_information_extension_months": 12,
+                "refund_days_after_notification": 14,
+                "seller_may_withhold_pending_return_or_proof": True,
+            },
+            "En contratos a distancia, salvo las excepciones del artículo 103, existe derecho de desistimiento; el plazo ordinario es de catorce días, puede ampliarse por omisión de información y el reembolso está sujeto a las reglas de los artículos 107 y 108.",
         ),
     }
 
@@ -291,7 +365,10 @@ EVALUATORS = {
     "E02-A": evaluate_e02a,
     "E02-B": evaluate_e02b,
     "C01": evaluate_c01,
+    "C04": evaluate_c04,
+    "C05": evaluate_c05,
 }
+
 
 FAMILY_RULES = {
     "E04-B": ["ELEC_ADDON_END_WITH_SUPPLY"],
@@ -299,6 +376,8 @@ FAMILY_RULES = {
     "E02-A": ["ELEC_OVERBILL_REFUND"],
     "E02-B": ["UNDUE_PAYMENT_RESTITUTION"],
     "C01": ["GOODS_CONFORMITY_CURRENT"],
+    "C04": ["GOODS_DELIVERY_CURRENT"],
+    "C05": ["DISTANCE_WITHDRAWAL_CURRENT"],
 }
 
 
@@ -309,6 +388,10 @@ def diagnose(db: Session, case: Case):
 
     rules = seed_legal(db)
     facts = latest_facts(db, case.id)
+    facts.setdefault(
+        "system.analysis_date",
+        FactValue(value=date.today().isoformat(), state="confirmed", user_confirmed=False),
+    )
     result = evaluator(facts)
     snapshot = {
         key: {"value": value.value, "state": value.state, "user_confirmed": value.user_confirmed}
@@ -324,42 +407,50 @@ def diagnose(db: Session, case: Case):
     evaluated_rules: list[dict[str, Any]] = []
     for rule_id in FAMILY_RULES.get(case.family or "", []):
         rule = rules[rule_id]
-        db.add(RuleEvaluation(
-            case_id=case.id,
-            rule_version_id=rule.id,
-            facts_snapshot=snapshot,
-            result=result.rule_result,
-            missing_conditions=result.missing_facts,
-            failed_conditions=result.failed_conditions,
-            engine_version=f"{(case.family or 'unknown').lower()}-1",
-        ))
-        evaluated_rules.append({
-            "rule_id": rule.rule_id,
-            "version": rule.version,
-            "result": result.rule_result,
-            "remedies": remedies,
-            "burden_of_proof": burden,
-        })
+        db.add(
+            RuleEvaluation(
+                case_id=case.id,
+                rule_version_id=rule.id,
+                facts_snapshot=snapshot,
+                result=result.rule_result,
+                missing_conditions=result.missing_facts,
+                failed_conditions=result.failed_conditions,
+                engine_version=f"{(case.family or 'unknown').lower()}-1",
+            )
+        )
+        evaluated_rules.append(
+            {
+                "rule_id": rule.rule_id,
+                "version": rule.version,
+                "result": result.rule_result,
+                "remedies": remedies,
+                "burden_of_proof": burden,
+            }
+        )
 
     for counterargument in result.counterarguments:
-        db.add(Counterargument(
-            case_id=case.id,
-            type=counterargument["type"],
-            origin=counterargument.get("origin", "known_rule"),
-            description=counterargument["type"].replace("_", " ").title(),
-            status=counterargument.get("status", "open"),
-            impact=str(counterargument.get("impact", "material"))[:20],
-        ))
+        db.add(
+            Counterargument(
+                case_id=case.id,
+                type=counterargument["type"],
+                origin=counterargument.get("origin", "known_rule"),
+                description=counterargument["type"].replace("_", " ").title(),
+                status=counterargument.get("status", "open"),
+                impact=str(counterargument.get("impact", "material"))[:20],
+            )
+        )
 
     if result.calculation is not None:
-        db.add(Calculation(
-            case_id=case.id,
-            type=result.calculation.get("type", "case_calculation"),
-            inputs_json=result.calculation,
-            formula_version=f"{case.family}-CALC-1",
-            result=float(result.claimable_amount or 0.0),
-            explanation="Cálculo determinista reproducible a partir de los hechos confirmados del expediente.",
-        ))
+        db.add(
+            Calculation(
+                case_id=case.id,
+                type=result.calculation.get("type", "case_calculation"),
+                inputs_json=result.calculation,
+                formula_version=f"{case.family}-CALC-1",
+                result=float(result.claimable_amount or 0.0),
+                explanation="Cálculo determinista reproducible a partir de los hechos confirmados del expediente.",
+            )
+        )
 
     decision = Decision(
         case_id=case.id,
@@ -395,7 +486,11 @@ def diagnose(db: Session, case: Case):
         case.status = "NEEDS_INFORMATION"
     elif result.viability == "RECLASSIFY":
         case.status = "REANALYZING"
-    elif result.viability == "PROFESSIONAL_REVIEW" or result.scope_status in {"LEGACY_REVIEW", "LIMITED_SCOPE"} or result.next_action.startswith("HUMAN_REVIEW"):
+    elif (
+        result.viability == "PROFESSIONAL_REVIEW"
+        or result.scope_status in {"LEGACY_REVIEW", "LIMITED_SCOPE"}
+        or result.next_action.startswith("HUMAN_REVIEW")
+    ):
         create_human_review(
             db,
             case,
@@ -406,99 +501,20 @@ def diagnose(db: Session, case: Case):
     else:
         case.status = "DIAGNOSED"
 
-    audit(db, case.id, "DIAGNOSIS_GENERATED", {
-        "decision_id": decision.id,
-        "viability": result.viability,
-        "family": case.family,
-        "economic_value": economic_value,
-        "claimable_amount": result.claimable_amount,
-    })
+    audit(
+        db,
+        case.id,
+        "DIAGNOSIS_GENERATED",
+        {
+            "decision_id": decision.id,
+            "viability": result.viability,
+            "family": case.family,
+            "economic_value": economic_value,
+            "claimable_amount": result.claimable_amount,
+        },
+    )
     db.commit()
     return result, decision, action
-
-
-def save_upload(db: Session, case: Case, filename: str, content_type: str, data: bytes):
-    storage = Path(settings.storage_dir) / case.id
-    storage.mkdir(parents=True, exist_ok=True)
-    digest = hashlib.sha256(data).hexdigest()
-    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", filename)[:180]
-    path = storage / f"{digest[:12]}_{safe_name}"
-    path.write_bytes(data)
-    document = Document(
-        case_id=case.id,
-        storage_key=str(path),
-        original_filename=filename,
-        mime_type=content_type,
-        sha256=digest,
-    )
-    db.add(document)
-    db.flush()
-
-    raw = ""
-    pages = None
-    flags: list[str] = []
-    try:
-        if content_type == "application/pdf" or filename.lower().endswith(".pdf"):
-            reader = PdfReader(str(path))
-            pages = len(reader.pages)
-            raw = "\n".join((page.extract_text() or "") for page in reader.pages)
-        elif content_type.startswith("text/") or filename.lower().endswith((".txt", ".csv")):
-            raw = data.decode("utf-8", errors="replace")
-        else:
-            flags.append("NO_TEXT_EXTRACTOR_FOR_MIME")
-        document.processing_status = "PROCESSED" if raw else "NEEDS_REVIEW"
-        document.page_count = pages
-    except Exception as exc:
-        document.processing_status = "FAILED"
-        flags.append(type(exc).__name__)
-
-    extracted: dict[str, Any] = {}
-    if raw:
-        amounts = re.findall(r"(\d{1,5}[.,]\d{2})\s*(?:€|EUR)", raw, re.I)
-        if amounts:
-            extracted["possible_amounts"] = [float(value.replace(",", ".")) for value in amounts[:20]]
-        maintenance = re.search(
-            r"(?:mantenimiento|protecci[oó]n|servicio)[^\n€]{0,80}?(\d{1,3}[.,]\d{2})\s*(?:€|EUR)",
-            raw,
-            re.I,
-        )
-        if maintenance:
-            price = float(maintenance.group(1).replace(",", "."))
-            extracted["possible_addon_price"] = price
-            candidate = Fact(
-                case_id=case.id,
-                key="electricity.addon.detected_price",
-                value_json={"value": price},
-                state="inferred",
-                materiality="context",
-                confidence=0.65,
-                user_confirmed=False,
-                created_by="system",
-            )
-            db.add(candidate)
-            db.flush()
-            db.add(Evidence(
-                case_id=case.id,
-                fact_id=candidate.id,
-                document_id=document.id,
-                source_type="document",
-                excerpt=maintenance.group(0)[:500],
-                strength="medium",
-            ))
-
-    extraction = DocumentExtraction(
-        document_id=document.id,
-        extractor_version="local-text-2",
-        raw_text=raw[:200000] if raw else None,
-        structured_json=extracted,
-        quality_flags=flags,
-        completed_at=datetime.now(timezone.utc),
-    )
-    db.add(extraction)
-    audit(db, case.id, "DOCUMENT_UPLOADED", {"document_id": document.id, "extracted": extracted})
-    db.commit()
-    db.refresh(document)
-    return document, extraction
 
 
 def confirm_document_fact(
@@ -528,20 +544,23 @@ def confirm_document_fact(
     )
     db.add(fact)
     db.flush()
-    db.add(Evidence(
-        case_id=case.id,
-        fact_id=fact.id,
-        document_id=document.id,
-        source_type="document",
-        locator=locator,
-        excerpt=excerpt,
-        strength="strong",
-    ))
-    audit(db, case.id, "DOCUMENT_FACT_CONFIRMED", {
-        "document_id": document.id,
-        "fact_id": fact.id,
-        "key": key,
-    })
+    db.add(
+        Evidence(
+            case_id=case.id,
+            fact_id=fact.id,
+            document_id=document.id,
+            source_type="document",
+            locator=locator,
+            excerpt=excerpt,
+            strength="strong",
+        )
+    )
+    audit(
+        db,
+        case.id,
+        "DOCUMENT_FACT_CONFIRMED",
+        {"document_id": document.id, "fact_id": fact.id, "key": key},
+    )
     db.commit()
     db.refresh(fact)
     return fact
@@ -550,13 +569,15 @@ def confirm_document_fact(
 def analyze_company_response(db: Session, case: Case, text: str):
     result = gateway.analyze_response(text)
     db.add(AIRun(case_id=case.id, task="analyze_response", structured_output=result))
-    db.add(Communication(
-        case_id=case.id,
-        direction="INBOUND",
-        channel="user_paste",
-        body=text,
-        received_at=datetime.now(timezone.utc),
-    ))
+    db.add(
+        Communication(
+            case_id=case.id,
+            direction="INBOUND",
+            channel="user_paste",
+            body=text,
+            received_at=datetime.now(timezone.utc),
+        )
+    )
     argument_fact_map = {
         "INDEPENDENT_ADDON_CONTRACT": "company.asserts_independent_addon_contract",
         "EXPRESS_KEEP_REQUEST": "company.asserts_keep_request",
@@ -566,6 +587,9 @@ def analyze_company_response(db: Session, case: Case, text: str):
         "MISUSE_OR_ACCIDENTAL_DAMAGE": "company.asserts_misuse",
         "OUTSIDE_LEGAL_GUARANTEE": "company.asserts_outside_guarantee",
         "REFER_TO_MANUFACTURER": "company.redirects_to_manufacturer",
+        "DELIVERY_PROOF_ASSERTED": "company.asserts_delivered",
+        "WITHDRAWAL_LATE_ASSERTED": "company.asserts_withdrawal_late",
+        "WITHDRAWAL_EXCEPTION_ASSERTED": "company.asserts_withdrawal_exception",
     }
     for argument in result["arguments"]:
         key = argument_fact_map.get(argument)
@@ -595,6 +619,10 @@ def prepare_claim_package(db: Session, case: Case) -> dict[str, Any]:
         raise ValueError("Current diagnosis does not support preparing a claim")
 
     facts = latest_facts(db, case.id)
+    facts.setdefault(
+        "system.analysis_date",
+        FactValue(value=date.today().isoformat(), state="confirmed", user_confirmed=False),
+    )
     amount = round(float(decision.claimable_amount or 0.0), 2)
 
     if case.family == "E04-B":
@@ -608,7 +636,9 @@ def prepare_claim_package(db: Session, case: Case) -> dict[str, Any]:
             "CEASE_FUTURE_CHARGES",
             "CONFIRM_CANCELLATION",
         ]
-        legal_basis = [{"rule_id": "ELEC_ADDON_END_WITH_SUPPLY", "article": "32.4", "source": "RD 88/2026"}]
+        legal_basis = [
+            {"rule_id": "ELEC_ADDON_END_WITH_SUPPLY", "article": "32.4", "source": "RD 88/2026"}
+        ]
         text = (
             f"Solicito la cancelación definitiva del servicio adicional {addon}, el cese de nuevos cargos y la devolución de {amount:.2f} €. "
             f"El suministro eléctrico con la antigua comercializadora finalizó el {end_date}. "
@@ -634,7 +664,9 @@ def prepare_claim_package(db: Session, case: Case) -> dict[str, Any]:
         if amount <= 0:
             raise ValueError("Current diagnosis does not support preparing a monetary claim")
         remedies = ["CORRECT_INVOICE", "REFUND_OVERBILLED_AMOUNT"]
-        legal_basis = [{"rule_id": "ELEC_OVERBILL_REFUND", "article": "45.2", "source": "RD 88/2026"}]
+        legal_basis = [
+            {"rule_id": "ELEC_OVERBILL_REFUND", "article": "45.2", "source": "RD 88/2026"}
+        ]
         text = (
             f"Solicito la corrección de la facturación y la devolución de {amount:.2f} € facturados por encima de lo debido, "
             "conforme al artículo 45.2 del Real Decreto 88/2026."
@@ -644,7 +676,9 @@ def prepare_claim_package(db: Session, case: Case) -> dict[str, Any]:
         if amount <= 0:
             raise ValueError("Current diagnosis does not support preparing a monetary claim")
         remedies = ["REFUND_DUPLICATE_PAYMENT"]
-        legal_basis = [{"rule_id": "UNDUE_PAYMENT_RESTITUTION", "article": "1895", "source": "Código Civil"}]
+        legal_basis = [
+            {"rule_id": "UNDUE_PAYMENT_RESTITUTION", "article": "1895", "source": "Código Civil"}
+        ]
         text = (
             f"Solicito la devolución de {amount:.2f} € correspondientes a un segundo pago de la misma deuda, "
             "conforme al artículo 1895 del Código Civil sobre cobro de lo indebido."
@@ -654,7 +688,9 @@ def prepare_claim_package(db: Session, case: Case) -> dict[str, Any]:
         result = evaluate_c01(facts)
         product = facts.get("purchase.product_name").value if facts.get("purchase.product_name") else "producto"
         remedies = list(result.remedies)
-        legal_basis = [{"rule_id": "GOODS_CONFORMITY_CURRENT", "article": "117-121", "source": "TRLGDCU"}]
+        legal_basis = [
+            {"rule_id": "GOODS_CONFORMITY_CURRENT", "article": "117-121", "source": "TRLGDCU"}
+        ]
         text = (
             f"Solicito la puesta en conformidad del {product} sin coste, mediante reparación o sustitución según proceda legalmente. "
             "La falta de conformidad se analiza bajo los artículos 117 a 121 del TRLGDCU. "
@@ -662,6 +698,56 @@ def prepare_claim_package(db: Session, case: Case) -> dict[str, Any]:
         )
         claim_type = "GOODS_CONFORMITY"
         amount = 0.0
+    elif case.family == "C04":
+        result = evaluate_c04(facts)
+        product = facts.get("purchase.product_name").value if facts.get("purchase.product_name") else "pedido"
+        legal_basis = [
+            {"rule_id": "GOODS_DELIVERY_CURRENT", "article": "66 bis", "source": "TRLGDCU"}
+        ]
+        if result.next_action == "GIVE_ADDITIONAL_DELIVERY_PERIOD":
+            remedies = ["DELIVERY"]
+            amount = 0.0
+            claim_type = "C04_ADDITIONAL_DELIVERY_DEMAND"
+            text = (
+                f"Requiero la entrega del {product} sin más demora y concedo un plazo adicional adecuado para el cumplimiento. "
+                "El requerimiento se formula conforme al artículo 66 bis del TRLGDCU, reservándome la resolución del contrato si el plazo adicional vence sin entrega."
+            )
+        elif result.next_action == "PREPARE_NON_DELIVERY_TERMINATION":
+            if amount <= 0:
+                raise ValueError("The non-delivery termination has no verified paid amount to recover")
+            remedies = ["TERMINATE_CONTRACT", "REFUND_AMOUNT_PAID"]
+            claim_type = "C04_NON_DELIVERY_TERMINATION"
+            text = (
+                f"Ante la falta de entrega del {product}, comunico la resolución del contrato y solicito la devolución de {amount:.2f} €. "
+                "La resolución se fundamenta en el artículo 66 bis del TRLGDCU y en el supuesto de resolución identificado en el expediente."
+            )
+        else:
+            raise ValueError("Current C04 action does not require sending a claim yet")
+    elif case.family == "C05":
+        result = evaluate_c05(facts)
+        product = facts.get("purchase.product_name").value if facts.get("purchase.product_name") else "producto"
+        legal_basis = [
+            {"rule_id": "DISTANCE_WITHDRAWAL_CURRENT", "article": "102-108", "source": "TRLGDCU"}
+        ]
+        if result.next_action == "SEND_WITHDRAWAL_NOTICE":
+            remedies = ["WITHDRAWAL", "REFUND_AFTER_VALID_WITHDRAWAL"]
+            amount = 0.0
+            claim_type = "C05_WITHDRAWAL_NOTICE"
+            text = (
+                f"Comunico de forma inequívoca mi decisión de desistir de la compra a distancia del {product}. "
+                "Solicito confirmación de la recepción de este desistimiento y las instrucciones necesarias para la devolución y el reembolso conforme a los artículos 102 a 108 del TRLGDCU."
+            )
+        elif result.next_action == "PREPARE_WITHDRAWAL_REFUND_CLAIM":
+            if amount <= 0:
+                raise ValueError("No outstanding withdrawal refund is currently calculated")
+            remedies = ["REFUND"]
+            claim_type = "C05_WITHDRAWAL_REFUND"
+            text = (
+                f"El desistimiento de la compra a distancia del {product} fue comunicado dentro del plazo aplicable. "
+                f"Solicito el reembolso pendiente de {amount:.2f} € conforme a los artículos 102 a 108, y en particular al artículo 107, del TRLGDCU."
+            )
+        else:
+            raise ValueError("Current C05 action does not require sending a claim yet")
     else:
         raise ValueError("Claim renderer not implemented for this family")
 
@@ -684,12 +770,17 @@ def prepare_claim_package(db: Session, case: Case) -> dict[str, Any]:
     db.flush()
     case.current_action_id = action.id
     case.status = "READY_TO_SUBMIT"
-    audit(db, case.id, "CLAIM_PACKAGE_PREPARED", {
-        "action_id": action.id,
-        "amount": amount,
-        "economic_value": decision.economic_value,
-        "family": case.family,
-    })
+    audit(
+        db,
+        case.id,
+        "CLAIM_PACKAGE_PREPARED",
+        {
+            "action_id": action.id,
+            "amount": amount,
+            "economic_value": decision.economic_value,
+            "family": case.family,
+        },
+    )
     db.commit()
     db.refresh(action)
     return {"action_id": action.id, **payload}

@@ -25,6 +25,14 @@ class DeterministicAlphaGateway:
         overbill = any(w in t for w in ["cobrado de más", "cobrado de mas", "facturado de más", "facturado de mas", "factura incorrecta", "importe incorrecto", "me cobran más", "me cobran mas"])
         purchase = any(w in t for w in ["compré", "compre", "comprado", "compra", "tienda", "vendedor", "producto", "pedido", "televisor", "tv", "móvil", "movil", "teléfono", "telefono", "ordenador", "portátil", "portatil", "lavadora", "nevera", "electrodoméstico", "electrodomestico"])
         conformity = any(w in t for w in ["garantía", "garantia", "defecto", "defectuoso", "avería", "averia", "averiado", "roto", "no funciona", "dejó de funcionar", "dejo de funcionar", "rechazan la garantía", "rechazan la garantia"])
+        non_delivery = any(w in t for w in [
+            "no ha llegado", "no me ha llegado", "no nos ha llegado", "no llegó", "no llego", "no llega",
+            "no recibido", "no he recibido", "no lo he recibido", "no la he recibido", "no hemos recibido",
+            "no lo recibí", "no lo recibi", "no me entregan", "no me lo entregan", "no entregado", "sin entregar",
+            "pedido perdido", "pedido no entregado", "sigue sin llegar", "sigue sin entregar",
+        ])
+        distance = any(w in t for w in ["online", "internet", "web", "a distancia", "por teléfono", "por telefono", "pedido"])
+        withdrawal = any(w in t for w in ["desist", "quiero devolver", "quiero devolverlo", "me arrepentí", "me arrepenti", "devolver la compra", "derecho de devolución", "derecho de devolucion", "14 días", "14 dias"])
 
         if electricity and duplicate:
             return {"vertical": "electricity", "family": "E02-B", "confidence": 0.96}
@@ -34,6 +42,10 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
+        if purchase and non_delivery:
+            return {"vertical": "purchases", "family": "C04", "confidence": 0.94}
+        if purchase and distance and withdrawal:
+            return {"vertical": "purchases", "family": "C05", "confidence": 0.93}
         if purchase and conformity:
             return {"vertical": "purchases", "family": "C01", "confidence": 0.90}
         return {"vertical": None, "family": None, "confidence": 0.2}
@@ -65,6 +77,12 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["OUTSIDE_LEGAL_GUARANTEE"]}
         if any(x in t for x in ["contacte con el fabricante", "diríjase al fabricante", "dirijase al fabricante", "hable con el fabricante"]):
             return {"type": "DENIAL", "arguments": ["REFER_TO_MANUFACTURER"]}
+        if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
+            return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
+        if any(x in t for x in ["desistimiento fuera de plazo", "fuera del plazo de desistimiento", "plazo para desistir vencido"]):
+            return {"type": "DENIAL", "arguments": ["WITHDRAWAL_LATE_ASSERTED"]}
+        if any(x in t for x in ["excluido del desistimiento", "no admite desistimiento", "producto personalizado", "por razones de higiene"]):
+            return {"type": "DENIAL", "arguments": ["WITHDRAWAL_EXCEPTION_ASSERTED"]}
         if any(x in t for x in ["parcial", "parte del importe", "devolvemos una"]):
             return {"type": "PARTIAL", "arguments": []}
         return {"type": "UNKNOWN", "arguments": []}
