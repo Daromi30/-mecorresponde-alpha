@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: mecorresponde-alpha
+    runtime: python
+    plan: free
+    region: frankfurt
+    repo: https://github.com/Daromi30/-mecorresponde-alpha
+    branch: main
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mecorresponde-alpha-db
+          property: connectionString
