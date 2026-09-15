@@ -2,8 +2,9 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 
@@ -13,6 +14,7 @@ from .migrations import upgrade_database
 from .models import LegalSource
 from .routers.cases_v2 import router as cases_router
 from .services_v2 import seed_legal
+from .storage import StorageConfigurationError, get_document_storage, storage_status
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -32,10 +34,20 @@ async def lifespan(app: FastAPI):
         )
         seed_legal(db)
         db.commit()
+    try:
+        storage = storage_status()
+        logger.info(
+            "MECORRESPONDE document_storage: backend=%s persistent=%s uploads_allowed=%s",
+            storage.backend,
+            storage.persistent,
+            storage.uploads_allowed,
+        )
+    except StorageConfigurationError as exc:
+        logger.error("MECORRESPONDE document storage misconfigured: %s", exc)
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.3.4-alpha", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.3.5-alpha", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -43,6 +55,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def persistent_document_storage_guard(request: Request, call_next):
+    path = request.url.path
+    is_document_upload = (
+        request.method.upper() == "POST"
+        and path.startswith("/api/cases/")
+        and path.endswith("/documents")
+    )
+    if is_document_upload:
+        try:
+            status = storage_status()
+        except StorageConfigurationError as exc:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": f"Document storage is not configured: {exc}"},
+            )
+        if not status.uploads_allowed:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": "Document upload is disabled until persistent object storage is configured."
+                },
+            )
+    return await call_next(request)
+
+
 app.include_router(cases_router)
 static_dir = Path(__file__).parent / "static"
 app.mount("/demo", StaticFiles(directory=str(static_dir), html=True), name="demo")
@@ -50,7 +90,7 @@ app.mount("/demo", StaticFiles(directory=str(static_dir), html=True), name="demo
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "mecorresponde-alpha", "version": "0.3.4-alpha"}
+    return {"status": "ok", "service": "mecorresponde-alpha", "version": "0.3.5-alpha"}
 
 
 @app.get("/health/db")
@@ -74,3 +114,18 @@ def persistence_health():
             detail={"status": "error", "database": backend, "persistent": False},
         )
     return {"status": "ok", "database": "postgresql", "persistent": True}
+
+
+@app.get("/health/storage")
+def document_storage_health():
+    """Report storage safety without exposing bucket names or credentials."""
+    try:
+        status = storage_status(get_document_storage())
+    except StorageConfigurationError as exc:
+        raise HTTPException(status_code=503, detail={"status": "error", "reason": str(exc)})
+    return {
+        "status": "ok" if status.uploads_allowed else "blocked",
+        "backend": status.backend,
+        "persistent": status.persistent,
+        "uploads_allowed": status.uploads_allowed,
+    }
