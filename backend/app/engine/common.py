@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Any
 
 
@@ -25,6 +25,9 @@ class EngineResult:
     failed_conditions: list[str]
     calculation: dict[str, Any] | None
     sources: list[dict[str, str]]
+    economic_value: float | None = None
+    remedies: list[str] = field(default_factory=list)
+    burden_of_proof: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

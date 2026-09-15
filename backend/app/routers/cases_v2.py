@@ -23,42 +23,93 @@ router = APIRouter(prefix="/api/cases", tags=["cases"])
 
 
 def case_or_404(db: Session, case_id: str) -> Case:
-    c = db.get(Case, case_id)
-    if not c:
+    case = db.get(Case, case_id)
+    if not case:
         raise HTTPException(404, "Case not found")
-    return c
+    return case
 
 
-def serialize_case(db: Session, c: Case):
-    facts = db.scalars(select(Fact).where(Fact.case_id == c.id).order_by(Fact.created_at.asc())).all()
-    decisions = db.scalars(select(Decision).where(Decision.case_id == c.id).order_by(Decision.created_at.desc())).all()
-    actions = db.scalars(select(Action).where(Action.case_id == c.id).order_by(Action.id.desc())).all()
-    deadlines = db.scalars(select(Deadline).where(Deadline.case_id == c.id)).all()
-    evidence = db.scalars(select(Evidence).where(Evidence.case_id == c.id).order_by(Evidence.created_at.asc())).all()
-    reviews = db.scalars(select(HumanReview).where(HumanReview.case_id == c.id).order_by(HumanReview.created_at.desc())).all()
+def serialize_case(db: Session, case: Case):
+    facts = db.scalars(select(Fact).where(Fact.case_id == case.id).order_by(Fact.created_at.asc())).all()
+    decisions = db.scalars(select(Decision).where(Decision.case_id == case.id).order_by(Decision.created_at.desc())).all()
+    actions = db.scalars(select(Action).where(Action.case_id == case.id).order_by(Action.id.desc())).all()
+    deadlines = db.scalars(select(Deadline).where(Deadline.case_id == case.id)).all()
+    evidence = db.scalars(select(Evidence).where(Evidence.case_id == case.id).order_by(Evidence.created_at.asc())).all()
+    reviews = db.scalars(select(HumanReview).where(HumanReview.case_id == case.id).order_by(HumanReview.created_at.desc())).all()
     return {
-        "id": c.id,
-        "status": c.status,
-        "vertical": c.vertical,
-        "family": c.family,
-        "title": c.title,
-        "raw_intake": c.raw_intake,
-        "current_decision_id": c.current_decision_id,
-        "current_action_id": c.current_action_id,
-        "opened_at": c.opened_at,
-        "facts": [{"id": f.id, "key": f.key, "value": f.value_json.get("value"), "state": f.state, "user_confirmed": f.user_confirmed, "created_by": f.created_by} for f in facts],
-        "evidence": [{"id": e.id, "fact_id": e.fact_id, "document_id": e.document_id, "source_type": e.source_type, "locator": e.locator, "strength": e.strength} for e in evidence],
-        "decisions": [{"id": d.id, "viability": d.viability, "claimable_amount": d.claimable_amount, "worth_pursuing": d.worth_pursuing, "reasoning_summary": d.reasoning_summary, "created_at": d.created_at} for d in decisions],
-        "actions": [{"id": a.id, "type": a.type, "status": a.status, "payload": a.payload_json} for a in actions],
-        "deadlines": [{"id": x.id, "type": x.deadline_type, "computed_date": x.computed_date, "status": x.status} for x in deadlines],
-        "human_reviews": [{"id": r.id, "reason": r.reason, "priority": r.priority, "status": r.status, "reviewer_decision": r.reviewer_decision} for r in reviews],
+        "id": case.id,
+        "status": case.status,
+        "vertical": case.vertical,
+        "family": case.family,
+        "title": case.title,
+        "raw_intake": case.raw_intake,
+        "current_decision_id": case.current_decision_id,
+        "current_action_id": case.current_action_id,
+        "opened_at": case.opened_at,
+        "facts": [
+            {
+                "id": fact.id,
+                "key": fact.key,
+                "value": fact.value_json.get("value"),
+                "state": fact.state,
+                "user_confirmed": fact.user_confirmed,
+                "created_by": fact.created_by,
+                "supersedes_fact_id": fact.supersedes_fact_id,
+            }
+            for fact in facts
+        ],
+        "evidence": [
+            {
+                "id": item.id,
+                "fact_id": item.fact_id,
+                "document_id": item.document_id,
+                "source_type": item.source_type,
+                "locator": item.locator,
+                "excerpt": item.excerpt,
+                "strength": item.strength,
+            }
+            for item in evidence
+        ],
+        "decisions": [
+            {
+                "id": decision.id,
+                "viability": decision.viability,
+                "scope_status": decision.scope_status,
+                "economic_value": decision.economic_value,
+                "claimable_amount": decision.claimable_amount,
+                "worth_pursuing": decision.worth_pursuing,
+                "reasoning_summary": decision.reasoning_summary,
+                "counterarguments": decision.counterarguments_snapshot,
+                "rule_evaluations": decision.rule_evaluations_json,
+                "created_at": decision.created_at,
+            }
+            for decision in decisions
+        ],
+        "actions": [
+            {"id": action.id, "type": action.type, "status": action.status, "payload": action.payload_json}
+            for action in actions
+        ],
+        "deadlines": [
+            {"id": deadline.id, "type": deadline.deadline_type, "computed_date": deadline.computed_date, "status": deadline.status}
+            for deadline in deadlines
+        ],
+        "human_reviews": [
+            {
+                "id": review.id,
+                "reason": review.reason,
+                "priority": review.priority,
+                "status": review.status,
+                "reviewer_decision": review.reviewer_decision,
+            }
+            for review in reviews
+        ],
     }
 
 
 @router.post("")
 def create(payload: CaseCreate, db: Session = Depends(get_db)):
-    c = create_case(db, payload.message)
-    return {**serialize_case(db, c), "next_question": get_next_question(db, c)}
+    case = create_case(db, payload.message)
+    return {**serialize_case(db, case), "next_question": get_next_question(db, case)}
 
 
 @router.get("/{case_id}")
@@ -73,144 +124,260 @@ def question(case_id: str, db: Session = Depends(get_db)):
 
 @router.post("/{case_id}/facts")
 def fact(case_id: str, payload: FactUpsert, db: Session = Depends(get_db)):
-    c = case_or_404(db, case_id)
+    case = case_or_404(db, case_id)
     value = payload.value
-    if payload.key in {"electricity.supply_end_date", "electricity.billing.invoice_date", "electricity.addon.first_charge_date"} and isinstance(value, str):
+    if payload.key.endswith("_date") and isinstance(value, str):
         try:
             date.fromisoformat(value)
         except ValueError:
             raise HTTPException(422, "Use YYYY-MM-DD")
-    f = upsert_fact(db, c, payload.key, value, payload.state, payload.materiality, payload.confidence, payload.user_confirmed)
-    return {"fact_id": f.id, "next_question": get_next_question(db, c)}
+    created = upsert_fact(
+        db,
+        case,
+        payload.key,
+        value,
+        payload.state,
+        payload.materiality,
+        payload.confidence,
+        payload.user_confirmed,
+    )
+    return {"fact_id": created.id, "next_question": get_next_question(db, case)}
 
 
 @router.post("/{case_id}/charges")
 def charges(case_id: str, payload: ChargesInput, db: Session = Depends(get_db)):
-    c = case_or_404(db, case_id)
-    values = [x.model_dump(mode="json") for x in payload.charges]
-    key = "electricity.billing.duplicate_charges" if c.family == "E02-B" else "electricity.addon.charges"
-    f = upsert_fact(db, c, key, values, state="confirmed", user_confirmed=True)
-    return {"fact_id": f.id, "fact_key": key, "next_question": get_next_question(db, c)}
+    case = case_or_404(db, case_id)
+    key_by_family = {
+        "E04-A": "electricity.addon.charges",
+        "E04-B": "electricity.addon.charges",
+        "E02-B": "electricity.billing.duplicate_charges",
+    }
+    key = key_by_family.get(case.family or "")
+    if not key:
+        raise HTTPException(422, "This case family does not use the charges endpoint")
+    values = [item.model_dump(mode="json") for item in payload.charges]
+    created = upsert_fact(db, case, key, values, state="confirmed", user_confirmed=True)
+    return {"fact_id": created.id, "fact_key": key, "next_question": get_next_question(db, case)}
 
 
 @router.post("/{case_id}/documents")
 async def documents(case_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    c = case_or_404(db, case_id)
+    case = case_or_404(db, case_id)
     data = await file.read()
     if len(data) > 15 * 1024 * 1024:
         raise HTTPException(413, "Max 15 MB in internal alpha")
-    doc, ext = save_upload(db, c, file.filename or "upload", file.content_type or "application/octet-stream", data)
-    return {"document_id": doc.id, "status": doc.processing_status, "extracted": ext.structured_json, "quality_flags": ext.quality_flags}
+    document, extraction = save_upload(
+        db,
+        case,
+        file.filename or "upload",
+        file.content_type or "application/octet-stream",
+        data,
+    )
+    return {
+        "document_id": document.id,
+        "status": document.processing_status,
+        "extracted": extraction.structured_json,
+        "quality_flags": extraction.quality_flags,
+    }
 
 
 @router.post("/{case_id}/documents/{document_id}/confirm-fact")
-def document_fact(case_id: str, document_id: str, payload: DocumentFactConfirm, db: Session = Depends(get_db)):
-    c = case_or_404(db, case_id)
-    doc = db.get(Document, document_id)
-    if not doc or doc.case_id != c.id:
+def document_fact(
+    case_id: str,
+    document_id: str,
+    payload: DocumentFactConfirm,
+    db: Session = Depends(get_db),
+):
+    case = case_or_404(db, case_id)
+    document = db.get(Document, document_id)
+    if not document or document.case_id != case.id:
         raise HTTPException(404, "Document not found in case")
-    f = confirm_document_fact(db, c, doc, key=payload.key, value=payload.value, locator=payload.locator, excerpt=payload.excerpt, materiality=payload.materiality)
-    return {"fact_id": f.id, "evidence_linked": True, "next_question": get_next_question(db, c)}
+    created = confirm_document_fact(
+        db,
+        case,
+        document,
+        key=payload.key,
+        value=payload.value,
+        locator=payload.locator,
+        excerpt=payload.excerpt,
+        materiality=payload.materiality,
+    )
+    return {
+        "fact_id": created.id,
+        "evidence_linked": True,
+        "next_question": get_next_question(db, case),
+    }
 
 
 @router.post("/{case_id}/diagnose")
 def run_diagnosis(case_id: str, db: Session = Depends(get_db)):
-    c = case_or_404(db, case_id)
+    case = case_or_404(db, case_id)
     try:
-        result, dec, action = diagnose(db, c)
-    except ValueError as e:
-        raise HTTPException(422, str(e))
-    return {**result.to_dict(), "decision_id": dec.id, "action_id": action.id}
+        result, decision, action = diagnose(db, case)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return {**result.to_dict(), "decision_id": decision.id, "action_id": action.id}
 
 
 @router.post("/{case_id}/prepare-claim")
 def prepare_claim(case_id: str, db: Session = Depends(get_db)):
-    c = case_or_404(db, case_id)
+    case = case_or_404(db, case_id)
     try:
-        return prepare_claim_package(db, c)
-    except ValueError as e:
-        raise HTTPException(422, str(e))
+        return prepare_claim_package(db, case)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
 
 
 @router.post("/{case_id}/submission")
 def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get_db)):
-    c = case_or_404(db, case_id)
-    holiday_set = set()
+    case = case_or_404(db, case_id)
+    case.status = "WAITING_RESPONSE"
+    audit(db, case.id, "CLAIM_SUBMITTED", {
+        "submitted_on": str(payload.submitted_on),
+        "reference": payload.reference_number,
+        "channel": payload.channel,
+    })
+
+    if case.vertical != "electricity":
+        db.commit()
+        return {
+            "status": case.status,
+            "deadline": None,
+            "deadline_status": "NOT_CONFIGURED",
+            "warning": "No se aplica un plazo sectorial no verificado a esta familia.",
+        }
+
+    holiday_set: set[date] = set()
     if settings.legal_holidays_csv:
         for raw in settings.legal_holidays_csv.split(","):
             if raw.strip():
                 holiday_set.add(date.fromisoformat(raw.strip()))
     target = add_business_days(payload.submitted_on, 15, holiday_set)
     status = "ACTIVE" if settings.legal_holidays_csv else "PROVISIONAL_CALENDAR"
-    d = Deadline(case_id=c.id, deadline_type="ELECTRICITY_COMPLAINT_RESPONSE", trigger_event="VERIFIED_INITIAL_CLAIM_SUBMISSION", trigger_date=payload.submitted_on, computed_date=target, status=status)
-    db.add(d)
-    c.status = "WAITING_RESPONSE"
-    audit(db, c.id, "CLAIM_SUBMITTED", {"submitted_on": str(payload.submitted_on), "reference": payload.reference_number, "deadline_status": status})
+    db.add(Deadline(
+        case_id=case.id,
+        deadline_type="ELECTRICITY_COMPLAINT_RESPONSE",
+        trigger_event="VERIFIED_INITIAL_CLAIM_SUBMISSION",
+        trigger_date=payload.submitted_on,
+        computed_date=target,
+        status=status,
+    ))
     db.commit()
-    return {"status": c.status, "deadline": target, "deadline_status": status, "warning": None if status == "ACTIVE" else "Calendar is provisional until official applicable holidays are configured."}
+    return {
+        "status": case.status,
+        "deadline": target,
+        "deadline_status": status,
+        "warning": None if status == "ACTIVE" else "Calendar is provisional until official applicable holidays are configured.",
+    }
 
 
 @router.post("/{case_id}/responses")
 def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)):
-    c = case_or_404(db, case_id)
-    result = analyze_company_response(db, c, payload.text)
+    case = case_or_404(db, case_id)
+    result = analyze_company_response(db, case, payload.text)
+
+    if result["type"] == "UNKNOWN":
+        review = create_human_review(
+            db,
+            case,
+            reason="UNRECOGNIZED_COMPANY_RESPONSE",
+            priority="HIGH",
+            context={"text": payload.text[:2000]},
+        )
+        action = Action(
+            case_id=case.id,
+            type="HUMAN_REVIEW",
+            status="OPEN",
+            payload_json={"reason": review.reason},
+        )
+        db.add(action)
+        db.flush()
+        case.current_action_id = action.id
+        db.commit()
+        return {"analysis": result, "case_status": case.status, "updated_diagnosis": None}
+
+    if result["type"] == "ACCEPTANCE":
+        action = Action(case_id=case.id, type="VERIFY_EXECUTION", status="OPEN", payload_json={})
+        db.add(action)
+        db.flush()
+        case.current_action_id = action.id
+        case.status = "RESOLVED_PENDING_EXECUTION"
+        audit(db, case.id, "CLAIM_ACCEPTED_PENDING_EXECUTION", {"action_id": action.id})
+        db.commit()
+        return {"analysis": result, "case_status": case.status, "updated_diagnosis": None}
+
     updated = None
-    if result["type"] != "UNKNOWN" and c.family in {"E04-A", "E04-B", "E02-A", "E02-B"}:
+    if case.family in {"E04-A", "E04-B", "E02-A", "E02-B", "C01"}:
         try:
-            d, _, _ = diagnose(db, c)
-            updated = d.to_dict()
+            diagnosis, _, _ = diagnose(db, case)
+            updated = diagnosis.to_dict()
         except ValueError:
             updated = None
-    elif result["type"] == "UNKNOWN":
-        review = create_human_review(db, c, reason="UNRECOGNIZED_COMPANY_RESPONSE", priority="HIGH", context={"text": payload.text[:2000]})
-        a = Action(case_id=c.id, type="HUMAN_REVIEW", status="OPEN", payload_json={"reason": review.reason})
-        db.add(a)
-        db.flush()
-        c.current_action_id = a.id
-        db.commit()
-    return {"analysis": result, "case_status": c.status, "updated_diagnosis": updated}
+    return {"analysis": result, "case_status": case.status, "updated_diagnosis": updated}
 
 
 @router.get("/{case_id}/reviews")
 def reviews(case_id: str, db: Session = Depends(get_db)):
-    c = case_or_404(db, case_id)
-    rows = db.scalars(select(HumanReview).where(HumanReview.case_id == c.id).order_by(HumanReview.created_at.desc())).all()
-    return [{"id": r.id, "reason": r.reason, "priority": r.priority, "status": r.status, "context": r.context_json, "reviewer_decision": r.reviewer_decision} for r in rows]
+    case = case_or_404(db, case_id)
+    rows = db.scalars(
+        select(HumanReview)
+        .where(HumanReview.case_id == case.id)
+        .order_by(HumanReview.created_at.desc())
+    ).all()
+    return [
+        {
+            "id": review.id,
+            "reason": review.reason,
+            "priority": review.priority,
+            "status": review.status,
+            "context": review.context_json,
+            "reviewer_decision": review.reviewer_decision,
+        }
+        for review in rows
+    ]
 
 
 @router.post("/{case_id}/reviews/{review_id}/complete")
-def complete_review(case_id: str, review_id: str, payload: HumanReviewComplete, db: Session = Depends(get_db)):
-    c = case_or_404(db, case_id)
+def complete_review(
+    case_id: str,
+    review_id: str,
+    payload: HumanReviewComplete,
+    db: Session = Depends(get_db),
+):
+    case = case_or_404(db, case_id)
     review = db.get(HumanReview, review_id)
-    if not review or review.case_id != c.id:
+    if not review or review.case_id != case.id:
         raise HTTPException(404, "Review not found")
     review.status = "COMPLETED"
     review.reviewer_decision = payload.reviewer_decision
     review.completed_at = datetime.now(timezone.utc)
-    if c.status == "HUMAN_REVIEW":
-        c.status = "REANALYZING"
-    audit(db, c.id, "HUMAN_REVIEW_COMPLETED", {"review_id": review.id})
+    if case.status == "HUMAN_REVIEW":
+        case.status = "REANALYZING"
+    audit(db, case.id, "HUMAN_REVIEW_COMPLETED", {"review_id": review.id})
     db.commit()
-    return {"review_id": review.id, "status": review.status, "case_status": c.status}
+    return {"review_id": review.id, "status": review.status, "case_status": case.status}
 
 
 @router.post("/{case_id}/outcome")
 def outcome(case_id: str, payload: OutcomeInput, db: Session = Depends(get_db)):
-    c = case_or_404(db, case_id)
-    existing = db.scalars(select(Outcome).where(Outcome.case_id == c.id)).first()
+    case = case_or_404(db, case_id)
+    existing = db.scalars(select(Outcome).where(Outcome.case_id == case.id)).first()
     if existing:
-        o = existing
+        outcome_row = existing
     else:
-        o = Outcome(case_id=c.id, result_type=payload.result_type)
-        db.add(o)
-    o.result_type = payload.result_type
-    o.amount_recovered = payload.amount_recovered
-    o.verified_by_user = payload.verified_by_user
+        outcome_row = Outcome(case_id=case.id, result_type=payload.result_type)
+        db.add(outcome_row)
+    outcome_row.result_type = payload.result_type
+    outcome_row.amount_recovered = payload.amount_recovered
+    outcome_row.verified_by_user = payload.verified_by_user
     if payload.verified_by_user:
-        c.status = "RESOLVED"
-        o.resolved_at = datetime.now(timezone.utc)
+        case.status = "RESOLVED"
+        outcome_row.resolved_at = datetime.now(timezone.utc)
     else:
-        c.status = "RESOLVED_PENDING_EXECUTION"
-    audit(db, c.id, "OUTCOME_RECORDED", {"result": payload.result_type, "verified": payload.verified_by_user})
+        case.status = "RESOLVED_PENDING_EXECUTION"
+    audit(db, case.id, "OUTCOME_RECORDED", {
+        "result": payload.result_type,
+        "verified": payload.verified_by_user,
+    })
     db.commit()
-    return {"case_status": c.status, "verified": o.verified_by_user}
+    return {"case_status": case.status, "verified": outcome_row.verified_by_user}
