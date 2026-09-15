@@ -17,12 +17,23 @@ class DeterministicAlphaGateway:
 
     def classify(self, text: str) -> dict[str, Any]:
         t = text.lower()
-        electricity = any(w in t for w in ["luz", "electric", "comercializadora", "endesa", "iberdrola", "naturgy", "repsol", "factura eléctrica", "factura electrica"])
+        electricity = any(w in t for w in ["luz", "electric", "comercializadora", "endesa", "iberdrola", "naturgy", "repsol", "factura eléctrica", "factura electrica", "cups"])
         maintenance = any(w in t for w in ["mantenimiento", "servicio", "protección", "proteccion", "asistencia"])
         switch = any(w in t for w in ["cambié", "cambie", "cambiar", "cambio", "baja", "me fui", "otra compañía", "otra compania"])
         never = any(w in t for w in ["nunca contrat", "no contraté", "no contrate", "sin contratar", "no lo pedí", "no lo pedi"])
         duplicate = any(w in t for w in ["dos veces", "duplicado", "duplicada", "doble cargo", "doble cobro", "me lo han cobrado dos"])
         overbill = any(w in t for w in ["cobrado de más", "cobrado de mas", "facturado de más", "facturado de mas", "factura incorrecta", "importe incorrecto", "me cobran más", "me cobran mas"])
+        unauthorized_switch = any(w in t for w in [
+            "me cambiaron de compañía", "me cambiaron de compania", "me han cambiado de compañía", "me han cambiado de compania",
+            "cambio sin permiso", "cambio sin mi permiso", "sin consentimiento", "no autoricé el cambio", "no autorice el cambio",
+            "no acepté cambiar", "no acepte cambiar", "comercializadora que no contraté", "comercializadora que no contrate",
+            "cups incorrecto", "cups equivocado", "cambio de comercializadora no solicitado",
+        ])
+        termination_penalty = any(w in t for w in [
+            "penalización", "penalizacion", "permanencia", "penalidad", "rescisión", "rescision",
+            "cancelación anticipada", "cancelacion anticipada", "por darme de baja", "por irme de la compañía", "por irme de la compania",
+            "me cobran por cambiarme", "cargo por cancelar", "cargo por baja",
+        ])
         purchase = any(w in t for w in ["compré", "compre", "comprado", "compra", "tienda", "vendedor", "producto", "pedido", "televisor", "tv", "móvil", "movil", "teléfono", "telefono", "ordenador", "portátil", "portatil", "lavadora", "nevera", "electrodoméstico", "electrodomestico"])
         conformity = any(w in t for w in ["garantía", "garantia", "defecto", "defectuoso", "avería", "averia", "averiado", "roto", "no funciona", "dejó de funcionar", "dejo de funcionar", "rechazan la garantía", "rechazan la garantia"])
         repair_followup = any(w in t for w in [
@@ -44,6 +55,10 @@ class DeterministicAlphaGateway:
         distance = any(w in t for w in ["online", "internet", "web", "a distancia", "por teléfono", "por telefono", "pedido"])
         withdrawal = any(w in t for w in ["desist", "quiero devolver", "quiero devolverlo", "me arrepentí", "me arrepenti", "devolver la compra", "derecho de devolución", "derecho de devolucion", "14 días", "14 dias"])
 
+        if electricity and unauthorized_switch:
+            return {"vertical": "electricity", "family": "E03", "confidence": 0.96}
+        if electricity and termination_penalty:
+            return {"vertical": "electricity", "family": "E05", "confidence": 0.94}
         if electricity and duplicate:
             return {"vertical": "electricity", "family": "E02-B", "confidence": 0.96}
         if electricity and overbill:
@@ -73,14 +88,18 @@ class DeterministicAlphaGateway:
 
     def analyze_response(self, text: str) -> dict[str, Any]:
         t = text.lower()
-        if any(x in t for x in ["aceptamos", "estimamos su reclamación", "estimamos la reclamacion", "devolveremos", "procedemos a devolver", "procedemos a reparar", "procedemos a sustituir"]):
+        if any(x in t for x in ["aceptamos", "estimamos su reclamación", "estimamos la reclamacion", "devolveremos", "procedemos a devolver", "procedemos a reparar", "procedemos a sustituir", "restableceremos su contrato anterior"]):
             return {"type": "ACCEPTANCE", "arguments": []}
         if "independiente" in t and any(x in t for x in ["contrato", "servicio", "mantenimiento"]):
             return {"type": "DENIAL", "arguments": ["INDEPENDENT_ADDON_CONTRACT"]}
         if any(x in t for x in ["solicitó mantener", "solicito mantener", "pidió mantener", "pidio mantener"]):
             return {"type": "DENIAL", "arguments": ["EXPRESS_KEEP_REQUEST"]}
-        if any(x in t for x in ["consta su consentimiento", "aceptó el servicio", "acepto el servicio", "consentimiento expreso"]):
+        if any(x in t for x in ["consta su consentimiento", "aceptó el servicio", "acepto el servicio", "consentimiento expreso", "aceptó el cambio", "acepto el cambio", "grabación de consentimiento", "grabacion de consentimiento"]):
             return {"type": "DENIAL", "arguments": ["CONSENT_EVIDENCE"]}
+        if any(x in t for x in ["el cups es correcto", "cups correcto", "corresponde a su cups", "cups coincide"]):
+            return {"type": "DENIAL", "arguments": ["CUPS_CORRECT_ASSERTED"]}
+        if any(x in t for x in ["precio fijo", "antes de la primera prórroga", "antes de la primera prorroga", "pérdida económica", "perdida economica", "5% de la energía", "5% de la energia"]):
+            return {"type": "DENIAL", "arguments": ["EARLY_TERMINATION_EXCEPTION_ASSERTED"]}
         if any(x in t for x in ["importe correcto", "facturación correcta", "facturacion correcta"]):
             return {"type": "DENIAL", "arguments": ["CORRECT_AMOUNT_DISPUTED"]}
         if any(x in t for x in ["cargos distintos", "facturas distintas", "recibos distintos"]):
