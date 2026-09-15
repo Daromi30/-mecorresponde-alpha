@@ -183,4 +183,11 @@
     enhanceStructuredReview(c, reviewId);
     return result;
   };
+
+  if (!document.querySelector('script[data-mcr-readiness]')) {
+    const script = document.createElement('script');
+    script.src = 'readiness.js';
+    script.dataset.mcrReadiness = 'true';
+    document.body.appendChild(script);
+  }
 })();

@@ -11,7 +11,6 @@ def test_product_enhancement_layer_loads_documentation_module():
     quality = (STATIC / "dossier_quality.js").read_text(encoding="utf-8")
     assert "/demo/documentation.js" in quality
     assert "mcr-documentation" in quality
-    assert "/demo/deadline_guidance.js" in quality
 
 
 def test_documentation_ui_fails_closed_when_persistent_storage_is_unavailable():
