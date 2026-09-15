@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-from pydantic import BaseModel, Field
+from typing import Any, Literal
+from pydantic import BaseModel, ConfigDict, Field
 
 from .schemas import CaseCreate, ChargesInput, FactUpsert, OutcomeInput, ResponseInput, SubmissionInput
 
@@ -18,7 +18,12 @@ class HumanReviewComplete(BaseModel):
     reviewer_decision: str = Field(min_length=3, max_length=10000)
 
 
+class CaseDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmation: Literal["DELETE"]
+
+
 __all__ = [
     "CaseCreate", "ChargesInput", "FactUpsert", "OutcomeInput", "ResponseInput", "SubmissionInput",
-    "DocumentFactConfirm", "HumanReviewComplete",
+    "DocumentFactConfirm", "HumanReviewComplete", "CaseDeleteRequest",
 ]
