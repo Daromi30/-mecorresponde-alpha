@@ -20,7 +20,7 @@ from ..security import (
     set_case_access_cookie,
 )
 from ..services_v2 import (
-    analyze_company_response, audit, confirm_document_fact, create_case, create_human_review,
+    EVALUATORS, analyze_company_response, audit, confirm_document_fact, create_case, create_human_review,
     diagnose, get_next_question, prepare_claim_package, upsert_fact,
 )
 from ..storage import UnsafeDocumentUpload
@@ -316,7 +316,9 @@ def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)
         db.commit()
         return {"analysis": result, "case_status": case.status, "updated_diagnosis": None}
     updated = None
-    if case.family in {"E04-A", "E04-B", "E02-A", "E02-B", "E03", "E05", "C01", "C02", "C03", "C04", "C05"}:
+    # Reanalyze any family registered in the Motor. New vertical slices no longer
+    # require editing this router merely to join the response-analysis loop.
+    if (case.family or "") in EVALUATORS:
         try:
             diagnosis, _, _ = diagnose(db, case)
             updated = diagnosis.to_dict()
