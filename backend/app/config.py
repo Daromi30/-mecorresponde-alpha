@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     storage_dir: str = "./storage"
     cors_origins: str = "http://localhost:3000"
     legal_holidays_csv: str = ""
+    case_access_required: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
