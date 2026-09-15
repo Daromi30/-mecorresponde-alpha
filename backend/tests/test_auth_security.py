@@ -70,3 +70,49 @@ def test_product_ui_has_restrictive_content_security_policy(client):
     assert "object-src 'none'" in csp
     assert "frame-ancestors 'none'" in csp
     assert "form-action 'self'" in csp
+
+
+def test_untrusted_browser_origin_cannot_create_state(client):
+    blocked = client.post(
+        "/api/cases",
+        json={"message": "Intento cross-site"},
+        headers={
+            "Origin": "https://attacker.invalid",
+            "Sec-Fetch-Site": "cross-site",
+        },
+    )
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"] == "Cross-site state-changing request blocked"
+    assert blocked.headers["cache-control"] == "no-store"
+
+
+def test_cross_site_fetch_without_origin_is_blocked_for_unsafe_methods(client):
+    blocked = client.post(
+        "/api/cases",
+        json={"message": "Intento sin Origin"},
+        headers={"Sec-Fetch-Site": "cross-site"},
+    )
+    assert blocked.status_code == 403
+
+
+def test_configured_cors_origin_remains_allowed_for_browser_writes(client):
+    allowed = client.post(
+        "/api/cases",
+        json={"message": "Compra online no entregada"},
+        headers={
+            "Origin": "http://localhost:3000",
+            "Sec-Fetch-Site": "cross-site",
+        },
+    )
+    assert allowed.status_code == 200
+
+
+def test_cross_site_read_is_not_blocked_by_write_guard(client):
+    response = client.get(
+        "/health",
+        headers={
+            "Origin": "https://attacker.invalid",
+            "Sec-Fetch-Site": "cross-site",
+        },
+    )
+    assert response.status_code == 200
