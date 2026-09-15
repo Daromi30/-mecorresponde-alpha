@@ -24,17 +24,7 @@ def _worth(value: float | None) -> str:
 
 
 def evaluate_e03(facts: dict[str, FactValue]) -> EngineResult:
-    """E03 — supplier switch without express consent / wrong CUPS.
-
-    Current rule: RD 88/2026 arts. 18.5-18.7 and 51.3. The incoming
-    supplier must assure express consent, keep it on a durable medium for at
-    least five years, and an erroneous/unauthorised switch must be restored.
-    Identity-theft allegations are intentionally escalated.
-    """
-    sources = [{
-        "title": "RD 88/2026, arts. 18.5-18.7 y 51.3",
-        "url": RD88_URL,
-    }]
+    sources = [{"title": "RD 88/2026, arts. 18.5-18.7 y 51.3", "url": RD88_URL}]
     missing: list[str] = []
     counterarguments: list[dict[str, Any]] = []
 
@@ -113,19 +103,21 @@ def evaluate_e03(facts: dict[str, FactValue]) -> EngineResult:
             calculation=None, sources=sources, remedies=[], burden_of_proof=burden,
         )
 
-    # A verified durable record of express consent defeats this specific branch.
-    if consent is True and proof_status == "valid_durable_proof":
+    wrong_cups = cups_correct is False
+    no_consent = consent is False
+
+    # A valid consent record only defeats the no-consent branch when the switch
+    # also targeted the correct CUPS. Consent cannot cure a wrong-CUPS switch.
+    if not wrong_cups and consent is True and proof_status == "valid_durable_proof":
         return EngineResult(
             viability="LOW", scope_status="SUPPORTED", claimable_amount=0.0,
             economic_value=amount or None, worth_pursuing="NO_PAID_MANAGEMENT",
-            reasoning_summary="Consta consentimiento expreso respaldado por una prueba duradera válida. Con esos hechos, E03 no sustenta que el cambio de comercializador fuera no consentido.",
+            reasoning_summary="Consta consentimiento expreso respaldado por una prueba duradera válida y el CUPS es correcto. Con esos hechos, E03 no sustenta que el cambio de comercializador fuera no consentido o erróneo.",
             counterarguments=counterarguments, missing_facts=[], next_action="EXPLAIN_VALID_CONSENT",
             rule_result="FAILED", failed_conditions=["express_consent_proven"],
             calculation=None, sources=sources, remedies=[], burden_of_proof=burden,
         )
 
-    wrong_cups = cups_correct is False
-    no_consent = consent is False
     if not wrong_cups and not no_consent:
         return EngineResult(
             viability="INSUFFICIENT_INFORMATION", scope_status="SUPPORTED",
