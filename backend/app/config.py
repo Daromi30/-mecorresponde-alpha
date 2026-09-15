@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     email_sender_email: str = ""
     email_sender_name: str = "MECORRESPONDE"
     auth_action_base_url: str = ""
+    transactional_email_verified: bool = False
     email_verification_enforced: bool = False
 
     cors_origins: str = "http://localhost:3000"
@@ -65,6 +66,10 @@ class Settings(BaseSettings):
             and "@" in self.email_sender_email.strip()
             and self.auth_action_base_url.strip().startswith("https://")
         )
+
+    @property
+    def transactional_email_operational(self) -> bool:
+        return self.transactional_email_ready and self.transactional_email_verified
 
 
 settings = Settings()
