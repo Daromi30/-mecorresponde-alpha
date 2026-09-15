@@ -25,6 +25,16 @@ class DeterministicAlphaGateway:
         overbill = any(w in t for w in ["cobrado de más", "cobrado de mas", "facturado de más", "facturado de mas", "factura incorrecta", "importe incorrecto", "me cobran más", "me cobran mas"])
         purchase = any(w in t for w in ["compré", "compre", "comprado", "compra", "tienda", "vendedor", "producto", "pedido", "televisor", "tv", "móvil", "movil", "teléfono", "telefono", "ordenador", "portátil", "portatil", "lavadora", "nevera", "electrodoméstico", "electrodomestico"])
         conformity = any(w in t for w in ["garantía", "garantia", "defecto", "defectuoso", "avería", "averia", "averiado", "roto", "no funciona", "dejó de funcionar", "dejo de funcionar", "rechazan la garantía", "rechazan la garantia"])
+        repair_followup = any(w in t for w in [
+            "ya lo repararon", "ya la repararon", "después de reparar", "despues de reparar", "tras la reparación", "tras la reparacion",
+            "volvió a fallar", "volvio a fallar", "sigue fallando", "otra vez falla", "segunda reparación", "segunda reparacion",
+            "lleva en reparación", "lleva en reparacion", "sigue en reparación", "sigue en reparacion", "reparación fallida", "reparacion fallida",
+        ])
+        mismatch = any(w in t for w in [
+            "producto equivocado", "me enviaron otro", "me mandaron otro", "no corresponde con lo comprado", "no coincide con lo comprado",
+            "distinto a lo anunciado", "distinto de lo anunciado", "no es como se anunciaba", "no es lo que pedí", "no es lo que pedi",
+            "incompleto", "faltan piezas", "faltan accesorios", "falta una pieza", "cantidad incorrecta", "vino otro modelo",
+        ])
         non_delivery = any(w in t for w in [
             "no ha llegado", "no me ha llegado", "no nos ha llegado", "no llegó", "no llego", "no llega",
             "no recibido", "no he recibido", "no lo he recibido", "no la he recibido", "no hemos recibido",
@@ -46,6 +56,10 @@ class DeterministicAlphaGateway:
             return {"vertical": "purchases", "family": "C04", "confidence": 0.94}
         if purchase and distance and withdrawal:
             return {"vertical": "purchases", "family": "C05", "confidence": 0.93}
+        if purchase and repair_followup:
+            return {"vertical": "purchases", "family": "C02", "confidence": 0.94}
+        if purchase and mismatch:
+            return {"vertical": "purchases", "family": "C03", "confidence": 0.94}
         if purchase and conformity:
             return {"vertical": "purchases", "family": "C01", "confidence": 0.90}
         return {"vertical": None, "family": None, "confidence": 0.2}
@@ -77,6 +91,8 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["OUTSIDE_LEGAL_GUARANTEE"]}
         if any(x in t for x in ["contacte con el fabricante", "diríjase al fabricante", "dirijase al fabricante", "hable con el fabricante"]):
             return {"type": "DENIAL", "arguments": ["REFER_TO_MANUFACTURER"]}
+        if any(x in t for x in ["coincide con lo pedido", "coincide con el pedido", "corresponde con lo comprado", "producto correcto", "artículo correcto", "articulo correcto"]):
+            return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
         if any(x in t for x in ["desistimiento fuera de plazo", "fuera del plazo de desistimiento", "plazo para desistir vencido"]):
