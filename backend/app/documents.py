@@ -7,14 +7,32 @@ from datetime import datetime, timezone
 from typing import Any
 
 from pypdf import PdfReader
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .config import settings
 from .models import AuditEvent, Case, Document, DocumentExtraction, Evidence, Fact
-from .storage import DocumentStorage, get_document_storage, object_key, validate_document_bytes
+from .storage import DocumentStorage, UnsafeDocumentUpload, get_document_storage, object_key, validate_document_bytes
 
 
 def _audit(db: Session, case_id: str, event_type: str, payload: dict[str, Any]) -> None:
     db.add(AuditEvent(case_id=case_id, event_type=event_type, payload_json=payload))
+
+
+def _enforce_alpha_document_quota(db: Session, case_id: str) -> None:
+    total = db.scalar(select(func.count()).select_from(Document)) or 0
+    if total >= settings.alpha_max_documents_total:
+        raise UnsafeDocumentUpload(
+            f"Alpha document quota reached ({settings.alpha_max_documents_total} total documents)"
+        )
+
+    case_total = db.scalar(
+        select(func.count()).select_from(Document).where(Document.case_id == case_id)
+    ) or 0
+    if case_total >= settings.alpha_max_documents_per_case:
+        raise UnsafeDocumentUpload(
+            f"Case document quota reached ({settings.alpha_max_documents_per_case} documents)"
+        )
 
 
 def save_upload(
@@ -27,6 +45,7 @@ def save_upload(
     storage: DocumentStorage | None = None,
 ):
     validate_document_bytes(filename, content_type, data)
+    _enforce_alpha_document_quota(db, case.id)
     storage = storage or get_document_storage()
 
     digest = hashlib.sha256(data).hexdigest()

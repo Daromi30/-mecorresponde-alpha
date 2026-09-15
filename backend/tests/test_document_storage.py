@@ -1,5 +1,6 @@
 import hashlib
 
+import pytest
 from sqlalchemy import select
 
 from app.config import settings
@@ -66,12 +67,8 @@ def test_document_fact_keeps_document_provenance(tmp_path, db):
 
 
 def test_invalid_file_signature_is_rejected():
-    try:
+    with pytest.raises(UnsafeDocumentUpload, match="PDF signature"):
         validate_document_bytes("fake.pdf", "application/pdf", b"this is not a pdf")
-    except UnsafeDocumentUpload as exc:
-        assert "PDF signature" in str(exc)
-    else:
-        raise AssertionError("spoofed PDF must be rejected")
 
 
 def test_render_blocks_document_upload_until_storage_is_persistent(client, monkeypatch):
@@ -89,3 +86,30 @@ def test_render_blocks_document_upload_until_storage_is_persistent(client, monke
     )
     assert response.status_code == 503
     assert "persistent object storage" in response.json()["detail"]
+
+
+def test_alpha_total_document_quota_blocks_before_storage_write(tmp_path, db, monkeypatch):
+    monkeypatch.setattr(settings, "alpha_max_documents_total", 1)
+    monkeypatch.setattr(settings, "alpha_max_documents_per_case", 20)
+    storage = LocalDocumentStorage(tmp_path, persistent=True)
+
+    first = create_case(db, "Me cambié de compañía de luz y me siguen cobrando mantenimiento")
+    save_upload(db, first, "uno.txt", "text/plain", b"documento uno", storage=storage)
+
+    second = create_case(db, "Me han cobrado dos veces la misma factura de luz")
+    second_data = b"documento dos"
+    second_key = f"originals/{second.id}/{hashlib.sha256(second_data).hexdigest()[:2]}/{hashlib.sha256(second_data).hexdigest()}"
+    with pytest.raises(UnsafeDocumentUpload, match="Alpha document quota reached"):
+        save_upload(db, second, "dos.txt", "text/plain", second_data, storage=storage)
+    assert not (tmp_path / second_key).exists()
+
+
+def test_alpha_per_case_document_quota_blocks_second_document(tmp_path, db, monkeypatch):
+    monkeypatch.setattr(settings, "alpha_max_documents_total", 100)
+    monkeypatch.setattr(settings, "alpha_max_documents_per_case", 1)
+    storage = LocalDocumentStorage(tmp_path, persistent=True)
+    case = create_case(db, "Me cambié de compañía de luz y me siguen cobrando mantenimiento")
+
+    save_upload(db, case, "uno.txt", "text/plain", b"documento uno", storage=storage)
+    with pytest.raises(UnsafeDocumentUpload, match="Case document quota reached"):
+        save_upload(db, case, "dos.txt", "text/plain", b"documento dos", storage=storage)
