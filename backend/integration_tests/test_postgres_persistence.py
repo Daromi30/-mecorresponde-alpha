@@ -1,6 +1,7 @@
 from sqlalchemy import select
 
 from app.db import Base, SessionLocal, engine
+from app.main import persistence_health
 from app.models import Case, Decision, Evidence, Fact
 from app.services_v2 import create_case, diagnose, seed_legal, upsert_fact
 
@@ -55,3 +56,6 @@ def test_case_survives_new_postgres_session():
         assert len(evidence) >= 6
         assert len(decisions) >= 1
         assert decisions[-1].claimable_amount == 8.99
+
+    gate = persistence_health()
+    assert gate == {"status": "ok", "database": "postgresql", "persistent": True}
