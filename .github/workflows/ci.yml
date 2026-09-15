@@ -28,8 +28,8 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Run regression suite
-        run: python -m pytest -q
+      - name: Run legal and API regression suite
+        run: python -m pytest -q tests
 
   postgres-persistence:
     runs-on: ubuntu-latest
