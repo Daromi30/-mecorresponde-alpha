@@ -17,7 +17,7 @@ class DeterministicAlphaGateway:
 
     def classify(self, text: str) -> dict[str, Any]:
         t = text.lower()
-        electricity = any(w in t for w in ["luz", "electric", "comercializadora", "endesa", "iberdrola", "naturgy", "repsol", "factura eléctrica", "factura electrica", "cups"])
+        electricity = any(w in t for w in ["luz", "electric", "comercializadora", "endesa", "iberdrola", "naturgy", "repsol", "factura eléctrica", "factura electrica", "cups", "contador"])
         maintenance = any(w in t for w in ["mantenimiento", "servicio", "protección", "proteccion", "asistencia"])
         switch = any(w in t for w in ["cambié", "cambie", "cambiar", "cambio", "baja", "me fui", "otra compañía", "otra compania"])
         never = any(w in t for w in ["nunca contrat", "no contraté", "no contrate", "sin contratar", "no lo pedí", "no lo pedi"])
@@ -33,6 +33,19 @@ class DeterministicAlphaGateway:
             "penalización", "penalizacion", "penalidad", "permanencia", "cargo por cancelar",
             "cargo por cambiar", "me cobran por irme", "me cobran por cambiar", "cobro por rescindir",
             "penalización por rescisión", "penalizacion por rescision", "penalización por baja", "penalizacion por baja",
+        ])
+        reading_regularization = any(w in t for w in [
+            "lectura estimada", "consumo estimado", "lecturas estimadas", "consumos estimados",
+            "regularización", "regularizacion", "me regularizan", "factura de regularización", "factura de regularizacion",
+            "lectura real", "fallo de lectura", "no pudieron leer el contador", "no pudieron acceder al contador",
+            "estimaron el consumo", "estimación del consumo", "estimacion del consumo",
+        ])
+        contract_change = any(w in t for w in [
+            "subida sin avisar", "subieron el precio sin avisar", "me han subido el precio", "me cambiaron el precio",
+            "me han cambiado el precio", "cambio de precio", "cambio de condiciones", "cambiaron las condiciones",
+            "me han cambiado las condiciones", "modificaron el contrato", "modificación del contrato", "modificacion del contrato",
+            "revisión de precio", "revision de precio", "revisión de precios", "revision de precios",
+            "actualización de precio", "actualizacion de precio", "fórmula de revisión", "formula de revision",
         ])
         purchase = any(w in t for w in ["compré", "compre", "comprado", "compra", "tienda", "vendedor", "producto", "pedido", "televisor", "tv", "móvil", "movil", "teléfono", "telefono", "ordenador", "portátil", "portatil", "lavadora", "nevera", "electrodoméstico", "electrodomestico"])
         conformity = any(w in t for w in ["garantía", "garantia", "defecto", "defectuoso", "avería", "averia", "averiado", "roto", "no funciona", "dejó de funcionar", "dejo de funcionar", "rechazan la garantía", "rechazan la garantia"])
@@ -59,6 +72,10 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E03", "confidence": 0.96}
         if electricity and termination_penalty:
             return {"vertical": "electricity", "family": "E05", "confidence": 0.95}
+        if electricity and contract_change:
+            return {"vertical": "electricity", "family": "E07", "confidence": 0.94}
+        if electricity and reading_regularization:
+            return {"vertical": "electricity", "family": "E06", "confidence": 0.93}
         if electricity and duplicate:
             return {"vertical": "electricity", "family": "E02-B", "confidence": 0.96}
         if electricity and overbill:
@@ -98,6 +115,12 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["CONSENT_EVIDENCE"]}
         if any(x in t for x in ["el cups es correcto", "cups correcto", "corresponde a su cups", "cups coincide"]):
             return {"type": "DENIAL", "arguments": ["CUPS_CORRECT_ASSERTED"]}
+        if any(x in t for x in ["la estimación era procedente", "la estimacion era procedente", "estimación permitida", "estimacion permitida", "no fue posible acceder al contador", "no pudimos acceder al contador"]):
+            return {"type": "DENIAL", "arguments": ["ESTIMATE_ALLOWED_ASSERTED"]}
+        if any(x in t for x in ["se avisó con un mes", "se aviso con un mes", "avisamos con un mes", "notificado con un mes", "preaviso de un mes"]):
+            return {"type": "DENIAL", "arguments": ["NOTICE_COMPLIANT_ASSERTED"]}
+        if any(x in t for x in ["revisión prevista en el contrato", "revision prevista en el contrato", "fórmula prevista en el contrato", "formula prevista en el contrato", "cláusula de revisión", "clausula de revision"]):
+            return {"type": "DENIAL", "arguments": ["CONTRACTUAL_PRICE_FORMULA_ASSERTED"]}
         if any(x in t for x in ["importe correcto", "facturación correcta", "facturacion correcta"]):
             return {"type": "DENIAL", "arguments": ["CORRECT_AMOUNT_DISPUTED"]}
         if any(x in t for x in ["cargos distintos", "facturas distintas", "recibos distintos"]):
