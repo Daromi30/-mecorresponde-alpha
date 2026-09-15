@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,13 +15,21 @@ from ..schemas_v2 import (
     CaseCreate, ChargesInput, DocumentFactConfirm, FactUpsert, HumanReviewComplete,
     OutcomeInput, ResponseInput, SubmissionInput,
 )
+from ..security import (
+    CaseAccess, generate_case_token, hash_case_token, require_case_access,
+    set_case_access_cookie,
+)
 from ..services_v2 import (
     analyze_company_response, audit, confirm_document_fact, create_case, create_human_review,
     diagnose, get_next_question, prepare_claim_package, upsert_fact,
 )
 from ..storage import UnsafeDocumentUpload
 
-router = APIRouter(prefix="/api/cases", tags=["cases"])
+router = APIRouter(
+    prefix="/api/cases",
+    tags=["cases"],
+    dependencies=[Depends(require_case_access)],
+)
 
 
 def case_or_404(db: Session, case_id: str) -> Case:
@@ -109,9 +117,18 @@ def serialize_case(db: Session, case: Case):
 
 
 @router.post("")
-def create(payload: CaseCreate, db: Session = Depends(get_db)):
+def create(payload: CaseCreate, response: Response, db: Session = Depends(get_db)):
+    token = generate_case_token()
     case = create_case(db, payload.message)
-    return {**serialize_case(db, case), "next_question": get_next_question(db, case)}
+    db.add(CaseAccess(case_id=case.id, token_hash=hash_case_token(token)))
+    audit(db, case.id, "CASE_ACCESS_ISSUED", {"method": "anonymous_case_token"})
+    db.commit()
+    set_case_access_cookie(response, case.id, token)
+    return {
+        **serialize_case(db, case),
+        "next_question": get_next_question(db, case),
+        "access_token": token,
+    }
 
 
 @router.get("/{case_id}")
