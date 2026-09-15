@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     document_storage_backend: str = "local"
     document_storage_persistent: bool = False
     max_upload_bytes: int = 15 * 1024 * 1024
+    alpha_max_documents_total: int = 100
+    alpha_max_documents_per_case: int = 20
 
     # Render sets RENDER=true automatically at runtime. We use it to prevent
     # accepting real documents on an ephemeral filesystem.
