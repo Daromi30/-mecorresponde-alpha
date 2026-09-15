@@ -10,6 +10,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if "case_access" in sa.inspect(bind).get_table_names():
+        return
     op.create_table(
         "case_access",
         sa.Column("case_id", sa.String(length=36), nullable=False),
@@ -26,4 +29,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("case_access")
+    bind = op.get_bind()
+    if "case_access" in sa.inspect(bind).get_table_names():
+        op.drop_table("case_access")
