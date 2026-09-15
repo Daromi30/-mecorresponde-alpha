@@ -37,6 +37,14 @@ def test_readiness_separates_closed_beta_public_beta_and_launch_blockers(client)
     assert "persistent_database" in body["beta_blockers"]
     assert "persistent_document_storage" in body["beta_blockers"]
 
+    # Privacy information is intentionally not published until the real controller,
+    # purposes, bases, retention and recipients have been reviewed. This is a blocker
+    # for any beta using real personal data, not something the product may guess.
+    assert checks["privacy_information"]["ok"] is False
+    assert checks["privacy_information"]["severity"] == "BETA_BLOCKER"
+    assert "privacy_information" in body["beta_blockers"]
+    assert checks["privacy_information"]["metadata"]["official_guidance"]
+
     assert checks["password_recovery"]["ok"] is False
     assert checks["email_verification"]["ok"] is False
     assert "password_recovery" in body["public_beta_blockers"]
