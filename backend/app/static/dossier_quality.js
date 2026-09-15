@@ -70,12 +70,17 @@
     return result;
   };
 
-  // Product enhancements stay split into small same-origin modules rather than
-  // expanding the legacy monolithic HTML. The page CSP only permits self scripts.
-  if (!document.querySelector('script[data-mcr-account-deletion]')) {
+  function loadEnhancement(src, datasetKey) {
+    const selector = `script[data-${datasetKey}]`;
+    if (document.querySelector(selector)) return;
     const script = document.createElement('script');
-    script.src = '/demo/account_deletion.js';
-    script.dataset.mcrAccountDeletion = 'true';
+    script.src = src;
+    script.setAttribute(`data-${datasetKey}`, 'true');
     document.body.appendChild(script);
   }
+
+  // Product enhancements stay split into small same-origin modules rather than
+  // expanding the legacy monolithic HTML. The page CSP only permits self scripts.
+  loadEnhancement('/demo/account_deletion.js', 'mcr-account-deletion');
+  loadEnhancement('/demo/documentation.js', 'mcr-documentation');
 })();
