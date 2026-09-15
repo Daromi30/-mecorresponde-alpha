@@ -1,4 +1,4 @@
-from app.models import Case
+from app.models import AuditEvent, Case, Outcome
 from app.reviews import HumanReview
 from app.services_v2 import create_case, create_human_review
 
@@ -85,10 +85,54 @@ def test_admin_stats_are_aggregate_only(client, db):
     assert body["total_cases"] >= 1
     assert body["open_reviews"] >= 1
     assert "E02-A" in body["cases_by_family"]
+    assert "electricity" in body["cases_by_vertical"]
+    assert set(body["funnel"]) == {
+        "started",
+        "diagnosed",
+        "action_prepared",
+        "submitted",
+        "response_analyzed",
+        "resolved_verified",
+    }
 
 
-def test_backoffice_shell_loads_without_embedding_secret(client):
+def test_admin_stats_measure_audited_funnel_and_verified_recovery(client, db):
+    case = create_case(db, "La factura de luz es incorrecta y me han cobrado de más")
+    for event_type in (
+        "DIAGNOSIS_GENERATED",
+        "CLAIM_PACKAGE_PREPARED",
+        "CLAIM_SUBMITTED",
+        "RESPONSE_ANALYZED",
+    ):
+        db.add(AuditEvent(case_id=case.id, event_type=event_type, payload_json={}))
+    db.add(
+        Outcome(
+            case_id=case.id,
+            result_type="REFUND",
+            amount_recovered=42.50,
+            verified_by_user=True,
+        )
+    )
+    db.commit()
+
+    response = client.get("/api/admin/stats", headers=ADMIN)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["funnel"]["started"] >= 1
+    assert body["funnel"]["diagnosed"] >= 1
+    assert body["funnel"]["action_prepared"] >= 1
+    assert body["funnel"]["submitted"] >= 1
+    assert body["funnel"]["response_analyzed"] >= 1
+    assert body["funnel"]["resolved_verified"] >= 1
+    assert body["verified_resolutions"] >= 1
+    assert body["total_recovered"] >= 42.50
+
+
+def test_backoffice_shell_loads_without_embedding_or_persisting_secret(client):
     response = client.get("/backoffice/")
     assert response.status_code == 200
     assert "Backoffice Beta" in response.text
+    assert "Embudo del Motor" in response.text
     assert "test-admin-token" not in response.text
+    assert "sessionStorage" not in response.text
+    assert "localStorage" not in response.text
