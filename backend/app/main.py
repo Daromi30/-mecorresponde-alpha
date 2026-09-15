@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,7 @@ from .migrations import upgrade_database
 from .models import LegalSource
 
 SUPPORTED_FAMILIES = install_all_families()
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 from .routers.account_cases import router as account_cases_router
 from .routers.admin import router as admin_router
@@ -25,6 +27,38 @@ from .services_v2 import seed_legal
 from .storage import StorageConfigurationError, get_document_storage, storage_status
 
 logger = logging.getLogger("uvicorn.error")
+
+
+def _normalized_origin(value: str) -> str:
+    return value.rstrip("/").casefold()
+
+
+def _origin_is_trusted(request: Request, origin: str) -> bool:
+    try:
+        parsed = urlsplit(origin)
+    except ValueError:
+        return False
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+
+    request_host = request.headers.get("host", "").casefold()
+    if request_host and parsed.netloc.casefold() == request_host:
+        return True
+
+    allowed = {_normalized_origin(value) for value in settings.cors_origin_list}
+    return _normalized_origin(origin) in allowed
+
+
+def _cross_site_block_response() -> JSONResponse:
+    response = JSONResponse(
+        status_code=403,
+        content={"detail": "Cross-site state-changing request blocked"},
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 @asynccontextmanager
@@ -77,8 +111,17 @@ app.add_middleware(
 @app.middleware("http")
 async def safety_headers_and_storage_guard(request: Request, call_next):
     path = request.url.path
+    method = request.method.upper()
+
+    if method in UNSAFE_METHODS:
+        origin = request.headers.get("origin")
+        origin_allowed = bool(origin and _origin_is_trusted(request, origin))
+        fetch_site = request.headers.get("sec-fetch-site", "").casefold()
+        if (origin and not origin_allowed) or (fetch_site == "cross-site" and not origin_allowed):
+            return _cross_site_block_response()
+
     is_document_upload = (
-        request.method.upper() == "POST"
+        method == "POST"
         and path.startswith("/api/cases/")
         and path.endswith("/documents")
     )
