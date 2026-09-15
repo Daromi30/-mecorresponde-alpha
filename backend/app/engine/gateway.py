@@ -35,9 +35,10 @@ class DeterministicAlphaGateway:
         pricing_mismatch = any(w in t for w in [
             "precio distinto al contratado", "precio diferente al contratado", "precio distinto de lo contratado",
             "precio distinto al ofertado", "precio diferente al ofertado", "no respetan el precio", "no me respetan el precio",
-            "tarifa distinta a la contratada", "tarifa diferente a la contratada", "tarifa incorrecta", "otra tarifa",
-            "no me aplican el descuento", "descuento no aplicado", "me quitaron el descuento", "me han quitado el descuento",
-            "descuento prometido", "promocion no aplicada", "promocion distinta", "descuento distinto",
+            "tarifa distinta a la contratada", "tarifa diferente a la contratada", "tarifa distinta", "tarifa diferente", "tarifa es distinta", "tarifa que no contrate", "tarifa incorrecta", "otra tarifa",
+            "no me aplican el descuento", "no respetan el descuento", "no me respetan el descuento", "descuento no aplicado",
+            "me quito un descuento", "me quitaron un descuento", "me han quitado un descuento", "me quitaron el descuento", "me han quitado el descuento",
+            "descuento prometido", "descuento que me prometieron", "descuento promocional", "promocion no aplicada", "promocion distinta", "descuento distinto",
         ])
         unauthorized_switch = any(w in t for w in [
             "me cambiaron de compania", "me han cambiado de compania",
