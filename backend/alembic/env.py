@@ -9,6 +9,7 @@ from app.config import settings
 from app.db import Base, normalize_database_url
 import app.models  # noqa: F401
 import app.reviews  # noqa: F401
+import app.security  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
