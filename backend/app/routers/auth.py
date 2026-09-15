@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..account_export import build_account_export
 from ..account_lifecycle import AccountDeletionStorageError, delete_account_and_owned_data
 from ..auth import (
     clear_session_cookie,
@@ -151,6 +152,17 @@ def my_cases(
             for case in cases
         ]
     }
+
+
+@router.get("/export")
+def export_account_data(
+    response: Response,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+):
+    response.headers["Content-Disposition"] = 'attachment; filename="mecorresponde-export.json"'
+    response.headers["Cache-Control"] = "no-store"
+    return build_account_export(db, user)
 
 
 @router.delete("/account")
