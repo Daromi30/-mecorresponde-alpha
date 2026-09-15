@@ -17,6 +17,121 @@ _ORIGINAL_SEED = svc.seed_legal
 _ORIGINAL_CREATE = svc.create_case
 _ORIGINAL_PREPARE = svc.prepare_claim_package
 _ORIGINAL_ANALYZE = svc.analyze_company_response
+_ORIGINAL_NEXT_QUESTION = svc.next_question
+
+
+def _value(facts: dict[str, FactValue], key: str, default=None):
+    return facts[key].value if key in facts else default
+
+
+def _ask(key: str, question: str, input_type: str, options: list[dict[str, str]] | None = None):
+    result = {"done": False, "question": question, "field": key, "input_type": input_type}
+    if options:
+        result["options"] = options
+    return result
+
+
+def _c02_question(facts: dict[str, FactValue]) -> dict:
+    common = [
+        ("purchase.buyer_is_consumer", "¿Compraste el producto como particular, no para una actividad profesional o empresa?", "boolean"),
+        ("purchase.seller_is_business", "¿Lo compraste a una tienda, empresa o vendedor profesional?", "boolean"),
+        ("purchase.product_name", "¿Qué producto es?", "text"),
+        ("purchase.delivery_date", "¿Qué día te entregaron originalmente el producto?", "date"),
+        ("purchase.price", "¿Cuánto pagaste por el producto?", "money"),
+        ("purchase.conformity_attempts", "¿Cuántos intentos de reparación o sustitución ha hecho ya el vendedor?", "number"),
+    ]
+    for key, question, input_type in common:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    try:
+        attempts = int(_value(facts, "purchase.conformity_attempts", 0) or 0)
+    except (TypeError, ValueError):
+        attempts = 0
+    if attempts < 1:
+        return {"done": True, "question": None, "field": None}
+
+    if "purchase.lack_after_conformity_attempt" not in facts:
+        return _ask(
+            "purchase.lack_after_conformity_attempt",
+            "Después del intento de reparación o sustitución, ¿el producto sigue teniendo una falta de conformidad o ha aparecido otra?",
+            "boolean",
+        )
+
+    if _value(facts, "purchase.lack_after_conformity_attempt") is False:
+        if "purchase.repair_still_pending" not in facts:
+            return _ask("purchase.repair_still_pending", "¿La reparación sigue todavía pendiente?", "boolean")
+        if _value(facts, "purchase.repair_still_pending") is True and "purchase.repair_started_date" not in facts:
+            return _ask("purchase.repair_started_date", "¿Desde qué fecha tiene el vendedor el producto para repararlo?", "date")
+
+    if "purchase.seller_declared_will_not_conform" not in facts:
+        return _ask(
+            "purchase.seller_declared_will_not_conform",
+            "¿El vendedor te ha dicho claramente que no va a reparar, sustituir o poner el producto en conformidad?",
+            "boolean",
+        )
+
+    qualifies = (
+        _value(facts, "purchase.lack_after_conformity_attempt") is True
+        or _value(facts, "purchase.seller_declared_will_not_conform") is True
+    )
+    if not qualifies:
+        return {"done": True, "question": None, "field": None}
+
+    if "purchase.defect_description" not in facts:
+        return _ask("purchase.defect_description", "Describe brevemente qué problema sigue teniendo ahora el producto.", "text")
+    if "purchase.same_origin_after_repair" not in facts:
+        return _ask(
+            "purchase.same_origin_after_repair",
+            "¿El defecto que ha reaparecido parece ser del mismo origen que el que motivó la reparación?",
+            "boolean",
+        )
+    if _value(facts, "purchase.same_origin_after_repair") is True and "purchase.repair_return_date" not in facts:
+        return _ask("purchase.repair_return_date", "¿Qué día te devolvieron el producto tras la reparación?", "date")
+    if "purchase.preferred_secondary_remedy" not in facts:
+        return _ask(
+            "purchase.preferred_secondary_remedy",
+            "Si legalmente procede, ¿prefieres pedir la resolución de la compra o una reducción proporcional del precio?",
+            "choice",
+            [
+                {"value": "termination", "label": "Resolver la compra y recuperar el precio"},
+                {"value": "price_reduction", "label": "Pedir una reducción proporcional del precio"},
+            ],
+        )
+    if _value(facts, "purchase.preferred_secondary_remedy") == "termination" and "purchase.defect_material" not in facts:
+        return _ask(
+            "purchase.defect_material",
+            "¿El problema afecta de forma importante al uso, valor o características por las que compraste el producto?",
+            "boolean",
+        )
+    return {"done": True, "question": None, "field": None}
+
+
+def _c03_question(facts: dict[str, FactValue]) -> dict:
+    order = [
+        ("purchase.buyer_is_consumer", "¿Compraste el producto como particular, no para una actividad profesional o empresa?", "boolean"),
+        ("purchase.seller_is_business", "¿Lo compraste a una tienda, empresa o vendedor profesional?", "boolean"),
+        ("purchase.product_name", "¿Qué producto compraste?", "text"),
+        ("purchase.delivery_date", "¿Qué día lo recibiste?", "date"),
+        ("purchase.price", "¿Cuánto pagaste por el producto?", "money"),
+        ("purchase.contract_description", "¿Qué producto, modelo, cantidad o accesorios figuraban en la compra o anuncio?", "text"),
+        ("purchase.received_description", "¿Qué recibiste realmente y qué falta o qué es distinto?", "text"),
+        ("purchase.mismatch_confirmed", "¿Confirmas que lo recibido no coincide con lo contratado en producto, modelo, cantidad, calidad o accesorios?", "boolean"),
+        ("purchase.mismatch_material", "¿La diferencia afecta de forma importante al uso, cantidad, características o valor de la compra?", "boolean"),
+        ("purchase.seller_denied_conformity", "¿El vendedor ya se ha negado a corregirlo, sustituirlo o completar lo que falta?", "boolean"),
+    ]
+    for key, question, input_type in order:
+        if key not in facts:
+            return _ask(key, question, input_type)
+    return {"done": True, "question": None, "field": None}
+
+
+def _next_question(facts: dict[str, FactValue], family: str | None) -> dict:
+    if family == "C02":
+        return _c02_question(facts)
+    if family == "C03":
+        return _c03_question(facts)
+    return _ORIGINAL_NEXT_QUESTION(facts, family)
 
 
 def _seed_legal(db: Session):
@@ -193,6 +308,7 @@ def install_purchase_extensions() -> None:
         "C02": ["GOODS_POST_CONFORMITY_ATTEMPT"],
         "C03": ["GOODS_CONTRACT_DESCRIPTION"],
     })
+    svc.next_question = _next_question
     svc.seed_legal = _seed_legal
     svc.create_case = _create_case
     svc.prepare_claim_package = _prepare_claim_package
