@@ -1,0 +1,67 @@
+def create_case(client):
+    r=client.post("/api/cases",json={"message":"Me cambié de compañía de luz y me siguen cobrando un mantenimiento"}); assert r.status_code==200
+    return r.json()["id"]
+
+def put_fact(client,cid,key,value):
+    r=client.post(f"/api/cases/{cid}/facts",json={"key":key,"value":value,"state":"confirmed","user_confirmed":True}); assert r.status_code==200
+
+def complete(client,cid):
+    put_fact(client,cid,"electricity.supply_end_date","2026-06-03")
+    put_fact(client,cid,"electricity.addon.identity","Protección Hogar")
+    put_fact(client,cid,"electricity.addon.ever_contracted",True)
+    put_fact(client,cid,"electricity.addon.contracted_with_supply",True)
+    put_fact(client,cid,"electricity.addon.keep_requested",False)
+    r=client.post(f"/api/cases/{cid}/charges",json={"charges":[
+      {"amount":8.99,"service_period_start":"2026-06-04","service_period_end":"2026-07-03","evidence_verified":True},
+      {"amount":8.99,"service_period_start":"2026-07-04","service_period_end":"2026-08-03","evidence_verified":True}
+    ]}); assert r.status_code==200
+
+def test_full_diagnosis_api(client):
+    cid=create_case(client); complete(client,cid)
+    r=client.post(f"/api/cases/{cid}/diagnose"); assert r.status_code==200
+    body=r.json(); assert body["viability"]=="HIGH"; assert body["claimable_amount"]==17.98
+    r=client.get(f"/api/cases/{cid}"); assert r.json()["status"]=="DIAGNOSED"
+
+def test_submission_deadline_is_provisional_without_holiday_calendar(client):
+    cid=create_case(client); complete(client,cid); client.post(f"/api/cases/{cid}/diagnose")
+    r=client.post(f"/api/cases/{cid}/submission",json={"submitted_on":"2026-09-01","channel":"web"}); assert r.status_code==200
+    assert r.json()["deadline_status"]=="PROVISIONAL_CALENDAR"
+
+def test_response_analysis(client):
+    cid=create_case(client)
+    r=client.post(f"/api/cases/{cid}/responses",json={"text":"Denegamos la devolución porque el contrato de mantenimiento es independiente."})
+    assert r.status_code==200; assert "INDEPENDENT_ADDON_CONTRACT" in r.json()["analysis"]["arguments"]
+
+def test_prepare_claim_package(client):
+    cid=create_case(client); complete(client,cid); client.post(f"/api/cases/{cid}/diagnose")
+    r=client.post(f"/api/cases/{cid}/prepare-claim"); assert r.status_code==200
+    body=r.json(); assert body["amount"]==17.98; assert "artículo 32.4" in body["text"]
+    assert "REFUND_VERIFIED_POST_TERMINATION_CHARGES" in body["remedies"]
+
+
+def test_company_assertion_reopens_contradictor_and_lowers_to_medium(client):
+    cid=create_case(client); complete(client,cid); client.post(f"/api/cases/{cid}/diagnose")
+    r=client.post(f"/api/cases/{cid}/responses",json={"text":"Denegamos la devolución porque el contrato de mantenimiento es independiente."})
+    assert r.status_code==200
+    updated=r.json()["updated_diagnosis"]
+    assert updated["viability"]=="MEDIUM"
+    assert any(x["type"]=="INDEPENDENT_ADDON_CONTRACT" and x["status"]=="open" for x in updated["counterarguments"])
+
+
+def test_unknown_company_response_routes_to_human_review(client):
+    cid=create_case(client)
+    r=client.post(f"/api/cases/{cid}/responses",json={"text":"Su solicitud ha sido gestionada con referencia 12345."})
+    assert r.status_code==200; assert r.json()["analysis"]["type"]=="UNKNOWN"
+    assert r.json()["case_status"]=="HUMAN_REVIEW"
+
+
+def test_outcome_requires_user_verification_to_close(client):
+    cid=create_case(client)
+    r=client.post(f"/api/cases/{cid}/outcome",json={"result_type":"FAVORABLE","amount_recovered":26.97,"verified_by_user":False})
+    assert r.json()["case_status"]=="RESOLVED_PENDING_EXECUTION"
+    r=client.post(f"/api/cases/{cid}/outcome",json={"result_type":"FAVORABLE","amount_recovered":26.97,"verified_by_user":True})
+    assert r.json()["case_status"]=="RESOLVED"
+
+
+def test_demo_frontend_is_served(client):
+    r=client.get("/demo/"); assert r.status_code==200; assert "Cuéntame qué te ha pasado" in r.text
