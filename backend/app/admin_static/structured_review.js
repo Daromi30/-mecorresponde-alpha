@@ -241,9 +241,7 @@
         <div class="meta">Conclusión del revisor</div>
         <textarea id="structuredReviewerDecision" placeholder="Qué se ha comprobado, qué evidencia lo sustenta y por qué se modifica el expediente"></textarea>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:13px">
-        <input id="reanalyzeStructuredReview" type="checkbox" checked style="min-width:auto;width:auto"> Reanalizar automáticamente con las reglas del Motor
-      </label>
+      <div class="meta" style="margin:10px 0">Los hechos estructurados se reanalizan siempre con las reglas del Motor.</div>
       <button type="button" id="resolveStructuredReview">Guardar hechos y reanalizar</button>
       <div id="structuredReviewResult"></div>`;
     completeSection.parentNode.insertBefore(section, completeSection);
@@ -316,7 +314,7 @@
           body: JSON.stringify({
             reviewer_decision: decision,
             fact_updates: factUpdates,
-            reanalyze: document.getElementById('reanalyzeStructuredReview').checked,
+            reanalyze: true,
           }),
         });
         const diagnosis = response.updated_diagnosis;
