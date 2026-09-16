@@ -102,9 +102,19 @@ def test_e05_company_exception_argument_reanalyzes(client):
     post_fact(client, cid, "electricity.switch_to_pvpc_as_vulnerable", False)
     post_fact(client, cid, "electricity.fixed_price_contract", False)
     assert client.post(f"/api/cases/{cid}/diagnose").json()["viability"] == "HIGH"
+    assert client.post(f"/api/cases/{cid}/prepare-claim").status_code == 200
+    submitted = client.post(
+        f"/api/cases/{cid}/submission",
+        json={"submitted_on": "2026-09-15", "channel": "web"},
+    )
+    assert submitted.status_code == 200, submitted.text
     response = client.post(
-        f"/api/cases/{cid}/responses",
-        json={"text": "La penalización es válida porque era un contrato a precio fijo y se canceló durante el primer año, antes de la primera prórroga anual."},
+        f"/api/cases/{cid}/responses/evidenced",
+        json={
+            "text": "La penalización es válida porque era un contrato a precio fijo y se canceló durante el primer año, antes de la primera prórroga anual.",
+            "received_on": "2026-09-16",
+            "channel": "email",
+        },
     )
     assert response.status_code == 200, response.text
     body = response.json()
