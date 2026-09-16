@@ -15,11 +15,11 @@ def test_submission_input_accepts_traceable_channel_and_reference():
     assert payload.reference_number == "RE-2026-12345"
 
 
-def test_submission_channel_and_reference_are_bounded():
+def test_submission_channel_and_reference_are_bounded_to_persistence_limits():
     with pytest.raises(ValidationError):
         SubmissionInput(
             submitted_on="2026-09-15",
-            channel="x" * 41,
+            channel="x" * 31,
             reference_number=None,
         )
 
@@ -27,7 +27,7 @@ def test_submission_channel_and_reference_are_bounded():
         SubmissionInput(
             submitted_on="2026-09-15",
             channel="email",
-            reference_number="x" * 201,
+            reference_number="x" * 101,
         )
 
 
