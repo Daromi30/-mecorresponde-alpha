@@ -1,7 +1,7 @@
 from sqlalchemy import select
 
 from app import services_v2 as svc
-from app.models import AuditEvent, Case, Evidence, Fact
+from app.models import Action, AuditEvent, Case, Evidence, Fact
 
 
 def test_company_fact_preserves_advanced_case_phase_and_provenance(db):
@@ -10,8 +10,14 @@ def test_company_fact_preserves_advanced_case_phase_and_provenance(db):
         vertical="electricity",
         family="E04-B",
         title="Company fact lifecycle",
+        current_decision_id="decision-remains-current",
     )
     db.add(case)
+    db.flush()
+    waiting = Action(case_id=case.id, type="WAIT_FOR_RESPONSE", status="OPEN", payload_json={})
+    db.add(waiting)
+    db.flush()
+    case.current_action_id = waiting.id
     db.commit()
     db.refresh(case)
 
@@ -29,6 +35,9 @@ def test_company_fact_preserves_advanced_case_phase_and_provenance(db):
     refreshed = db.get(Case, case.id)
     assert refreshed is not None
     assert refreshed.status == "WAITING_RESPONSE"
+    assert refreshed.current_action_id == waiting.id
+    assert refreshed.current_decision_id == "decision-remains-current"
+    assert db.get(Action, waiting.id).status == "OPEN"
 
     stored = db.get(Fact, fact.id)
     assert stored is not None
@@ -53,14 +62,25 @@ def test_company_fact_preserves_advanced_case_phase_and_provenance(db):
     assert (audit.payload_json or {}).get("source") == "company"
 
 
-def test_user_fact_still_reopens_intake_for_reanalysis(db):
+def test_user_fact_reopens_intake_and_supersedes_stale_analysis(db):
     case = Case(
-        status="DIAGNOSED",
+        status="READY_TO_SUBMIT",
         vertical="electricity",
         family="E04-B",
         title="User fact lifecycle",
+        current_decision_id="stale-decision-id",
     )
     db.add(case)
+    db.flush()
+    prepared = Action(
+        case_id=case.id,
+        type="SUBMIT_INITIAL_CLAIM",
+        status="READY",
+        payload_json={"text": "stale prepared claim"},
+    )
+    db.add(prepared)
+    db.flush()
+    case.current_action_id = prepared.id
     db.commit()
     db.refresh(case)
 
@@ -78,3 +98,24 @@ def test_user_fact_still_reopens_intake_for_reanalysis(db):
     refreshed = db.get(Case, case.id)
     assert refreshed is not None
     assert refreshed.status == "INTAKE"
+    assert refreshed.current_action_id is None
+    assert refreshed.current_decision_id is None
+
+    stale_action = db.get(Action, prepared.id)
+    assert stale_action is not None
+    assert stale_action.status == "SUPERSEDED"
+    assert stale_action.completed_at is not None
+
+    audit = db.scalars(
+        select(AuditEvent)
+        .where(
+            AuditEvent.case_id == case.id,
+            AuditEvent.event_type == "CURRENT_ANALYSIS_SUPERSEDED",
+        )
+        .order_by(AuditEvent.created_at.desc())
+    ).first()
+    assert audit is not None
+    payload = audit.payload_json or {}
+    assert payload.get("fact_key") == "electricity.addon.keep_requested"
+    assert payload.get("previous_action_id") == prepared.id
+    assert payload.get("previous_decision_id") == "stale-decision-id"
