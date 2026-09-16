@@ -65,9 +65,93 @@
     return normalized;
   }
 
+  function verticalLabel(vertical) {
+    if (vertical === 'electricity') return 'Electricidad';
+    if (vertical === 'purchases') return 'Compras y garantías';
+    return vertical || 'Otra vertical';
+  }
+
+  async function enhanceAssistedReclassification(c, reviewId, review, completeSection) {
+    if (review?.reason !== 'UNSUPPORTED_CLASSIFICATION') return false;
+    if (document.getElementById('assistedReclassificationSection')) return true;
+
+    completeSection.classList.add('hidden');
+    const section = document.createElement('section');
+    section.id = 'assistedReclassificationSection';
+    section.innerHTML = `
+      <h3>Reclasificar al Motor</h3>
+      <div class="meta">Este expediente no pudo clasificarse automáticamente. La revisión humana puede corregir solo el enrutamiento hacia una familia ya registrada; no puede introducir un veredicto, una ley, una cantidad, un plazo ni un organismo.</div>
+      <div style="margin-top:10px">
+        <div class="meta">Familia de resolución</div>
+        <select id="assistedTargetFamily" disabled style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:8px">
+          <option value="">Cargando familias registradas…</option>
+        </select>
+      </div>
+      <div style="margin-top:10px">
+        <div class="meta">Motivo de la reclasificación</div>
+        <textarea id="assistedRoutingDecision" placeholder="Qué elementos del relato permiten encajar el expediente en esta familia, sin resolver todavía el fondo jurídico"></textarea>
+      </div>
+      <button type="button" id="reclassifyAssistedReview" disabled>Reclasificar y continuar el intake</button>
+      <div id="assistedRoutingResult"></div>`;
+    completeSection.parentNode.insertBefore(section, completeSection);
+
+    const select = document.getElementById('assistedTargetFamily');
+    const button = document.getElementById('reclassifyAssistedReview');
+    const resultEl = document.getElementById('assistedRoutingResult');
+
+    try {
+      const data = await api('/api/admin/review-routing/families');
+      const families = data.families || [];
+      select.innerHTML = '<option value="">Selecciona una familia registrada</option>' + families.map(item =>
+        `<option value="${esc(item.code)}">${esc(item.code)} · ${esc(verticalLabel(item.vertical))} · ${esc(item.title)}</option>`
+      ).join('');
+      select.disabled = false;
+      button.disabled = false;
+    } catch (error) {
+      resultEl.innerHTML = `<div class="danger" style="margin-top:10px">No se han podido cargar las familias registradas: ${esc(error.message)}</div>`;
+      return true;
+    }
+
+    button.addEventListener('click', async () => {
+      const targetFamily = select.value;
+      const decision = document.getElementById('assistedRoutingDecision').value.trim();
+      if (!targetFamily) {
+        resultEl.innerHTML = '<div class="danger" style="margin-top:10px">Selecciona una familia del Motor.</div>';
+        return;
+      }
+      if (decision.length < 3) {
+        resultEl.innerHTML = '<div class="danger" style="margin-top:10px">Explica brevemente por qué el relato debe entrar en esa familia.</div>';
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = 'Reclasificando…';
+      try {
+        const response = await api(`/api/admin/reviews/${reviewId}/reclassify`, {
+          method: 'POST',
+          body: JSON.stringify({target_family: targetFamily, reviewer_decision: decision}),
+        });
+        resultEl.innerHTML = `<div class="meta" style="margin-top:10px"><b>Expediente reclasificado a ${esc(response.family)}.</b> El Motor vuelve al intake y pedirá sus hechos necesarios antes de emitir un diagnóstico.</div>`;
+        await refreshAll();
+        detailEl.innerHTML = '<div class="empty">La clasificación humana se ha incorporado. El expediente vuelve al flujo normal del Motor sin una conclusión jurídica manual.</div>';
+      } catch (error) {
+        resultEl.innerHTML = `<div class="danger" style="margin-top:10px">${esc(error.message)}</div>`;
+        button.disabled = false;
+        button.textContent = 'Reclasificar y continuar el intake';
+      }
+    });
+    return true;
+  }
+
   function enhanceStructuredReview(c, reviewId) {
     const completeSection = document.getElementById('completeReview')?.closest('section');
     if (!completeSection || document.getElementById('structuredReviewSection')) return;
+    const review = (c.human_reviews || []).find(item => item.id === reviewId);
+
+    if (review?.reason === 'UNSUPPORTED_CLASSIFICATION') {
+      enhanceAssistedReclassification(c, reviewId, review, completeSection);
+      return;
+    }
 
     const knownKeys = [...new Set((c.facts || []).map(item => item.key).filter(Boolean))].sort();
     const datalist = document.createElement('datalist');
