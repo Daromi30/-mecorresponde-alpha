@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -33,7 +34,7 @@ class CompanyResponseEvidenceInput(BaseModel):
 
 
 class OutcomeEvidenceInput(BaseModel):
-    result_type: str = Field(default="FAVORABLE", min_length=2, max_length=50)
+    result_type: Literal["FAVORABLE"] = "FAVORABLE"
     amount_recovered: float | None = Field(default=None, ge=0)
     verified_by_user: bool = False
     resolved_on: date | None = None
@@ -363,7 +364,7 @@ def evidenced_outcome(
     result = process_outcome(
         case_id,
         OutcomeInput(
-            result_type=payload.result_type,
+            result_type="FAVORABLE",
             amount_recovered=payload.amount_recovered,
             verified_by_user=payload.verified_by_user,
         ),
