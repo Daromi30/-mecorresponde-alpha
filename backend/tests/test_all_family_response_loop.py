@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 
+from app.engine.gateway import DeterministicAlphaGateway
 from app.models import Action, AuditEvent, Case
 from app.reviews import HumanReview
 
@@ -67,6 +68,16 @@ def _submitted_case(client, family: str, scenario: dict) -> str:
     assert submitted.status_code == 200, f"{family}: {submitted.text}"
     assert client.get(f"/api/cases/{case_id}").json()["status"] == "WAITING_RESPONSE"
     return case_id
+
+
+def test_mixed_concession_is_not_misclassified_as_full_acceptance():
+    gateway = DeterministicAlphaGateway()
+    mixed = gateway.analyze_response(
+        "Aceptamos una parte del importe reclamado, pero no aceptamos el resto."
+    )
+    assert mixed == {"type": "PARTIAL", "arguments": []}
+    full = gateway.analyze_response("Aceptamos su reclamación y procederemos a devolver el importe.")
+    assert full == {"type": "ACCEPTANCE", "arguments": []}
 
 
 def test_every_beta_family_can_complete_favorable_response_and_verified_execution(client):
