@@ -279,6 +279,7 @@ def case_timeline(case_id: str, db: Session = Depends(get_db)):
                 "label": "Resolución comprobada",
                 "detail": "Has confirmado que el resultado se ha cumplido y el expediente puede considerarse resuelto.",
                 "at": outcome.resolved_at,
+                "resolved_on": outcome.resolved_on,
             }
         )
 
@@ -377,6 +378,7 @@ def evidenced_outcome(
 
     outcome_row.non_monetary_result = payload.non_monetary_result
     outcome_row.resolution_channel = payload.resolution_channel
+    outcome_row.resolved_on = payload.resolved_on
     db.add(
         AuditEvent(
             case_id=case.id,
