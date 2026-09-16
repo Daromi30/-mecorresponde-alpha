@@ -103,6 +103,12 @@ def test_verified_non_monetary_resolution_preserves_execution_evidence(client, d
     assert resolution["resolved_on"] == "2026-09-15"
     assert resolution["at"] is not None
 
+    handoff = client.get(f"/api/cases/{case_id}/handoff")
+    assert handoff.status_code == 200, handoff.text
+    exported = handoff.json()["outcomes"][0]
+    assert exported["resolved_on"] == "2026-09-15"
+    assert exported["resolved_at"] is not None
+
 
 def test_unknown_execution_date_remains_unknown(client, db):
     case_id = create_case_awaiting_execution(client)
