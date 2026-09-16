@@ -44,18 +44,6 @@
       </tr>`).join('')}</tbody></table>`;
   }
 
-  function enforceMandatoryReanalysis() {
-    const input = document.getElementById('reanalyzeStructuredReview');
-    if (!input) return;
-    input.checked = true;
-    input.disabled = true;
-    input.setAttribute('aria-label', 'Reanálisis obligatorio con las reglas del Motor');
-    const label = input.closest('label');
-    if (label) {
-      label.title = 'Los hechos estructurados siempre vuelven a pasar por las reglas del Motor.';
-    }
-  }
-
   async function renderReviewContext(caseData, reviewId) {
     const old = document.getElementById('reviewOperationalContext');
     if (old) old.remove();
@@ -90,7 +78,6 @@
   const baseRenderCaseForContext = renderCase;
   renderCase = function(c, reviewId) {
     const result = baseRenderCaseForContext(c, reviewId);
-    enforceMandatoryReanalysis();
     renderReviewContext(c, reviewId);
     return result;
   };

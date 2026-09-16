@@ -30,19 +30,30 @@ def test_review_context_uses_normalized_real_dates_and_verified_outcome():
     assert "sessionStorage" not in script
 
 
-def test_review_context_removes_reanalysis_opt_out_semantics():
-    script = (ADMIN_STATIC / "review_context.js").read_text(encoding="utf-8")
-    assert "reanalyzeStructuredReview" in script
-    assert "input.checked = true" in script
-    assert "input.disabled = true" in script
-    assert "Reanálisis obligatorio" in script
+def test_structured_review_has_no_reanalysis_opt_out():
+    structured = (ADMIN_STATIC / "structured_review.js").read_text(encoding="utf-8")
+    context = (ADMIN_STATIC / "review_context.js").read_text(encoding="utf-8")
+    guard = (ADMIN_STATIC / "structured_review_reanalysis_guard.js").read_text(encoding="utf-8")
+    for script in [structured, context, guard]:
+        assert "reanalyzeStructuredReview" not in script
+        assert "Reanalizar automáticamente" not in script
+    assert "reanalyze: true" in structured
+    assert "Los hechos estructurados se reanalizan siempre con las reglas del Motor" in structured
+    assert "input.checked = true" not in context
+    assert "input.disabled = true" not in context
+    assert "Compatibility shim" in guard
 
 
 def test_review_context_javascript_parses_when_node_is_available():
     node = shutil.which("node")
     if not node:
         return
-    for filename in ["readiness.js", "review_context.js"]:
+    for filename in [
+        "readiness.js",
+        "review_context.js",
+        "structured_review.js",
+        "structured_review_reanalysis_guard.js",
+    ]:
         source = (ADMIN_STATIC / filename).read_text(encoding="utf-8")
         with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
             handle.write(source)
