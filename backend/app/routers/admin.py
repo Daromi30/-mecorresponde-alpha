@@ -311,7 +311,7 @@ def complete_review(
     raise HTTPException(
         status_code=409,
         detail=(
-            "Generic free-text review completion is disabled; use structured fact resolution, "
+            "Human reviews cannot be closed with a generic note; use structured fact resolution, "
             "assisted reclassification, or the explicit professional-review workflow"
         ),
     )
