@@ -110,6 +110,23 @@ def _require_prepared_claim_before_submission(request: Request, db: Session, cas
         )
 
 
+def _require_new_fact_before_missing_information_replay(request: Request, case: Case) -> None:
+    """Do not rerun the same incomplete claimant snapshot.
+
+    A claimant fact/document update already supersedes the prior analysis and moves the
+    case back to INTAKE. Other phases keep their existing, more specific guards: the Motor
+    rejects duplicate diagnosis after DIAGNOSED and the locked-phase boundary protects
+    submitted, response, review and resolved cases.
+    """
+    if request.method.upper() != "POST" or not request.url.path.rstrip("/").endswith("/diagnose"):
+        return
+    if case.status == "NEEDS_INFORMATION":
+        raise HTTPException(
+            status_code=409,
+            detail="Update the case facts before requesting a new diagnosis",
+        )
+
+
 def _block_locked_initial_mutation(request: Request, db: Session, case: Case) -> None:
     """Prevent case-owner endpoints from rewinding a case after the action phase starts."""
     if request.method.upper() != "POST":
@@ -154,6 +171,7 @@ def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Cas
     _block_legacy_untraced_resolution_routes(request)
     _require_prepared_claim_before_submission(request, db, case)
     _block_locked_initial_mutation(request, db, case)
+    _require_new_fact_before_missing_information_replay(request, case)
 
 
 def require_case_access(request: Request, db: Session = Depends(get_db)) -> None:
