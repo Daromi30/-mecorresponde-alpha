@@ -76,19 +76,30 @@ def _block_case_user_review_completion(request: Request) -> None:
         )
 
 
-def _block_locked_initial_mutation(request: Request, db: Session, case: Case) -> None:
-    """Prevent case-owner endpoints from rewinding a case after the action phase starts.
+def _block_legacy_untraced_resolution_routes(request: Request) -> None:
+    """Require evidence-aware HTTP routes for responses and outcomes.
 
-    Once an initial claim was submitted, later evidence belongs to the response/review/
-    outcome loop. Re-posting intake facts or rerunning initial diagnosis/claim preparation
-    would otherwise reset status or create duplicate outbound actions. Internal response
-    analysis and protected backoffice review call service functions directly and are not
-    affected by this HTTP boundary.
-
-    Before submission, a HUMAN_REVIEW case still lets /prepare-claim reach the normal
-    decision gate. That endpoint already fails closed with 422 for a non-preparable
-    diagnosis, preserving its established API contract without allowing any mutation.
+    The legacy router functions remain as internal processing primitives for the evidenced
+    endpoints. Direct browser/API callers must use the richer routes so dates/channels and
+    execution evidence cannot be silently omitted.
     """
+    if request.method.upper() != "POST":
+        return
+    path = request.url.path.rstrip("/")
+    if path.endswith("/responses"):
+        raise HTTPException(
+            status_code=409,
+            detail="Use the evidenced company-response endpoint for this case",
+        )
+    if path.endswith("/outcome"):
+        raise HTTPException(
+            status_code=409,
+            detail="Use the evidenced outcome endpoint for this case",
+        )
+
+
+def _block_locked_initial_mutation(request: Request, db: Session, case: Case) -> None:
+    """Prevent case-owner endpoints from rewinding a case after the action phase starts."""
     if request.method.upper() != "POST":
         return
 
@@ -128,6 +139,7 @@ def _block_locked_initial_mutation(request: Request, db: Session, case: Case) ->
 
 def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Case) -> None:
     _block_case_user_review_completion(request)
+    _block_legacy_untraced_resolution_routes(request)
     _block_locked_initial_mutation(request, db, case)
 
 
@@ -150,8 +162,6 @@ def require_case_access(request: Request, db: Session = Depends(get_db)) -> None
 
     supplied_hash = hash_case_token(supplied)
     if not hmac.compare_digest(supplied_hash, access.token_hash):
-        # Return 404 instead of 401/403 so callers cannot use the endpoint to
-        # discover whether a given case UUID exists.
         raise HTTPException(status_code=404, detail="Case not found")
 
     if case is None:
