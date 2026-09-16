@@ -26,10 +26,12 @@ def test_structured_review_ui_reanalyzes_facts_without_manual_legal_fields():
     assert "success_probability" not in script
 
 
-def test_structured_review_ui_keeps_free_text_path_as_non_structured_fallback():
-    script = (ADMIN_STATIC / "structured_review.js").read_text(encoding="utf-8")
-    assert "Cerrar revisión solo con una nota interna" in script
-    assert "no añade hechos estructurados" in script
+def test_backoffice_hides_legacy_generic_review_completion_path():
+    html = (ADMIN_STATIC / "index.html").read_text(encoding="utf-8")
+    assert 'id="reviewResolutionAnchor" style="display:none"' in html
+    assert 'id="completeReview" type="button" disabled hidden' in html
+    assert "/api/admin/reviews/' + reviewId + '/complete" not in html
+    assert "Completar revisión" not in html
 
 
 def test_structured_review_javascript_parses_when_node_is_available():
