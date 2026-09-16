@@ -92,4 +92,5 @@
   loadEnhancement('/demo/communication_history.js', 'mcr-communication-history');
   loadEnhancement('/demo/deadline_guidance.js', 'mcr-deadline-guidance');
   loadEnhancement('/demo/documentation.js', 'mcr-documentation');
+  loadEnhancement('/demo/response_evidence.js', 'mcr-response-evidence');
 })();
