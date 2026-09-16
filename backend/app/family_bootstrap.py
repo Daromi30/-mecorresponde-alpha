@@ -137,12 +137,27 @@ def install_all_families() -> tuple[str, ...]:
         def prepare_claim_for_all_families(db, case):
             current = db.get(Action, case.current_action_id) if case.current_action_id else None
             if (
-                current is not None
+                case.status == "READY_TO_SUBMIT"
+                and current is not None
                 and current.case_id == case.id
                 and current.type == "SUBMIT_INITIAL_CLAIM"
                 and current.status == "READY"
             ):
                 return {"action_id": current.id, **(current.payload_json or {})}
+
+            if case.status != "DIAGNOSED" or not case.current_decision_id:
+                raise ValueError("Diagnose the current fact snapshot before preparing a claim")
+
+            decision = db.get(Decision, case.current_decision_id)
+            if decision is None or decision.case_id != case.id:
+                raise ValueError("The current diagnosis could not be verified")
+            latest_decision = db.scalars(
+                select(Decision)
+                .where(Decision.case_id == case.id)
+                .order_by(Decision.created_at.desc())
+            ).first()
+            if latest_decision is None or latest_decision.id != decision.id:
+                raise ValueError("The current diagnosis is stale; diagnose the case again before preparing a claim")
 
             if (case.family or "") in REGISTERED_EXTENSION_FAMILIES:
                 return prepare_registered_claim_package(db, case)
@@ -151,13 +166,6 @@ def install_all_families() -> tuple[str, ...]:
             # READY action. A preparable procedural action can legitimately have a result
             # label other than APPLIES, so provenance is resolved from every exact rule
             # version attached to the current decision rather than from that label alone.
-            decision = db.scalars(
-                select(Decision)
-                .where(Decision.case_id == case.id)
-                .order_by(Decision.created_at.desc())
-            ).first()
-            if decision is None:
-                raise ValueError("Diagnose the case before preparing a claim")
             verified_basis = _verified_basis_for_preparable_decision(db, decision)
 
             preceding = current
