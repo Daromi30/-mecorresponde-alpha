@@ -6,6 +6,27 @@ from .models import Case, Decision, Evidence, Fact
 from .reviews import HumanReview
 
 
+def _active_fact_rows(facts: list[Fact]) -> list[Fact]:
+    """Return only facts that have not been superseded by a later fact.
+
+    Facts are immutable history rows. Quality/readiness must describe the current
+    dossier, not count stale values that were explicitly replaced. The supersedes
+    chain is authoritative; as a defensive fallback, if multiple unsuperseded rows
+    share a key, keep the last row supplied by the caller (the API queries facts in
+    ascending creation order).
+    """
+    superseded_ids = {
+        fact.supersedes_fact_id
+        for fact in facts
+        if fact.supersedes_fact_id
+    }
+    candidates = [fact for fact in facts if fact.id not in superseded_ids]
+    latest_by_key: dict[str, Fact] = {}
+    for fact in candidates:
+        latest_by_key[fact.key] = fact
+    return list(latest_by_key.values())
+
+
 def build_dossier_quality(
     case: Case,
     facts: Iterable[Fact],
@@ -13,13 +34,21 @@ def build_dossier_quality(
     decisions: Iterable[Decision],
     reviews: Iterable[HumanReview],
 ) -> dict[str, Any]:
-    """Describe dossier readiness without inventing a legal confidence score.
+    """Describe current dossier readiness without inventing a legal confidence score.
 
-    This profile is intentionally factual. It reports confirmation/evidence coverage and
-    workflow gates, but never converts them into a probability of legal success.
+    Historical facts remain available elsewhere for auditability, but this profile
+    reports the active factual state only. Evidence attached solely to a superseded
+    fact does not inflate current documentary coverage.
     """
-    fact_rows = list(facts)
-    evidence_rows = list(evidence)
+    fact_history = list(facts)
+    fact_rows = _active_fact_rows(fact_history)
+    active_fact_ids = {fact.id for fact in fact_rows}
+    evidence_history = list(evidence)
+    evidence_rows = [
+        item
+        for item in evidence_history
+        if item.fact_id is None or item.fact_id in active_fact_ids
+    ]
     decision_rows = list(decisions)
     review_rows = list(reviews)
 
@@ -97,7 +126,8 @@ def build_dossier_quality(
             else 0,
         },
         "note": (
-            "Este perfil describe la calidad factual y documental del expediente. "
+            "Este perfil describe la calidad factual y documental actual del expediente. "
+            "El historial sustituido se conserva para trazabilidad, pero no infla estas métricas. "
             "No es una probabilidad de éxito jurídico."
         ),
     }
