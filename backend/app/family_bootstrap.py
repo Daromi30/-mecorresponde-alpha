@@ -8,8 +8,59 @@ from . import services_v2 as svc
 from .engine.guarded_gateway import GuardedModelGateway
 from .family_manifest import FAMILY_MANIFEST, supported_family_codes
 from .legal_source_registry import reconcile_legal_sources
+from .models import LegalRuleVersion, LegalSource
 
 _INSTALLED = False
+
+
+def _verified_basis_for_preparable_decision(db, decision):
+    """Resolve every exact reviewed rule version attached to a preparable decision.
+
+    Some legitimate actions are deliberately emitted before a substantive rule result is
+    labelled ``APPLIES``. Examples include giving the seller an additional delivery period
+    and sending a withdrawal notice. Those actions still derive from the reviewed family
+    rule and must carry its official provenance. The decision has already passed the
+    evaluator/viability gate before this helper is used, so provenance follows the exact
+    rule versions evaluated rather than a particular result label.
+    """
+    basis = []
+    seen = set()
+    for evaluation in decision.rule_evaluations_json or []:
+        rule_id = str(evaluation.get("rule_id") or "")
+        version = int(evaluation.get("version") or 0)
+        key = (rule_id, version)
+        if not rule_id or version <= 0 or key in seen:
+            continue
+        seen.add(key)
+        rule = db.scalar(
+            select(LegalRuleVersion).where(
+                LegalRuleVersion.rule_id == rule_id,
+                LegalRuleVersion.version == version,
+                LegalRuleVersion.review_status == "approved",
+            )
+        )
+        if rule is None:
+            raise ValueError(f"Reviewed legal rule version missing for {rule_id} v{version}")
+        source = db.get(LegalSource, rule.source_id)
+        if (
+            source is None
+            or source.status != "active"
+            or not source.official_url.startswith("https://www.boe.es/")
+        ):
+            raise ValueError(f"Verified official legal source missing for {rule_id} v{version}")
+        basis.append(
+            {
+                "rule_id": rule.rule_id,
+                "version": rule.version,
+                "article": rule.article,
+                "source_id": rule.source_id,
+                "source": source.title,
+                "official_url": source.official_url,
+            }
+        )
+    if not basis:
+        raise ValueError("No reviewed legal rule is attached to the current decision")
+    return basis
 
 
 def install_all_families() -> tuple[str, ...]:
@@ -63,7 +114,6 @@ def install_all_families() -> tuple[str, ...]:
         # used by the current Decision before the package can leave the Motor.
         from .claim_packages import (
             REGISTERED_EXTENSION_FAMILIES,
-            _verified_legal_basis,
             prepare_registered_claim_package,
         )
         from .models import Action, Decision
@@ -84,8 +134,9 @@ def install_all_families() -> tuple[str, ...]:
                 return prepare_registered_claim_package(db, case)
 
             # Fail closed on legal provenance before the legacy/base renderer creates a
-            # READY action. This prevents a package from being persisted if its current
-            # decision no longer points to an approved official rule version.
+            # READY action. A preparable procedural action can legitimately have a result
+            # label other than APPLIES, so provenance is resolved from every exact rule
+            # version attached to the current decision rather than from that label alone.
             decision = db.scalars(
                 select(Decision)
                 .where(Decision.case_id == case.id)
@@ -93,7 +144,7 @@ def install_all_families() -> tuple[str, ...]:
             ).first()
             if decision is None:
                 raise ValueError("Diagnose the case before preparing a claim")
-            verified_basis = _verified_legal_basis(db, decision)
+            verified_basis = _verified_basis_for_preparable_decision(db, decision)
 
             preceding = current
             result = previous_prepare_claim(db, case)
