@@ -109,6 +109,7 @@ def install_reclassification_policy() -> None:
 
     def diagnose_with_registered_reclassification(db: Session, case: Case):
         visited_families: list[str] = []
+        last_reclassification: tuple[str, Any, str, Action] | None = None
 
         for _ in range(_MAX_RECLASSIFICATION_HOPS):
             source_family = case.family or ""
@@ -116,6 +117,7 @@ def install_reclassification_policy() -> None:
             if result.viability != "RECLASSIFY":
                 return result, decision, action
 
+            last_reclassification = (source_family, result, decision.id, action)
             target_family = _REGISTERED_TRANSITIONS.get((source_family, result.next_action))
             if (
                 target_family is None
@@ -167,19 +169,20 @@ def install_reclassification_policy() -> None:
             db.refresh(case)
 
         # A chain longer than the explicit bound is operationally unsafe even if every
-        # individual edge was registered. Escalate instead of risking a routing loop.
-        source_family = case.family or ""
-        result, decision, action = previous_diagnose(db, case)
+        # individual edge was registered. Do not execute one more diagnosis just to detect
+        # it: use the last proven redirect as the review handoff context.
+        assert last_reclassification is not None
+        source_family, result, decision_id, action = last_reclassification
         review_action = _route_unregistered_reclassification_to_review(
             db,
             case,
             source_family=source_family,
             result=result,
-            decision_id=decision.id,
+            decision_id=decision_id,
             source_action=action,
             reason="maximum_reclassification_hops_exceeded",
         )
-        return result, decision, review_action
+        return result, db.get(type(action), action.id) and db.get(type(action), action.id), review_action
 
     svc.diagnose = diagnose_with_registered_reclassification
     _INSTALLED = True
