@@ -31,6 +31,13 @@ router = APIRouter(
 )
 
 
+_GENERIC_COMPLETION_BLOCKED_REASONS = {
+    "UNSUPPORTED_CLASSIFICATION",
+    "POST_DENIAL_ESCALATION_REVIEW",
+    "PROFESSIONAL_ESCALATION_REQUIRED",
+}
+
+
 class ReviewAssignment(BaseModel):
     assigned_to: str = Field(min_length=1, max_length=120)
 
@@ -305,6 +312,14 @@ def complete_review(
         raise HTTPException(
             status_code=409,
             detail="Unsupported-intake routing reviews must be reclassified through the registered family routing endpoint",
+        )
+    if review.reason in {"POST_DENIAL_ESCALATION_REVIEW", "PROFESSIONAL_ESCALATION_REQUIRED"}:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Post-response escalation reviews cannot be closed with a generic note; "
+                "use structured reanalysis or the explicit professional-review workflow"
+            ),
         )
 
     review.status = "COMPLETED"
