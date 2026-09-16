@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..documents import save_upload
-from ..models import Action, Case, Deadline, Decision, Document, Evidence, Fact, Outcome
+from ..models import Action, Case, Communication, Deadline, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
 from ..schemas_v2 import (
     CaseCreate, ChargesInput, DocumentFactConfirm, FactUpsert, HumanReviewComplete,
@@ -253,6 +253,17 @@ def prepare_claim(case_id: str, db: Session = Depends(get_db)):
 def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
     case.status = "WAITING_RESPONSE"
+    # The user supplies a calendar date, not a time of day. Store the outbound
+    # communication without inventing an exact timestamp; the verified submitted_on
+    # date remains in the audit/deadline records.
+    db.add(
+        Communication(
+            case_id=case.id,
+            direction="OUTBOUND",
+            channel=payload.channel,
+            reference_number=payload.reference_number,
+        )
+    )
     audit(db, case.id, "CLAIM_SUBMITTED", {
         "submitted_on": str(payload.submitted_on),
         "reference": payload.reference_number,
