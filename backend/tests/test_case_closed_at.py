@@ -1,6 +1,7 @@
 from sqlalchemy import select
 
 from app.models import Case, Outcome
+from app.reviews import HumanReview
 
 
 def _awaiting_execution(client):
@@ -50,7 +51,7 @@ def _awaiting_execution(client):
     return case_id
 
 
-def test_persistence_policy_sets_closed_at_only_for_terminal_states(db):
+def test_persistence_policy_keeps_closed_at_synchronized_with_terminal_state(db):
     case = Case(status="INTAKE", vertical="electricity", family="E02-A", title="Closure invariant")
     db.add(case)
     db.commit()
@@ -76,6 +77,36 @@ def test_persistence_policy_sets_closed_at_only_for_terminal_states(db):
     db.commit()
     db.refresh(unsupported)
     assert unsupported.closed_at is not None
+
+    unsupported.status = "HUMAN_REVIEW"
+    db.commit()
+    db.refresh(unsupported)
+    assert unsupported.closed_at is None
+
+
+def test_assisted_classification_reopens_unsupported_case_without_stale_closed_at(client, db):
+    response = client.post(
+        "/api/cases",
+        json={"message": "Necesito ayuda con una multa de tráfico que no tiene relación con compras ni electricidad"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["family"] is None
+    assert body["status"] == "HUMAN_REVIEW"
+
+    db.expire_all()
+    case = db.get(Case, body["id"])
+    assert case is not None
+    assert case.status == "HUMAN_REVIEW"
+    assert case.closed_at is None
+    review = db.scalar(
+        select(HumanReview).where(
+            HumanReview.case_id == case.id,
+            HumanReview.reason == "UNSUPPORTED_CLASSIFICATION",
+            HumanReview.status == "OPEN",
+        )
+    )
+    assert review is not None
 
 
 def test_verified_outcome_closes_case_and_handoff_exposes_technical_close_time(client, db):
