@@ -225,6 +225,10 @@ def request_email_verification(
         return {"status": "already_verified"}
     _require_operational_email()
     verification_email_throttle.check(db, user.email)
+    # Commit the request slot before calling the external provider so a concurrent
+    # first request cannot roll back a token after its email has already been sent.
+    verification_email_throttle.hit(db, user.email)
+    db.commit()
 
     token = issue_action_token(db, user, purpose=VERIFY_EMAIL, ttl=VERIFY_EMAIL_TTL)
     link = action_link("verify-email", token)
@@ -243,7 +247,6 @@ def request_email_verification(
         db.rollback()
         logger.warning("MECORRESPONDE verification email delivery failed")
         raise HTTPException(status_code=503, detail="Verification email could not be sent") from exc
-    verification_email_throttle.hit(db, user.email)
     db.commit()
     return {"status": "sent"}
 
@@ -267,6 +270,9 @@ def request_password_reset(payload: EmailRequest, db: Session = Depends(get_db))
     started = time.monotonic()
     email = normalize_email(payload.email)
     password_reset_throttle.check(db, email)
+    password_reset_throttle.hit(db, email)
+    db.commit()
+
     user = db.scalar(select(User).where(User.email == email))
     if user and user.disabled_at is None:
         token = issue_action_token(db, user, purpose=PASSWORD_RESET, ttl=PASSWORD_RESET_TTL)
@@ -282,11 +288,10 @@ def request_password_reset(payload: EmailRequest, db: Session = Depends(get_db))
                     "Si no has solicitado este cambio, ignora este mensaje."
                 ),
             )
+            db.commit()
         except (EmailDeliveryFailed, EmailDeliveryUnavailable):
             db.rollback()
             logger.warning("MECORRESPONDE password reset email delivery failed")
-    password_reset_throttle.hit(db, email)
-    db.commit()
     _minimum_reset_response_time(started)
     return {
         "status": "accepted",
