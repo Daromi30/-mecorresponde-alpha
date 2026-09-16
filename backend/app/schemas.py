@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CaseCreate(BaseModel):
@@ -41,6 +41,13 @@ class SubmissionInput(BaseModel):
     submitted_on: date
     channel: str = Field(default="web", min_length=2, max_length=40)
     reference_number: str | None = Field(default=None, max_length=200)
+
+    @field_validator("submitted_on")
+    @classmethod
+    def submission_date_cannot_be_in_future(cls, value: date) -> date:
+        if value > date.today():
+            raise ValueError("Submission date cannot be in the future")
+        return value
 
 
 class ResponseInput(BaseModel):
