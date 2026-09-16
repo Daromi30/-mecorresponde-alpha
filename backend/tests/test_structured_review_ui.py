@@ -18,7 +18,8 @@ def test_structured_review_ui_reanalyzes_facts_without_manual_legal_fields():
     script = (ADMIN_STATIC / "structured_review.js").read_text(encoding="utf-8")
     assert "/resolve-structured" in script
     assert "fact_updates" in script
-    assert "reanalyze" in script
+    assert "reanalyze: true" in script
+    assert "Los hechos estructurados se reanalizan siempre con las reglas del Motor" in script
     assert "Guardar hechos y reanalizar" in script
     assert "RESERVED_PREFIXES" in script
     for prefix in ["system.", "legal.", "rule.", "decision.", "action."]:
@@ -27,13 +28,16 @@ def test_structured_review_ui_reanalyzes_facts_without_manual_legal_fields():
     assert "success_probability" not in script
 
 
-def test_structured_review_ui_cannot_opt_out_of_deterministic_reanalysis():
+def test_structured_review_ui_has_no_reanalysis_opt_out():
+    structured = (ADMIN_STATIC / "structured_review.js").read_text(encoding="utf-8")
     guard = (ADMIN_STATIC / "structured_review_reanalysis_guard.js").read_text(encoding="utf-8")
-    assert "reanalyzeStructuredReview" in guard
-    assert "checkbox.checked = true" in guard
-    assert "checkbox.disabled = true" in guard
-    assert "obligatorio" in guard
-    assert "MutationObserver" in guard
+    assert "reanalyzeStructuredReview" not in structured
+    assert "reanalyzeStructuredReview" not in guard
+    assert "Reanalizar automáticamente" not in structured
+    assert "MutationObserver" not in guard
+    assert "checkbox.checked" not in guard
+    assert "checkbox.disabled" not in guard
+    assert "Compatibility shim" in guard
 
 
 def test_backoffice_hides_legacy_generic_review_completion_path():
