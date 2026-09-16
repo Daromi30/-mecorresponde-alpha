@@ -75,12 +75,15 @@
     if (document.querySelector(selector)) return;
     const script = document.createElement('script');
     script.src = src;
+    script.async = false;
     script.setAttribute(`data-${datasetKey}`, 'true');
     document.body.appendChild(script);
   }
 
   // Product enhancements stay split into small same-origin modules rather than
-  // expanding the legacy monolithic HTML. The page CSP only permits self scripts.
+  // expanding the legacy monolithic HTML. Load them in a deterministic sequence:
+  // several modules wrap the same global lifecycle functions and later modules
+  // must retain every earlier guard instead of racing during browser startup.
   loadEnhancement('/demo/guided_question_inputs.js', 'mcr-guided-question-inputs');
   loadEnhancement('/demo/alpha_data_guardrail.js', 'mcr-alpha-data-guardrail');
   loadEnhancement('/demo/account_deletion.js', 'mcr-account-deletion');
@@ -94,6 +97,7 @@
   loadEnhancement('/demo/communication_history.js', 'mcr-communication-history');
   loadEnhancement('/demo/deadline_guidance.js', 'mcr-deadline-guidance');
   loadEnhancement('/demo/documentation.js', 'mcr-documentation');
+  loadEnhancement('/demo/submission_evidence.js', 'mcr-submission-evidence');
   loadEnhancement('/demo/response_evidence.js', 'mcr-response-evidence');
   loadEnhancement('/demo/outcome_evidence.js', 'mcr-outcome-evidence');
   loadEnhancement('/demo/escalation_guard.js', 'mcr-escalation-guard');
