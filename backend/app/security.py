@@ -110,17 +110,17 @@ def _require_prepared_claim_before_submission(request: Request, db: Session, cas
         )
 
 
-def _require_user_diagnosis_from_fresh_intake(request: Request, case: Case) -> None:
-    """Only let the claimant trigger a diagnosis after the fact snapshot changed.
+def _require_new_fact_before_missing_information_replay(request: Request, case: Case) -> None:
+    """Do not rerun the same incomplete claimant snapshot.
 
-    A missing-information diagnosis is not a prompt to run the same engine snapshot again.
-    Claimant fact/document updates already move the case back to INTAKE and supersede the
-    previous analysis. Internal response/review reanalysis bypasses this HTTP dependency and
-    remains governed by the Resolution Engine's own lifecycle guard.
+    A claimant fact/document update already supersedes the prior analysis and moves the
+    case back to INTAKE. Other phases keep their existing, more specific guards: the Motor
+    rejects duplicate diagnosis after DIAGNOSED and the locked-phase boundary protects
+    submitted, response, review and resolved cases.
     """
     if request.method.upper() != "POST" or not request.url.path.rstrip("/").endswith("/diagnose"):
         return
-    if case.status != "INTAKE":
+    if case.status == "NEEDS_INFORMATION":
         raise HTTPException(
             status_code=409,
             detail="Update the case facts before requesting a new diagnosis",
@@ -170,8 +170,8 @@ def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Cas
     _block_case_user_review_completion(request)
     _block_legacy_untraced_resolution_routes(request)
     _require_prepared_claim_before_submission(request, db, case)
-    _require_user_diagnosis_from_fresh_intake(request, case)
     _block_locked_initial_mutation(request, db, case)
+    _require_new_fact_before_missing_information_replay(request, case)
 
 
 def require_case_access(request: Request, db: Session = Depends(get_db)) -> None:
