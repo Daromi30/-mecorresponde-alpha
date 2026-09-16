@@ -21,8 +21,8 @@ ARGUMENT_CASES = [
     ("PRICING_MATCHES_CONTRACT_ASSERTED", "El precio coincide con el contrato.", "company.asserts_pricing_matches_contract"),
     ("ESTIMATE_ALLOWED_ASSERTED", "La estimación era procedente.", "company.asserts_estimate_allowed"),
     ("NOTICE_COMPLIANT_ASSERTED", "Avisamos con un mes de antelación.", "company.asserts_notice_compliant"),
-    ("CONTRACTUAL_PRICE_FORMULA_ASSERTED", "La revisión estaba prevista en el contrato.", "company.asserts_contractual_price_formula"),
-    ("CORRECT_AMOUNT_DISPUTED", "El importe facturado es correcto.", "company.asserts_correct_amount"),
+    ("CONTRACTUAL_PRICE_FORMULA_ASSERTED", "Revisión prevista en el contrato.", "company.asserts_contractual_price_formula"),
+    ("CORRECT_AMOUNT_DISPUTED", "Facturación correcta.", "company.asserts_correct_amount"),
     ("DIFFERENT_DEBTS", "Los cargos corresponden a facturas distintas.", "company.asserts_different_debts"),
     ("FIXED_PRICE_FIRST_YEAR_ASSERTED", "Era un contrato a precio fijo durante el primer año.", "company.asserts_fixed_price_first_year"),
     ("MISUSE_OR_ACCIDENTAL_DAMAGE", "La avería se debe a mal uso.", "company.asserts_misuse"),
@@ -30,14 +30,14 @@ ARGUMENT_CASES = [
     ("REFER_TO_MANUFACTURER", "Diríjase al fabricante.", "company.redirects_to_manufacturer"),
     ("GOODS_MATCH_CONTRACT_ASSERTED", "El producto coincide con lo pedido.", "company.asserts_goods_match_contract"),
     ("DELIVERY_PROOF_ASSERTED", "El pedido consta como entregado.", "company.asserts_delivered"),
-    ("WITHDRAWAL_LATE_ASSERTED", "El desistimiento está fuera de plazo.", "company.asserts_withdrawal_late"),
+    ("WITHDRAWAL_LATE_ASSERTED", "Desistimiento fuera de plazo.", "company.asserts_withdrawal_late"),
     ("WITHDRAWAL_EXCEPTION_ASSERTED", "El producto está excluido del desistimiento.", "company.asserts_withdrawal_exception"),
 ]
 
 
 FAMILY_DENIALS = {
     "E01": ("El precio coincide con el contrato.", "company.asserts_pricing_matches_contract"),
-    "E02-A": ("El importe facturado es correcto.", "company.asserts_correct_amount"),
+    "E02-A": ("Facturación correcta.", "company.asserts_correct_amount"),
     "E02-B": ("Los cargos corresponden a facturas distintas.", "company.asserts_different_debts"),
     "E03": ("El CUPS es correcto.", "company.asserts_correct_cups"),
     "E04-A": ("Consta su consentimiento expreso.", "company.asserts_consent"),
@@ -49,7 +49,7 @@ FAMILY_DENIALS = {
     "C02": ("El producto está fuera de garantía.", "company.asserts_outside_guarantee"),
     "C03": ("El producto coincide con lo pedido.", "company.asserts_goods_match_contract"),
     "C04": ("El pedido consta como entregado.", "company.asserts_delivered"),
-    "C05": ("El desistimiento está fuera de plazo.", "company.asserts_withdrawal_late"),
+    "C05": ("Desistimiento fuera de plazo.", "company.asserts_withdrawal_late"),
 }
 
 
