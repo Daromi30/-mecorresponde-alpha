@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,13 +28,6 @@ router = APIRouter(
     tags=["admin"],
     dependencies=[Depends(require_admin)],
 )
-
-
-_GENERIC_COMPLETION_BLOCKED_REASONS = {
-    "UNSUPPORTED_CLASSIFICATION",
-    "POST_DENIAL_ESCALATION_REVIEW",
-    "PROFESSIONAL_ESCALATION_REQUIRED",
-}
 
 
 class ReviewAssignment(BaseModel):
@@ -304,44 +296,22 @@ def complete_review(
     payload: ReviewCompletion,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Reject unstructured review completion.
+
+    A free-text reviewer note is useful context, but it must never advance the Resolution
+    Engine by itself. Review completion must use one of the explicit, traceable routes:
+    structured facts plus deterministic reanalysis, assisted family reclassification, or
+    professional escalation. Keeping this legacy endpoint fail-closed also protects older
+    clients that may still try to call it.
+    """
     review = _review_or_404(db, review_id)
-    case = _case_or_404(db, review.case_id)
+    _case_or_404(db, review.case_id)
     if review.status != "OPEN":
         raise HTTPException(status_code=409, detail="Review is not open")
-    if review.reason == "UNSUPPORTED_CLASSIFICATION":
-        raise HTTPException(
-            status_code=409,
-            detail="Unsupported-intake routing reviews must be reclassified through the registered family routing endpoint",
-        )
-    if review.reason in {"POST_DENIAL_ESCALATION_REVIEW", "PROFESSIONAL_ESCALATION_REQUIRED"}:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Post-response escalation reviews cannot be closed with a generic note; "
-                "use structured reanalysis or the explicit professional-review workflow"
-            ),
-        )
-
-    review.status = "COMPLETED"
-    review.reviewer_decision = payload.reviewer_decision.strip()
-    review.completed_at = datetime.now(timezone.utc)
-    if case.status == "HUMAN_REVIEW":
-        case.status = "REANALYZING"
-
-    audit(
-        db,
-        case.id,
-        "HUMAN_REVIEW_COMPLETED",
-        {
-            "review_id": review.id,
-            "assigned_to": review.assigned_to,
-            "reviewer_decision": review.reviewer_decision,
-        },
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Generic free-text review completion is disabled; use structured fact resolution, "
+            "assisted reclassification, or the explicit professional-review workflow"
+        ),
     )
-    db.commit()
-    return {
-        "review_id": review.id,
-        "status": review.status,
-        "case_id": case.id,
-        "case_status": case.status,
-    }
