@@ -63,6 +63,14 @@ def _verified_basis_for_preparable_decision(db, decision):
     return basis
 
 
+def _would_repeat_initial_outbound_action(action_type: str) -> bool:
+    """Identify actions that would send the user back into the initial-claim phase."""
+    return action_type.startswith("PREPARE_") or action_type in {
+        "GIVE_ADDITIONAL_DELIVERY_PERIOD",
+        "SEND_WITHDRAWAL_NOTICE",
+    }
+
+
 def install_all_families() -> tuple[str, ...]:
     """Install every supported resolution family and fail fast on registry drift.
 
@@ -168,6 +176,82 @@ def install_all_families() -> tuple[str, ...]:
             return result
 
         svc.prepare_claim_package = prepare_claim_for_all_families
+
+        # Extension response analyzers may persist company assertions through upsert_fact,
+        # which legitimately records provenance but also resets case.status to INTAKE. At
+        # the final boundary restore the true workflow phase after all those facts exist.
+        previous_analyze_response = svc.analyze_company_response
+
+        def analyze_company_response_in_resolution_phase(db, case, text):
+            result = previous_analyze_response(db, case, text)
+            case.status = "RESPONSE_RECEIVED"
+            db.commit()
+            return result
+
+        svc.analyze_company_response = analyze_company_response_in_resolution_phase
+
+        # A company denial is not a new initial intake. Reanalysis may still conclude that
+        # the legal basis is HIGH/MEDIUM, but if the deterministic evaluator merely proposes
+        # another initial outbound claim we stop that loop and create a human escalation
+        # review. The review decides the next route; no regulator, ADR body, court, deadline
+        # or probability is invented by this generic multivertical layer.
+        previous_diagnose = svc.diagnose
+
+        def diagnose_with_post_response_escalation(db, case):
+            was_response_received = case.status == "RESPONSE_RECEIVED"
+            result, decision, generated_action = previous_diagnose(db, case)
+            if not (
+                was_response_received
+                and result.viability in {"HIGH", "MEDIUM"}
+                and _would_repeat_initial_outbound_action(generated_action.type)
+            ):
+                return result, decision, generated_action
+
+            generated_action.status = "COMPLETED"
+            generated_action.completed_at = datetime.now(timezone.utc)
+            reason = "POST_DENIAL_ESCALATION_REVIEW"
+            review = svc.create_human_review(
+                db,
+                case,
+                reason=reason,
+                priority="HIGH",
+                context={
+                    "family": case.family,
+                    "decision_id": decision.id,
+                    "blocked_repeated_action": generated_action.type,
+                    "phase": "POST_RESPONSE_ESCALATION",
+                },
+            )
+            escalation_action = Action(
+                case_id=case.id,
+                type="HUMAN_REVIEW",
+                status="OPEN",
+                payload_json={
+                    "reason": reason,
+                    "review_id": review.id,
+                    "phase": "POST_RESPONSE_ESCALATION",
+                    "decision_id": decision.id,
+                },
+            )
+            db.add(escalation_action)
+            db.flush()
+            case.current_action_id = escalation_action.id
+            case.status = "HUMAN_REVIEW"
+            svc.audit(
+                db,
+                case.id,
+                "ESCALATION_REVIEW_REQUIRED",
+                {
+                    "decision_id": decision.id,
+                    "review_id": review.id,
+                    "blocked_repeated_action": generated_action.type,
+                    "family": case.family,
+                },
+            )
+            db.commit()
+            return result, decision, escalation_action
+
+        svc.diagnose = diagnose_with_post_response_escalation
         _INSTALLED = True
 
     expected = set(supported_family_codes())
