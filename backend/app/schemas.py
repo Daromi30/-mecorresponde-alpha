@@ -63,6 +63,13 @@ class SubmissionInput(BaseModel):
     channel: str = Field(default="web", min_length=2, max_length=30)
     reference_number: str | None = Field(default=None, max_length=100)
 
+    @field_validator("submitted_on")
+    @classmethod
+    def reject_future_submission_date(cls, value: date) -> date:
+        if value > date.today():
+            raise ValueError("Submission date cannot be in the future")
+        return value
+
 
 class ResponseInput(BaseModel):
     text: str = Field(min_length=3, max_length=30000)
