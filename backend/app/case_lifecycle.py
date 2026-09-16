@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -35,6 +37,48 @@ class CaseDeletionStorageError(RuntimeError):
 class CaseDeletionResult:
     case_id: str
     documents_deleted: int
+
+
+def complete_current_action(
+    db: Session,
+    case: Case,
+    *,
+    only_types: set[str] | None = None,
+) -> Action | None:
+    """Complete the current case action when it belongs to the expected lifecycle step."""
+    if not case.current_action_id:
+        return None
+    action = db.get(Action, case.current_action_id)
+    if not action or action.case_id != case.id:
+        return None
+    if only_types is not None and action.type not in only_types:
+        return None
+    if action.status == "COMPLETED":
+        return action
+    action.status = "COMPLETED"
+    action.completed_at = datetime.now(timezone.utc)
+    return action
+
+
+def set_current_action(
+    db: Session,
+    case: Case,
+    action_type: str,
+    *,
+    payload: dict[str, Any] | None = None,
+    status: str = "OPEN",
+) -> Action:
+    """Create the next explicit action and make it the case's current step."""
+    action = Action(
+        case_id=case.id,
+        type=action_type,
+        status=status,
+        payload_json=payload or {},
+    )
+    db.add(action)
+    db.flush()
+    case.current_action_id = action.id
+    return action
 
 
 def delete_case_and_data(db: Session, case: Case) -> CaseDeletionResult:
