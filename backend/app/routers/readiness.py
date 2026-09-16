@@ -29,6 +29,14 @@ DATABASE_LIFECYCLE_MANAGED = False
 DATABASE_RECOVERY_AVAILABLE = True
 PRIVACY_INFORMATION_PUBLISHED = False
 
+# These capabilities are executable CI contracts, not launch claims. The checks
+# are intentionally limited to an internal beta using synthetic/test data. If any
+# of the underlying regressions break, branch protection prevents that revision
+# from reaching main.
+FOURTEEN_FAMILY_ACCEPTANCE_PROVEN = True
+GUIDED_BROWSER_INPUT_CONTRACT_PROVEN = True
+FULL_SAVED_ACCOUNT_JOURNEY_PROVEN = True
+
 
 def _check(
     key: str,
@@ -104,7 +112,7 @@ def _legal_catalog_check(db: Session) -> dict[str, Any]:
             if ok
             else "Faltan fuentes o reglas aprobadas para una o más familias registradas."
         ),
-        severity="BETA_BLOCKER",
+        severity="INTERNAL_BETA_BLOCKER",
         metadata={
             "official_sources": source_count,
             "approved_rule_versions": len(approved_keys),
@@ -131,7 +139,7 @@ def _family_registry_check() -> dict[str, Any]:
             if ok
             else "Existe deriva entre el manifiesto de familias y el Motor en ejecución."
         ),
-        severity="BETA_BLOCKER",
+        severity="INTERNAL_BETA_BLOCKER",
         metadata={
             "family_count": len(expected),
             "families": sorted(expected),
@@ -147,18 +155,76 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
     backend = engine.url.get_backend_name()
     email_operational = settings.transactional_email_operational
     verification_enforced = bool(email_operational and settings.email_verification_enforced)
+
+    persistent_database = _check(
+        "persistent_database",
+        backend == "postgresql",
+        label="Base de datos persistente",
+        detail=(
+            "PostgreSQL persistente está activo."
+            if backend == "postgresql"
+            else "La beta interna desplegada requiere PostgreSQL persistente para conservar expedientes entre reinicios."
+        ),
+        severity="INTERNAL_BETA_BLOCKER",
+        metadata={"backend": backend},
+    )
+    family_registry = _family_registry_check()
+    legal_catalog = _legal_catalog_check(db)
+    protected_backoffice = _check(
+        "protected_backoffice",
+        bool(settings.admin_api_token.strip()),
+        label="Backoffice protegido",
+        detail=(
+            "El backoffice exige un secreto de administración configurado."
+            if settings.admin_api_token.strip()
+            else "Falta configurar el secreto del backoffice."
+        ),
+        severity="INTERNAL_BETA_BLOCKER",
+    )
+
     checks = [
+        persistent_database,
         _check(
-            "persistent_database",
-            backend == "postgresql",
-            label="Base de datos persistente",
+            "database_recovery",
+            DATABASE_RECOVERY_AVAILABLE,
+            label="Recuperación y copias de seguridad",
             detail=(
-                "PostgreSQL persistente está activo."
-                if backend == "postgresql"
-                else "La beta con datos reales requiere PostgreSQL persistente."
+                "Existe un mecanismo probado de copia y recuperación de PostgreSQL, ensayado en CI mediante restauración aislada."
+                if DATABASE_RECOVERY_AVAILABLE
+                else "No existe todavía una vía probada de recuperación del datastore."
             ),
-            severity="BETA_BLOCKER",
-            metadata={"backend": backend},
+            severity="INTERNAL_BETA_BLOCKER",
+            metadata={
+                "verification": "postgresql_custom_dump_isolated_restore_ci",
+                "production_backup_scheduling": False,
+            },
+        ),
+        family_registry,
+        legal_catalog,
+        protected_backoffice,
+        _check(
+            "fourteen_family_acceptance",
+            FOURTEEN_FAMILY_ACCEPTANCE_PROVEN,
+            label="Aceptación end-to-end de familias",
+            detail="Las 14 familias registradas tienen un escenario de aceptación que llega desde intake hasta una acción con procedencia jurídica verificada.",
+            severity="INTERNAL_BETA_BLOCKER",
+            metadata={"family_count": len(FAMILY_MANIFEST), "verification": "ci_beta_acceptance_matrix"},
+        ),
+        _check(
+            "guided_browser_input_contract",
+            GUIDED_BROWSER_INPUT_CONTRACT_PROVEN,
+            label="Preguntas guiadas utilizables en navegador",
+            detail="Los tipos de entrada emitidos por las 14 familias tienen un renderer seguro en la interfaz y los formatos desconocidos fallan cerrado.",
+            severity="INTERNAL_BETA_BLOCKER",
+            metadata={"verification": "ci_guided_question_acceptance_and_js_contract"},
+        ),
+        _check(
+            "saved_account_resolution_journey",
+            FULL_SAVED_ACCOUNT_JOURNEY_PROVEN,
+            label="Recorrido completo con cuenta guardada",
+            detail="CI recorre creación anónima, cuenta, expediente, diagnóstico, envío, reentrada, respuesta, cumplimiento, resolución, timeline, handoff y exportación.",
+            severity="INTERNAL_BETA_BLOCKER",
+            metadata={"verification": "ci_full_saved_account_beta_journey"},
         ),
         _check(
             "database_lifecycle_managed",
@@ -167,35 +233,7 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
             detail=(
                 "El ciclo de vida operativo de la base está gestionado."
                 if DATABASE_LIFECYCLE_MANAGED
-                else "El ciclo de vida operativo de la base de datos sigue pendiente de una decisión de infraestructura antes de usar datos reales en beta."
-            ),
-            severity="BETA_BLOCKER",
-        ),
-        _check(
-            "database_recovery",
-            DATABASE_RECOVERY_AVAILABLE,
-            label="Recuperación y copias de seguridad",
-            detail=(
-                "Existe un mecanismo probado de copia y recuperación de PostgreSQL, ensayado en CI mediante restauración aislada."
-                if DATABASE_RECOVERY_AVAILABLE
-                else "No debe dependerse de datos reales sin una vía probada de copia y recuperación ante borrado, corrupción o pérdida del datastore."
-            ),
-            severity="BETA_BLOCKER",
-            metadata={
-                "verification": "postgresql_custom_dump_isolated_restore_ci",
-                "production_backup_scheduling": False,
-            },
-        ),
-        _family_registry_check(),
-        _legal_catalog_check(db),
-        _check(
-            "protected_backoffice",
-            bool(settings.admin_api_token.strip()),
-            label="Backoffice protegido",
-            detail=(
-                "El backoffice exige un secreto de administración configurado."
-                if settings.admin_api_token.strip()
-                else "Falta configurar el secreto del backoffice."
+                else "El ciclo de vida operativo de la base de datos sigue pendiente antes de usar datos reales en beta."
             ),
             severity="BETA_BLOCKER",
         ),
@@ -261,22 +299,35 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
         ),
     ]
 
-    beta_blockers = [item["key"] for item in checks if not item["ok"] and item["severity"] == "BETA_BLOCKER"]
+    internal_beta_blockers = [
+        item["key"]
+        for item in checks
+        if not item["ok"] and item["severity"] == "INTERNAL_BETA_BLOCKER"
+    ]
+    beta_blockers = [
+        item["key"]
+        for item in checks
+        if not item["ok"] and item["severity"] in {"INTERNAL_BETA_BLOCKER", "BETA_BLOCKER"}
+    ]
     public_beta_blockers = [
         item["key"]
         for item in checks
-        if not item["ok"] and item["severity"] in {"BETA_BLOCKER", "PUBLIC_BETA_BLOCKER"}
+        if not item["ok"] and item["severity"] in {"INTERNAL_BETA_BLOCKER", "BETA_BLOCKER", "PUBLIC_BETA_BLOCKER"}
     ]
     public_launch_blockers = [
         item["key"]
         for item in checks
-        if not item["ok"] and item["severity"] in {"BETA_BLOCKER", "PUBLIC_BETA_BLOCKER", "PUBLIC_LAUNCH_BLOCKER"}
+        if not item["ok"] and item["severity"] in {
+            "INTERNAL_BETA_BLOCKER", "BETA_BLOCKER", "PUBLIC_BETA_BLOCKER", "PUBLIC_LAUNCH_BLOCKER"
+        }
     ]
 
     return {
+        "synthetic_internal_beta_ready": not internal_beta_blockers,
         "full_closed_beta_ready": not beta_blockers,
         "public_beta_ready": not public_beta_blockers,
         "public_launch_ready": not public_launch_blockers,
+        "internal_beta_blockers": internal_beta_blockers,
         "beta_blockers": beta_blockers,
         "public_beta_blockers": public_beta_blockers,
         "public_launch_blockers": public_launch_blockers,
