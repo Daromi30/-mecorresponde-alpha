@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,7 +11,9 @@ from ..case_quality import build_dossier_quality
 from ..db import get_db
 from ..models import AuditEvent, Case, Communication, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
+from ..schemas_v2 import ResponseInput
 from ..security import require_case_access
+from .cases_v2 import response as process_company_response
 
 
 router = APIRouter(
@@ -16,6 +21,13 @@ router = APIRouter(
     tags=["case-quality"],
     dependencies=[Depends(require_case_access)],
 )
+
+
+class CompanyResponseEvidenceInput(BaseModel):
+    text: str = Field(min_length=3, max_length=30000)
+    received_on: date | None = None
+    channel: str = Field(default="unknown", min_length=2, max_length=30)
+    reference_number: str | None = Field(default=None, max_length=100)
 
 
 @router.get("/{case_id}/quality")
@@ -160,6 +172,68 @@ def case_timeline(case_id: str, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/{case_id}/responses/evidenced")
+def evidenced_company_response(
+    case_id: str,
+    payload: CompanyResponseEvidenceInput,
+    db: Session = Depends(get_db),
+):
+    """Analyze a response and attach user-confirmed communication metadata.
+
+    The existing response-analysis path records when MECORRESPONDE processed the text.
+    That processing timestamp is not treated as the date the company actually replied.
+    The user's calendar date, channel and reference are preserved separately in an audit
+    event linked to the exact inbound Communication row, so no hour/minute is fabricated.
+    """
+    case = db.get(Case, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    existing_ids = set(
+        db.scalars(
+            select(Communication.id).where(
+                Communication.case_id == case.id,
+                Communication.direction == "INBOUND",
+            )
+        ).all()
+    )
+
+    result = process_company_response(
+        case_id,
+        ResponseInput(text=payload.text),
+        db,
+    )
+
+    inbound = db.scalars(
+        select(Communication)
+        .where(
+            Communication.case_id == case.id,
+            Communication.direction == "INBOUND",
+        )
+        .order_by(Communication.received_at.desc())
+    ).all()
+    communication = next((row for row in inbound if row.id not in existing_ids), None)
+    if communication is None:
+        raise HTTPException(status_code=500, detail="Analyzed response communication could not be linked")
+
+    communication.channel = payload.channel
+    communication.reference_number = payload.reference_number
+    db.add(
+        AuditEvent(
+            case_id=case.id,
+            event_type="COMPANY_RESPONSE_RECORDED",
+            payload_json={
+                "communication_id": communication.id,
+                "received_on": payload.received_on.isoformat() if payload.received_on else None,
+                "channel": payload.channel,
+                "reference": payload.reference_number,
+            },
+        )
+    )
+    db.commit()
+    return result
+
+
 @router.get("/{case_id}/communications")
 def case_communications(case_id: str, db: Session = Depends(get_db)):
     """Return user-facing communication history without exposing internal audit payloads."""
@@ -193,6 +267,20 @@ def case_communications(case_id: str, db: Session = Depends(get_db)):
             }
         )
 
+    response_events = db.scalars(
+        select(AuditEvent)
+        .where(
+            AuditEvent.case_id == case.id,
+            AuditEvent.event_type == "COMPANY_RESPONSE_RECORDED",
+        )
+        .order_by(AuditEvent.created_at.asc())
+    ).all()
+    response_metadata = {
+        (event.payload_json or {}).get("communication_id"): event
+        for event in response_events
+        if (event.payload_json or {}).get("communication_id")
+    }
+
     inbound = db.scalars(
         select(Communication)
         .where(
@@ -202,17 +290,17 @@ def case_communications(case_id: str, db: Session = Depends(get_db)):
         .order_by(Communication.received_at.asc())
     ).all()
     for communication in inbound:
+        metadata_event = response_metadata.get(communication.id)
+        metadata = (metadata_event.payload_json or {}) if metadata_event else {}
         items.append(
             {
                 "direction": "INBOUND",
                 "kind": "COMPANY_RESPONSE",
-                "channel": communication.channel,
-                "reference_number": communication.reference_number,
+                "channel": metadata.get("channel") if metadata_event else None,
+                "reference_number": metadata.get("reference") if metadata_event else None,
                 "body": communication.body,
-                "occurred_on": communication.received_at.date().isoformat()
-                if communication.received_at is not None
-                else None,
-                "recorded_at": communication.received_at,
+                "occurred_on": metadata.get("received_on") if metadata_event else None,
+                "recorded_at": metadata_event.created_at if metadata_event else communication.received_at,
             }
         )
 
