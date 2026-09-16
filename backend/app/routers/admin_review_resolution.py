@@ -9,11 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..admin_auth import require_admin
+from ..case_lifecycle import complete_current_action, set_current_action
 from ..db import get_db
 from ..family_manifest import FAMILY_MANIFEST
 from ..models import Case, Evidence, Fact
 from ..reviews import HumanReview
-from ..services_v2 import EVALUATORS, audit, diagnose, get_next_question
+from ..services_v2 import EVALUATORS, audit, create_human_review, diagnose, get_next_question
 
 
 router = APIRouter(
@@ -30,6 +31,10 @@ _RESERVED_FACT_PREFIXES = (
     "decision.",
     "action.",
 )
+_POST_RESPONSE_REVIEW_REASONS = {
+    "POST_DENIAL_ESCALATION_REVIEW",
+    "PROFESSIONAL_ESCALATION_REQUIRED",
+}
 
 
 class HumanFactUpdate(BaseModel):
@@ -83,11 +88,23 @@ class AssistedReclassification(BaseModel):
         return code
 
 
+class ProfessionalEscalation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reviewer_decision: str = Field(min_length=3, max_length=10000)
+
+
 def _review_or_404(db: Session, review_id: str) -> HumanReview:
     review = db.get(HumanReview, review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
     return review
+
+
+def _complete_review_row(review: HumanReview, reviewer_decision: str) -> None:
+    review.status = "COMPLETED"
+    review.reviewer_decision = reviewer_decision.strip()
+    review.completed_at = datetime.now(timezone.utc)
 
 
 @router.get("/review-routing/families")
@@ -138,9 +155,7 @@ def reclassify_unsupported_review(
     case.title = entry.title
     case.status = "INTAKE"
 
-    review.status = "COMPLETED"
-    review.reviewer_decision = payload.reviewer_decision.strip()
-    review.completed_at = datetime.now(timezone.utc)
+    _complete_review_row(review, payload.reviewer_decision)
     audit(
         db,
         case.id,
@@ -165,6 +180,86 @@ def reclassify_unsupported_review(
         "vertical": case.vertical,
         "title": case.title,
         "next_question": get_next_question(db, case),
+    }
+
+
+@router.post("/reviews/{review_id}/escalate-professional")
+def escalate_post_response_review_to_professional(
+    review_id: str,
+    payload: ProfessionalEscalation,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Move a post-response dead end into an explicit professional-review handoff.
+
+    This route deliberately does not choose a regulator, ADR body, court, deadline,
+    remedy, probability or legal conclusion. It only records that the automated Motor
+    must stop and that a professional must decide the next legal route from the dossier.
+    """
+    review = _review_or_404(db, review_id)
+    if review.status != "OPEN":
+        raise HTTPException(status_code=409, detail="Review is not open")
+    if review.reason != "POST_DENIAL_ESCALATION_REVIEW":
+        raise HTTPException(
+            status_code=409,
+            detail="Only a post-response escalation review can be sent to professional handoff",
+        )
+
+    case = db.get(Case, review.case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    if case.status != "HUMAN_REVIEW":
+        raise HTTPException(status_code=409, detail="Case is no longer waiting for escalation review")
+
+    _complete_review_row(review, payload.reviewer_decision)
+    complete_current_action(db, case, only_types={"HUMAN_REVIEW"})
+
+    professional_review = create_human_review(
+        db,
+        case,
+        reason="PROFESSIONAL_ESCALATION_REQUIRED",
+        priority="HIGH",
+        context={
+            "phase": "PROFESSIONAL_REVIEW",
+            "source_review_id": review.id,
+            "family": case.family,
+            "decision_id": case.current_decision_id,
+        },
+    )
+    db.flush()
+    action = set_current_action(
+        db,
+        case,
+        "HUMAN_REVIEW",
+        payload={
+            "reason": professional_review.reason,
+            "review_id": professional_review.id,
+            "phase": "PROFESSIONAL_REVIEW",
+            "decision_id": case.current_decision_id,
+        },
+    )
+    case.status = "HUMAN_REVIEW"
+    audit(
+        db,
+        case.id,
+        "PROFESSIONAL_ESCALATION_REQUIRED",
+        {
+            "source_review_id": review.id,
+            "professional_review_id": professional_review.id,
+            "action_id": action.id,
+            "family": case.family,
+            "decision_id": case.current_decision_id,
+        },
+    )
+    db.commit()
+
+    return {
+        "review_id": review.id,
+        "review_status": review.status,
+        "case_id": case.id,
+        "case_status": case.status,
+        "professional_review_id": professional_review.id,
+        "action_id": action.id,
+        "phase": "PROFESSIONAL_REVIEW",
     }
 
 
@@ -228,9 +323,7 @@ def resolve_structured_review(
                 )
             )
 
-    review.status = "COMPLETED"
-    review.reviewer_decision = payload.reviewer_decision.strip()
-    review.completed_at = datetime.now(timezone.utc)
+    _complete_review_row(review, payload.reviewer_decision)
     case.status = "REANALYZING"
     audit(
         db,
@@ -250,12 +343,10 @@ def resolve_structured_review(
     decision_id = None
     action_id = None
     if payload.reanalyze and (case.family or "") in EVALUATORS:
-        # A structured resolution after a company denial/partial response is still part
-        # of the response phase. Preserve that phase marker so the global diagnostic
-        # guard can never turn a reviewer-added fact into a second initial claim. If the
-        # deterministic result still proposes the original outbound action, the Motor
-        # opens a fresh protected escalation review instead.
-        if review.reason == "POST_DENIAL_ESCALATION_REVIEW":
+        # Reviews created after a company response remain in the response phase even if a
+        # person adds verified facts. This keeps the anti-loop guard active across both
+        # the first escalation review and the later professional-review handoff.
+        if review.reason in _POST_RESPONSE_REVIEW_REASONS:
             case.status = "RESPONSE_RECEIVED"
         try:
             result, decision, action = diagnose(db, case)
