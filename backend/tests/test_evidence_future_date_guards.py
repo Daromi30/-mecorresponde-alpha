@@ -1,7 +1,8 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from sqlalchemy import func, select
 
+from app.calendar_clock import spain_today
 from app.models import Action, AuditEvent, Case, Communication, Outcome
 
 
@@ -47,7 +48,7 @@ def _submitted_e04b(client) -> str:
     assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 200
     assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 200
 
-    submitted_on = date.today() - timedelta(days=2)
+    submitted_on = spain_today() - timedelta(days=2)
     submitted = client.post(
         f"/api/cases/{case_id}/submission",
         json={"submitted_on": submitted_on.isoformat(), "channel": "web_form"},
@@ -58,7 +59,7 @@ def _submitted_e04b(client) -> str:
 
 def _awaiting_execution(client) -> str:
     case_id = _submitted_e04b(client)
-    received_on = date.today() - timedelta(days=1)
+    received_on = spain_today() - timedelta(days=1)
     accepted = client.post(
         f"/api/cases/{case_id}/responses/evidenced",
         json={
@@ -75,7 +76,7 @@ def _awaiting_execution(client) -> str:
 
 def test_future_company_response_date_is_rejected_without_mutating_case(client, db):
     case_id = _submitted_e04b(client)
-    tomorrow = date.today() + timedelta(days=1)
+    tomorrow = spain_today() + timedelta(days=1)
 
     response = client.post(
         f"/api/cases/{case_id}/responses/evidenced",
@@ -117,7 +118,7 @@ def test_future_company_response_date_is_rejected_without_mutating_case(client, 
 
 def test_future_fulfillment_date_is_rejected_without_closing_case(client, db):
     case_id = _awaiting_execution(client)
-    tomorrow = date.today() + timedelta(days=1)
+    tomorrow = spain_today() + timedelta(days=1)
 
     response = client.post(
         f"/api/cases/{case_id}/outcome/evidenced",
