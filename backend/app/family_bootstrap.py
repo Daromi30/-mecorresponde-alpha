@@ -83,11 +83,13 @@ def install_all_families() -> tuple[str, ...]:
     """
     global _INSTALLED
     if not _INSTALLED:
+        from .communication_date_policy import install_communication_date_policy
         from .fact_write_policy import install_fact_write_policy
         from .review_policy import install_review_policy
 
         install_fact_write_policy()
         install_review_policy()
+        install_communication_date_policy()
 
         if not isinstance(svc.gateway, GuardedModelGateway):
             svc.gateway = GuardedModelGateway(svc.gateway)

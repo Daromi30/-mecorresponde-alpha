@@ -240,6 +240,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "direction": row.direction,
                         "channel": row.channel,
                         "body": row.body,
+                        "occurred_on": _json_value(row.occurred_on),
                         "sent_at": _json_value(row.sent_at),
                         "received_at": _json_value(row.received_at),
                         "reference_number": row.reference_number,
