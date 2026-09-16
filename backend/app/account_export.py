@@ -255,6 +255,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "amount_recovered": row.amount_recovered,
                         "non_monetary_result": row.non_monetary_result,
                         "resolution_channel": row.resolution_channel,
+                        "resolved_on": _json_value(row.resolved_on),
                         "resolved_at": _json_value(row.resolved_at),
                         "verified_by_user": row.verified_by_user,
                         "failure_reason": row.failure_reason,

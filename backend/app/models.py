@@ -223,6 +223,7 @@ class Outcome(Base):
     amount_recovered: Mapped[float | None] = mapped_column(Float, nullable=True)
     non_monetary_result: Mapped[str | None] = mapped_column(Text, nullable=True)
     resolution_channel: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    resolved_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     verified_by_user: Mapped[bool] = mapped_column(Boolean, default=False)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
