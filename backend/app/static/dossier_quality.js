@@ -81,6 +81,7 @@
 
   // Product enhancements stay split into small same-origin modules rather than
   // expanding the legacy monolithic HTML. The page CSP only permits self scripts.
+  loadEnhancement('/demo/guided_question_inputs.js', 'mcr-guided-question-inputs');
   loadEnhancement('/demo/alpha_data_guardrail.js', 'mcr-alpha-data-guardrail');
   loadEnhancement('/demo/account_deletion.js', 'mcr-account-deletion');
   loadEnhancement('/demo/account_export.js', 'mcr-account-export');
