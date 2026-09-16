@@ -31,7 +31,11 @@ from ..auth import (
     verify_password,
 )
 from ..auth_models import User
-from ..auth_throttle import login_throttle
+from ..auth_throttle import (
+    login_throttle,
+    password_reset_throttle,
+    verification_email_throttle,
+)
 from ..config import settings
 from ..db import get_db
 from ..email_delivery import (
@@ -178,8 +182,6 @@ def login(
     login_throttle.check(db, email)
     user = db.scalar(select(User).where(User.email == email))
     if not user:
-        # Spend roughly the same password-derivation work as a real lookup so
-        # a missing account is less obvious from response timing.
         hash_password(payload.password)
         login_throttle.fail(db, email)
         db.commit()
@@ -222,6 +224,11 @@ def request_email_verification(
     if user.email_verified_at is not None:
         return {"status": "already_verified"}
     _require_operational_email()
+    verification_email_throttle.check(db, user.email)
+    # Commit the request slot before calling the external provider so a concurrent
+    # first request cannot roll back a token after its email has already been sent.
+    verification_email_throttle.hit(db, user.email)
+    db.commit()
 
     token = issue_action_token(db, user, purpose=VERIFY_EMAIL, ttl=VERIFY_EMAIL_TTL)
     link = action_link("verify-email", token)
@@ -252,6 +259,7 @@ def confirm_email_verification(payload: TokenRequest, db: Session = Depends(get_
     _, user = consumed
     if user.email_verified_at is None:
         user.email_verified_at = datetime.now(timezone.utc)
+    verification_email_throttle.success(db, user.email)
     db.commit()
     return {"status": "verified", "user": user_payload(user)}
 
@@ -260,7 +268,12 @@ def confirm_email_verification(payload: TokenRequest, db: Session = Depends(get_
 def request_password_reset(payload: EmailRequest, db: Session = Depends(get_db)):
     _require_operational_email()
     started = time.monotonic()
-    user = db.scalar(select(User).where(User.email == normalize_email(payload.email)))
+    email = normalize_email(payload.email)
+    password_reset_throttle.check(db, email)
+    password_reset_throttle.hit(db, email)
+    db.commit()
+
+    user = db.scalar(select(User).where(User.email == email))
     if user and user.disabled_at is None:
         token = issue_action_token(db, user, purpose=PASSWORD_RESET, ttl=PASSWORD_RESET_TTL)
         link = action_link("reset-password", token)
@@ -277,8 +290,6 @@ def request_password_reset(payload: EmailRequest, db: Session = Depends(get_db))
             )
             db.commit()
         except (EmailDeliveryFailed, EmailDeliveryUnavailable):
-            # Do not reveal whether the address belongs to an account. Invalidating
-            # the unmailed token is more important than exposing provider failure.
             db.rollback()
             logger.warning("MECORRESPONDE password reset email delivery failed")
     _minimum_reset_response_time(started)
@@ -300,6 +311,7 @@ def confirm_password_reset(
     _, user = consumed
     user.password_hash = hash_password(payload.password)
     revoke_all_sessions(db, user)
+    password_reset_throttle.success(db, user.email)
     db.commit()
     clear_session_cookie(response)
     return {"status": "password_updated"}
@@ -347,8 +359,6 @@ def delete_account(
     user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ):
-    # A valid session is not enough for destructive account deletion. Require the
-    # password again and apply the same persistent online-guessing throttle.
     login_throttle.check(db, user.email)
     if not verify_password(payload.password, user.password_hash):
         login_throttle.fail(db, user.email)

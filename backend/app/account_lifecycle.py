@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .auth_models import EmailActionToken, User, UserSession
+from .auth_throttle import clear_all_auth_throttles
 from .models import (
     AIRun,
     Action,
@@ -49,6 +50,7 @@ def delete_account_and_owned_data(db: Session, user: User) -> AccountDeletionRes
         db.scalars(select(Case.id).where(Case.user_id == user.id)).all()
     )
     if not case_ids:
+        clear_all_auth_throttles(db, user.email)
         db.execute(delete(EmailActionToken).where(EmailActionToken.user_id == user.id))
         db.execute(delete(UserSession).where(UserSession.user_id == user.id))
         db.delete(user)
@@ -101,6 +103,7 @@ def delete_account_and_owned_data(db: Session, user: User) -> AccountDeletionRes
         db.execute(delete(model).where(model.case_id.in_(case_ids)))
 
     db.execute(delete(Case).where(Case.id.in_(case_ids)))
+    clear_all_auth_throttles(db, user.email)
     db.execute(delete(EmailActionToken).where(EmailActionToken.user_id == user.id))
     db.execute(delete(UserSession).where(UserSession.user_id == user.id))
     db.delete(user)
