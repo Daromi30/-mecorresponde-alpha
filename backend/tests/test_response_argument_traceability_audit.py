@@ -165,7 +165,15 @@ def test_every_beta_family_keeps_denial_in_post_response_phase_and_blocks_second
         case_id = _submitted_case(client, family, scenario)
         text, fact_key = FAMILY_DENIALS[family]
 
-        response = client.post(f"/api/cases/{case_id}/responses", json={"text": text})
+        response = client.post(
+            f"/api/cases/{case_id}/responses/evidenced",
+            json={
+                "text": text,
+                "received_on": "2026-09-11",
+                "channel": "email",
+                "reference_number": f"RESP-ARG-AUDIT-{family}",
+            },
+        )
         assert response.status_code == 200, f"{family}: {response.text}"
         body = response.json()
         assert body["analysis"]["type"] == "DENIAL", (family, body)
@@ -197,6 +205,7 @@ def test_every_beta_family_keeps_denial_in_post_response_phase_and_blocks_second
         assert current.type == "HUMAN_REVIEW", (family, current.type)
         assert current.status == "OPEN", (family, current.status)
         assert (current.payload_json or {}).get("phase") == "POST_RESPONSE_ESCALATION", (family, current.payload_json)
+        protected_action_id = current.id
 
         open_review = db.scalars(
             select(HumanReview).where(
@@ -230,3 +239,11 @@ def test_every_beta_family_keeps_denial_in_post_response_phase_and_blocks_second
             "probabilidad",
         ):
             assert prohibited not in serialized, (family, prohibited, current.payload_json)
+
+        repeat_prepare = client.post(f"/api/cases/{case_id}/prepare-claim")
+        assert repeat_prepare.status_code in {409, 422}, (family, repeat_prepare.status_code, repeat_prepare.text)
+        db.expire_all()
+        case_after = db.get(Case, case_id)
+        assert case_after is not None
+        assert case_after.status == "HUMAN_REVIEW", family
+        assert case_after.current_action_id == protected_action_id, family
