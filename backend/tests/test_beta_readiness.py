@@ -37,14 +37,17 @@ def test_readiness_separates_closed_beta_public_beta_and_launch_blockers(client)
     assert "persistent_database" in body["beta_blockers"]
     assert "persistent_document_storage" in body["beta_blockers"]
 
-    # A persistent database is not enough if its lifecycle can expire or there is
-    # no tested restore path. These operational capabilities remain explicit gates.
+    # Recovery is no longer a guessed capability: CI creates a real PostgreSQL
+    # dump and restores it into an isolated disposable database on every run.
+    assert checks["database_recovery"]["ok"] is True
+    assert checks["database_recovery"]["severity"] == "BETA_BLOCKER"
+    assert checks["database_recovery"]["metadata"]["verification"] == "postgresql_custom_dump_isolated_restore_ci"
+    assert "database_recovery" not in body["beta_blockers"]
+
+    # The separate infrastructure lifecycle decision remains intentionally open.
     assert checks["database_lifecycle_managed"]["ok"] is False
     assert checks["database_lifecycle_managed"]["severity"] == "BETA_BLOCKER"
-    assert checks["database_recovery"]["ok"] is False
-    assert checks["database_recovery"]["severity"] == "BETA_BLOCKER"
     assert "database_lifecycle_managed" in body["beta_blockers"]
-    assert "database_recovery" in body["beta_blockers"]
 
     # Privacy information is intentionally not published until the real controller,
     # purposes, bases, retention and recipients have been reviewed. This is a blocker
