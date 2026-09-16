@@ -49,14 +49,34 @@ def test_timeline_tracks_resolution_milestones_without_internal_payloads(client)
 
     complete_e04b(client, case_id)
     assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 200
+    assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 200
     assert client.post(
         f"/api/cases/{case_id}/submission",
-        json={"submitted_on": "2026-09-16", "channel": "web", "reference_number": "TEST-123"},
+        json={"submitted_on": "2026-09-15", "channel": "web", "reference_number": "TEST-123"},
     ).status_code == 200
-    assert client.post(
-        f"/api/cases/{case_id}/outcome",
-        json={"result_type": "FAVORABLE", "amount_recovered": 8.99, "verified_by_user": True},
-    ).status_code == 200
+    accepted = client.post(
+        f"/api/cases/{case_id}/responses/evidenced",
+        json={
+            "text": "Aceptamos su reclamación y procederemos a devolver el importe.",
+            "received_on": "2026-09-16",
+            "channel": "email",
+            "reference_number": "RESP-123",
+        },
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["analysis"]["type"] == "ACCEPTANCE"
+    resolved = client.post(
+        f"/api/cases/{case_id}/outcome/evidenced",
+        json={
+            "result_type": "FAVORABLE",
+            "amount_recovered": 8.99,
+            "verified_by_user": True,
+            "resolved_on": "2026-09-16",
+            "resolution_channel": "bank_or_card_refund",
+            "non_monetary_result": None,
+        },
+    )
+    assert resolved.status_code == 200, resolved.text
 
     response = client.get(f"/api/cases/{case_id}/timeline")
     assert response.status_code == 200
@@ -65,12 +85,14 @@ def test_timeline_tracks_resolution_milestones_without_internal_payloads(client)
     assert types[0] == "CASE_OPENED"
     assert "DIAGNOSIS_UPDATED" in types
     assert "CLAIM_SUBMITTED" in types
+    assert "CLAIM_ACCEPTED_PENDING_EXECUTION" in types
     assert "RESOLUTION_VERIFIED" in types
     assert body["current_status"] == "RESOLVED"
 
     # The public timeline is an allowlisted summary, never the raw internal audit payload.
     text = response.text
     assert "TEST-123" not in text
+    assert "RESP-123" not in text
     assert "payload_json" not in text
     assert "rule_evaluations_json" not in text
 
