@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 import shutil
 import subprocess
@@ -79,6 +80,8 @@ def test_verified_non_monetary_resolution_preserves_execution_evidence(client, d
     assert outcome.amount_recovered == 0
     assert outcome.verified_by_user is True
     assert outcome.resolution_channel == "cancellation"
+    assert outcome.resolved_on == date(2026, 9, 15)
+    assert outcome.resolved_at is not None
     assert "no habrá más cargos" in outcome.non_monetary_result
 
     evidence = db.scalars(
@@ -91,6 +94,14 @@ def test_verified_non_monetary_resolution_preserves_execution_evidence(client, d
     assert evidence.payload_json["resolution_channel"] == "cancellation"
     assert evidence.payload_json["amount_recovered"] == 0
     assert evidence.payload_json["has_non_monetary_result"] is True
+
+    timeline = client.get(f"/api/cases/{case_id}/timeline")
+    assert timeline.status_code == 200, timeline.text
+    resolution = next(
+        item for item in timeline.json()["events"] if item["type"] == "RESOLUTION_VERIFIED"
+    )
+    assert resolution["resolved_on"] == "2026-09-15"
+    assert resolution["at"] is not None
 
 
 def test_unknown_execution_date_remains_unknown(client, db):
@@ -108,6 +119,10 @@ def test_unknown_execution_date_remains_unknown(client, db):
     )
     assert response.status_code == 200, response.text
     assert response.json()["resolved_on"] is None
+    outcome = db.scalar(select(Outcome).where(Outcome.case_id == case_id))
+    assert outcome is not None
+    assert outcome.resolved_on is None
+    assert outcome.resolved_at is not None
     evidence = db.scalars(
         select(AuditEvent).where(
             AuditEvent.case_id == case_id,
