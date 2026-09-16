@@ -55,11 +55,11 @@ def install_all_families() -> tuple[str, ...]:
 
         svc.seed_legal = seed_with_reviewed_provenance
 
-        # Claim-package rendering is also installed at the final multivertical boundary.
-        # Existing renderers remain untouched; missing families are served by the registry.
-        # The wrapper additionally makes package preparation idempotent and closes the
-        # diagnostic action that preceded a successfully prepared submission package.
-        from .claim_packages import EXTENDED_CLAIM_FAMILIES, prepare_extended_claim_package
+        # Centralize the extension-family claim renderers at the final multivertical
+        # boundary. This preserves their existing public contracts while removing claim
+        # rendering from the historical wrapper chain and enforcing reviewed provenance.
+        # Base-family renderers continue through the existing implementation for now.
+        from .claim_packages import REGISTERED_EXTENSION_FAMILIES, prepare_registered_claim_package
         from .models import Action
 
         previous_prepare_claim = svc.prepare_claim_package
@@ -74,8 +74,8 @@ def install_all_families() -> tuple[str, ...]:
             ):
                 return {"action_id": current.id, **(current.payload_json or {})}
 
-            if (case.family or "") in EXTENDED_CLAIM_FAMILIES:
-                return prepare_extended_claim_package(db, case)
+            if (case.family or "") in REGISTERED_EXTENSION_FAMILIES:
+                return prepare_registered_claim_package(db, case)
 
             preceding = current
             result = previous_prepare_claim(db, case)
