@@ -31,7 +31,7 @@ from ..auth import (
     require_current_user,
     verify_password,
 )
-from ..auth_models import User
+from ..auth_models import User, UserSession
 from ..auth_throttle import (
     login_throttle,
     password_reset_throttle,
@@ -118,6 +118,11 @@ class PasswordChangeRequest(BaseModel):
     @classmethod
     def validate_new_password(cls, value: str) -> str:
         return _validate_password(value)
+
+
+class RevokeOtherSessionsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    password: str = Field(min_length=10, max_length=128)
 
 
 class DeleteAccountRequest(BaseModel):
@@ -350,6 +355,68 @@ def change_password(
     issue_session(db, user, response)
     db.commit()
     return {"status": "password_updated", "sessions_revoked": revoked}
+
+
+@router.get("/sessions")
+def list_sessions(
+    request: Request,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+):
+    current = get_session_from_request(request, db)
+    rows = db.scalars(
+        select(UserSession)
+        .where(UserSession.user_id == user.id, UserSession.revoked_at.is_(None))
+        .order_by(UserSession.created_at.desc())
+    ).all()
+    now = datetime.now(timezone.utc)
+    sessions = []
+    for row in rows:
+        expires = row.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires <= now:
+            continue
+        sessions.append(
+            {
+                "current": bool(current and row.id == current.id),
+                "created_at": row.created_at,
+                "expires_at": row.expires_at,
+            }
+        )
+    return {"sessions": sessions, "active_count": len(sessions)}
+
+
+@router.post("/sessions/revoke-others")
+def revoke_other_sessions(
+    payload: RevokeOtherSessionsRequest,
+    request: Request,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+):
+    current = get_session_from_request(request, db)
+    if not current:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    login_throttle.check(db, user.email)
+    if not verify_password(payload.password, user.password_hash):
+        login_throttle.fail(db, user.email)
+        db.commit()
+        raise HTTPException(status_code=401, detail="Invalid current password")
+    login_throttle.success(db, user.email)
+
+    revoked_at = datetime.now(timezone.utc)
+    rows = db.scalars(
+        select(UserSession).where(
+            UserSession.user_id == user.id,
+            UserSession.revoked_at.is_(None),
+            UserSession.id != current.id,
+        )
+    ).all()
+    for row in rows:
+        row.revoked_at = revoked_at
+    db.commit()
+    return {"status": "ok", "sessions_revoked": len(rows)}
 
 
 @router.get("/cases")
