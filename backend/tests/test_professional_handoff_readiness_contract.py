@@ -14,4 +14,4 @@ def test_readiness_exposes_safe_professional_handoff_proof(client):
     assert item["metadata"]["post_response_reanalysis_guard"] is True
     assert item["metadata"]["automatic_legal_route_selection"] is False
     assert "probabilidad de éxito" in item["detail"].lower()
-    assert "no reabrir" in item["detail"].lower()
+    assert "sin reabrir" in item["detail"].lower()
