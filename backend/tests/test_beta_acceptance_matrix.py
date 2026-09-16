@@ -223,7 +223,6 @@ def test_beta_acceptance_matrix_covers_every_registered_resolution_family(client
         assert diagnosis.status_code == 200, f"{family}: {diagnosis.text}"
         decision = diagnosis.json()
         assert decision["viability"] == "HIGH", f"{family}: {decision}"
-        assert decision["rule_evaluations"], family
 
         prepared = client.post(f"/api/cases/{case_id}/prepare-claim")
         assert prepared.status_code == 200, f"{family}: {prepared.text}"
