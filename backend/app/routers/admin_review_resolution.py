@@ -10,9 +10,10 @@ from sqlalchemy.orm import Session
 
 from ..admin_auth import require_admin
 from ..db import get_db
+from ..family_manifest import FAMILY_MANIFEST
 from ..models import Case, Evidence, Fact
 from ..reviews import HumanReview
-from ..services_v2 import EVALUATORS, audit, diagnose
+from ..services_v2 import EVALUATORS, audit, diagnose, get_next_question
 
 
 router = APIRouter(
@@ -67,11 +68,104 @@ class StructuredReviewResolution(BaseModel):
         return value
 
 
+class AssistedReclassification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_family: str = Field(min_length=2, max_length=20)
+    reviewer_decision: str = Field(min_length=3, max_length=10000)
+
+    @field_validator("target_family")
+    @classmethod
+    def validate_target_family(cls, value: str) -> str:
+        code = value.strip().upper()
+        if code not in FAMILY_MANIFEST:
+            raise ValueError("Target family is not registered in the Resolution Engine")
+        return code
+
+
 def _review_or_404(db: Session, review_id: str) -> HumanReview:
     review = db.get(HumanReview, review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
     return review
+
+
+@router.get("/review-routing/families")
+def review_routing_families() -> dict[str, list[dict[str, str]]]:
+    """Expose only the registered routing targets available to assisted review."""
+    return {
+        "families": [
+            {
+                "code": entry.code,
+                "vertical": entry.vertical,
+                "title": entry.title,
+            }
+            for entry in FAMILY_MANIFEST.values()
+        ]
+    }
+
+
+@router.post("/reviews/{review_id}/reclassify")
+def reclassify_unsupported_review(
+    review_id: str,
+    payload: AssistedReclassification,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Route an unsupported intake into one existing family without deciding the law.
+
+    This endpoint is deliberately narrow: it can only resolve the fallback review created
+    for an unclassified intake, and only to a family already registered in the Motor. It
+    does not set legal facts, viability, remedies, amounts, deadlines or authorities.
+    """
+    review = _review_or_404(db, review_id)
+    if review.status != "OPEN":
+        raise HTTPException(status_code=409, detail="Review is not open")
+    if review.reason != "UNSUPPORTED_CLASSIFICATION":
+        raise HTTPException(status_code=409, detail="This review is not an unsupported-intake routing review")
+
+    case = db.get(Case, review.case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    if case.family is not None:
+        raise HTTPException(status_code=409, detail="Case is already assigned to a resolution family")
+    if case.status != "HUMAN_REVIEW":
+        raise HTTPException(status_code=409, detail="Case is no longer waiting for assisted classification")
+
+    entry = FAMILY_MANIFEST[payload.target_family]
+    previous_vertical = case.vertical
+    case.family = entry.code
+    case.vertical = entry.vertical
+    case.title = entry.title
+    case.status = "INTAKE"
+
+    review.status = "COMPLETED"
+    review.reviewer_decision = payload.reviewer_decision.strip()
+    review.completed_at = datetime.now(timezone.utc)
+    audit(
+        db,
+        case.id,
+        "HUMAN_REVIEW_RECLASSIFIED_INTAKE",
+        {
+            "review_id": review.id,
+            "from_family": None,
+            "from_vertical": previous_vertical,
+            "target_family": entry.code,
+            "target_vertical": entry.vertical,
+        },
+    )
+    db.commit()
+    db.refresh(case)
+
+    return {
+        "review_id": review.id,
+        "review_status": review.status,
+        "case_id": case.id,
+        "case_status": case.status,
+        "family": case.family,
+        "vertical": case.vertical,
+        "title": case.title,
+        "next_question": get_next_question(db, case),
+    }
 
 
 @router.post("/reviews/{review_id}/resolve-structured")
@@ -83,6 +177,11 @@ def resolve_structured_review(
     review = _review_or_404(db, review_id)
     if review.status != "OPEN":
         raise HTTPException(status_code=409, detail="Review is not open")
+    if review.reason == "UNSUPPORTED_CLASSIFICATION":
+        raise HTTPException(
+            status_code=409,
+            detail="Unsupported-intake routing reviews must be reclassified before structured fact resolution",
+        )
 
     case = db.get(Case, review.case_id)
     if not case:

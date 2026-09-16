@@ -301,6 +301,11 @@ def complete_review(
     case = _case_or_404(db, review.case_id)
     if review.status != "OPEN":
         raise HTTPException(status_code=409, detail="Review is not open")
+    if review.reason == "UNSUPPORTED_CLASSIFICATION":
+        raise HTTPException(
+            status_code=409,
+            detail="Unsupported-intake routing reviews must be reclassified through the registered family routing endpoint",
+        )
 
     review.status = "COMPLETED"
     review.reviewer_decision = payload.reviewer_decision.strip()
