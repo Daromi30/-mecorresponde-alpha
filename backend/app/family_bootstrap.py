@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from sqlalchemy import select
+
 from . import services_v2 as svc
 from .engine.guarded_gateway import GuardedModelGateway
 from .family_manifest import FAMILY_MANIFEST, supported_family_codes
@@ -55,12 +57,16 @@ def install_all_families() -> tuple[str, ...]:
 
         svc.seed_legal = seed_with_reviewed_provenance
 
-        # Centralize the extension-family claim renderers at the final multivertical
-        # boundary. This preserves their existing public contracts while removing claim
-        # rendering from the historical wrapper chain and enforcing reviewed provenance.
-        # Base-family renderers continue through the existing implementation for now.
-        from .claim_packages import REGISTERED_EXTENSION_FAMILIES, prepare_registered_claim_package
-        from .models import Action
+        # Centralize extension-family claim rendering and enforce the same reviewed legal
+        # provenance on every claim package. Existing base renderers keep their wording and
+        # claim types, but their legal_basis is replaced by the exact approved rule versions
+        # used by the current Decision before the package can leave the Motor.
+        from .claim_packages import (
+            REGISTERED_EXTENSION_FAMILIES,
+            _verified_legal_basis,
+            prepare_registered_claim_package,
+        )
+        from .models import Action, Decision
 
         previous_prepare_claim = svc.prepare_claim_package
 
@@ -77,16 +83,37 @@ def install_all_families() -> tuple[str, ...]:
             if (case.family or "") in REGISTERED_EXTENSION_FAMILIES:
                 return prepare_registered_claim_package(db, case)
 
+            # Fail closed on legal provenance before the legacy/base renderer creates a
+            # READY action. This prevents a package from being persisted if its current
+            # decision no longer points to an approved official rule version.
+            decision = db.scalars(
+                select(Decision)
+                .where(Decision.case_id == case.id)
+                .order_by(Decision.created_at.desc())
+            ).first()
+            if decision is None:
+                raise ValueError("Diagnose the case before preparing a claim")
+            verified_basis = _verified_legal_basis(db, decision)
+
             preceding = current
             result = previous_prepare_claim(db, case)
+            action = db.get(Action, result.get("action_id")) if result.get("action_id") else None
+            if action is None or action.case_id != case.id:
+                raise ValueError("Prepared claim action could not be verified")
+
+            payload = dict(action.payload_json or {})
+            payload["legal_basis"] = verified_basis
+            action.payload_json = payload
+            result = {**result, "legal_basis": verified_basis}
+
             if (
                 preceding is not None
-                and preceding.id != result.get("action_id")
+                and preceding.id != action.id
                 and preceding.status != "COMPLETED"
             ):
                 preceding.status = "COMPLETED"
                 preceding.completed_at = datetime.now(timezone.utc)
-                db.commit()
+            db.commit()
             return result
 
         svc.prepare_claim_package = prepare_claim_for_all_families
