@@ -101,6 +101,76 @@ def test_quality_profile_distinguishes_documentary_support_and_human_review(clie
     assert body["gates"]["open_human_reviews"] == 1
 
 
+def test_quality_profile_uses_only_active_fact_versions_and_active_evidence(client, db):
+    created = client.post(
+        "/api/cases",
+        json={"message": "Compré un televisor y la tienda me rechaza la garantía porque está averiado"},
+    )
+    case_id = created.json()["id"]
+
+    first = client.post(
+        f"/api/cases/{case_id}/facts",
+        json={
+            "key": "purchase.seller_is_business",
+            "value": None,
+            "state": "unknown",
+            "materiality": "critical",
+            "user_confirmed": False,
+        },
+    )
+    assert first.status_code == 200
+    old_fact_id = first.json()["fact_id"]
+    db.add(
+        Evidence(
+            case_id=case_id,
+            fact_id=old_fact_id,
+            source_type="document",
+            locator="obsolete:test",
+            strength="strong",
+        )
+    )
+    db.commit()
+
+    replacement = client.post(
+        f"/api/cases/{case_id}/facts",
+        json={
+            "key": "purchase.seller_is_business",
+            "value": True,
+            "state": "confirmed",
+            "materiality": "critical",
+            "user_confirmed": True,
+        },
+    )
+    assert replacement.status_code == 200
+    new_fact_id = replacement.json()["fact_id"]
+    db.add(
+        Evidence(
+            case_id=case_id,
+            fact_id=new_fact_id,
+            source_type="human",
+            locator="current:test",
+            strength="strong",
+        )
+    )
+    db.commit()
+
+    body = client.get(f"/api/cases/{case_id}/quality").json()
+    assert body["readiness"] == "INTAKE"
+    assert body["facts"] == {
+        "total": 1,
+        "confirmed": 1,
+        "asserted": 0,
+        "unknown": 0,
+        "critical_total": 1,
+        "critical_confirmed": 1,
+    }
+    assert body["evidence"]["document_supported_facts"] == 0
+    assert body["evidence"]["human_supported_facts"] == 1
+    assert body["evidence"]["strong_supported_facts"] == 1
+    assert body["evidence"]["links_total"] == 2  # user confirmation + active human evidence
+    assert "historial sustituido" in body["note"].lower()
+
+
 def test_quality_endpoint_uses_same_undiscoverable_case_access(client):
     created = client.post(
         "/api/cases",
