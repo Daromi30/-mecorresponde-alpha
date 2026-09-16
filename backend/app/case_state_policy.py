@@ -9,6 +9,7 @@ from .models import Case
 
 
 _INSTALLED = False
+_TERMINAL_CASE_STATUSES = frozenset({"RESOLVED", "CLOSED_UNSUPPORTED"})
 
 
 def install_case_state_policy() -> None:
@@ -22,9 +23,13 @@ def install_case_state_policy() -> None:
         return
 
     @event.listens_for(Session, "before_flush")
-    def close_resolved_cases(session: Session, flush_context, instances) -> None:  # noqa: ANN001
+    def close_terminal_cases(session: Session, flush_context, instances) -> None:  # noqa: ANN001
         for obj in set(session.new).union(session.dirty):
-            if isinstance(obj, Case) and obj.status == "RESOLVED" and obj.closed_at is None:
+            if (
+                isinstance(obj, Case)
+                and obj.status in _TERMINAL_CASE_STATUSES
+                and obj.closed_at is None
+            ):
                 obj.closed_at = datetime.now(timezone.utc)
 
     _INSTALLED = True
