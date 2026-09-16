@@ -105,4 +105,7 @@
   loadEnhancement('/demo/case_phase_guard.js', 'mcr-case-phase-guard');
   loadEnhancement('/demo/case_progress.js', 'mcr-case-progress');
   loadEnhancement('/demo/case_next_step.js', 'mcr-case-next-step');
+  // Re-entry executes last so every lifecycle wrapper above is already installed
+  // before a case is restored from the URL fragment after a browser refresh.
+  loadEnhancement('/demo/case_reentry.js', 'mcr-case-reentry');
 })();
