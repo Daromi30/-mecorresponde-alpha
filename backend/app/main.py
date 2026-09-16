@@ -16,6 +16,7 @@ from .engine.model_contracts import ModelOutputRejected
 from .family_bootstrap import install_all_families
 from .migrations import upgrade_database
 from .models import LegalSource
+from .seo_pages import SEO_PROBLEM_PAGES
 
 SUPPORTED_FAMILIES = install_all_families()
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -33,6 +34,7 @@ from .routers.case_deletion import router as case_deletion_router
 from .routers.cases_v2 import router as cases_router
 from .routers.quality import router as quality_router
 from .routers.readiness import router as readiness_router
+from .routers.seo import router as seo_router
 from .routers.sources import router as sources_router
 from .services_v2 import seed_legal
 from .storage import StorageConfigurationError, get_document_storage, storage_status
@@ -78,6 +80,28 @@ def _public_base_url() -> str:
     return settings.public_base_url.strip().rstrip("/")
 
 
+def _problem_library_html() -> str:
+    electricity = [page for page in SEO_PROBLEM_PAGES if page.vertical == "electricity"]
+    purchases = [page for page in SEO_PROBLEM_PAGES if page.vertical == "purchases"]
+
+    def links(pages):
+        return "".join(
+            f'<li><a href="{escape(page.path, quote=True)}">{escape(page.title)}</a></li>'
+            for page in pages
+        )
+
+    return (
+        '<section id="problem-library" aria-label="Problemas que analiza MECORRESPONDE" '
+        'style="max-width:1100px;margin:36px auto;padding:24px">'
+        '<h2>Problemas que estamos estructurando</h2>'
+        '<p>Guías de entrada al Motor de Resolución. Cada caso se analiza con sus hechos, pruebas y fuentes aplicables.</p>'
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px">'
+        f'<div><h3>Luz</h3><ul>{links(electricity)}</ul></div>'
+        f'<div><h3>Compras y garantías</h3><ul>{links(purchases)}</ul></div>'
+        '</div></section>'
+    )
+
+
 def _render_product_home() -> str:
     html = (static_dir / "index.html").read_text(encoding="utf-8")
     robots = "index,follow" if settings.public_indexing_ready else "noindex,nofollow"
@@ -107,7 +131,7 @@ def _render_product_home() -> str:
         )
     html = html.replace(
         "</body>",
-        '<script src="/demo/dossier_quality.js"></script>\n</body>',
+        f'{_problem_library_html()}\n<script src="/demo/dossier_quality.js"></script>\n</body>',
         1,
     )
     return html.replace("</head>", f"{metadata}</head>", 1)
@@ -148,9 +172,10 @@ async def lifespan(app: FastAPI):
         ",".join(SUPPORTED_FAMILIES),
     )
     logger.info(
-        "MECORRESPONDE public_indexing: ready=%s base_url_configured=%s",
+        "MECORRESPONDE public_indexing: ready=%s base_url_configured=%s seo_problem_pages=%s",
         settings.public_indexing_ready,
         bool(_public_base_url()),
+        len(SEO_PROBLEM_PAGES),
     )
     yield
 
@@ -230,7 +255,8 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
         or path.startswith("/demo")
         or path.startswith("/backoffice")
     )
-    if always_noindex or (path == "/" and not settings.public_indexing_ready):
+    public_indexable_surface = path == "/" or path.startswith("/reclamar")
+    if always_noindex or (public_indexable_surface and not settings.public_indexing_ready):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
 
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -239,7 +265,12 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
     response.headers.setdefault(
         "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
     )
-    if path == "/" or path.startswith("/demo") or path.startswith("/backoffice"):
+    if (
+        path == "/"
+        or path.startswith("/reclamar")
+        or path.startswith("/demo")
+        or path.startswith("/backoffice")
+    ):
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self' 'unsafe-inline'; "
@@ -263,6 +294,7 @@ app.include_router(sources_router)
 app.include_router(admin_router)
 app.include_router(admin_review_resolution_router)
 app.include_router(readiness_router)
+app.include_router(seo_router)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -282,11 +314,13 @@ def robots_txt():
 def sitemap_xml():
     if not settings.public_indexing_ready:
         return Response(status_code=404)
-    loc = escape(f"{_public_base_url()}/")
+    base = _public_base_url()
+    locations = [f"{base}/", *(f"{base}{page.path}" for page in SEO_PROBLEM_PAGES)]
+    urls = "".join(f"<url><loc>{escape(location)}</loc></url>" for location in locations)
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        f"<url><loc>{loc}</loc></url>"
+        f"{urls}"
         "</urlset>"
     )
     return Response(content=xml, media_type="application/xml")
