@@ -87,6 +87,9 @@ def test_timeline_tracks_resolution_milestones_without_internal_payloads(client)
     assert "CLAIM_SUBMITTED" in types
     assert "CLAIM_ACCEPTED_PENDING_EXECUTION" in types
     assert "RESOLUTION_VERIFIED" in types
+    resolution = next(event for event in body["events"] if event["type"] == "RESOLUTION_VERIFIED")
+    assert resolution["resolved_on"] == "2026-09-16"
+    assert resolution["at"] is not None
     assert body["current_status"] == "RESOLVED"
 
     # The public timeline is an allowlisted summary, never the raw internal audit payload.
@@ -119,6 +122,9 @@ def test_timeline_ui_is_loaded_and_javascript_parses():
     assert "/timeline" in script
     assert "Recorrido del expediente" in script
     assert "registros técnicos internos" in script
+    assert "formatCalendarDate" in script
+    assert "Cumplido:" in script
+    assert "Confirmado:" in script
     assert "localStorage" not in script
     assert "sessionStorage" not in script
 
