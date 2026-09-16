@@ -233,14 +233,17 @@ def install_all_families() -> tuple[str, ...]:
 
         svc.analyze_company_response = analyze_company_response_in_resolution_phase
 
-        # A company denial is not a new initial intake. Reanalysis may still conclude that
-        # the legal basis is HIGH/MEDIUM, but if the deterministic evaluator merely proposes
-        # another initial outbound claim we stop that loop and create a human escalation
-        # review. The review decides the next route; no regulator, ADR body, court, deadline
-        # or probability is invented by this generic multivertical layer.
+        # Diagnosis is a transition, not a read operation. Re-running it after a completed
+        # diagnosis or prepared claim used to create duplicate Decision/Action rows and leave
+        # superseded OPEN actions behind. Facts or document confirmations already move the
+        # case back to INTAKE; post-response/admin flows explicitly use RESPONSE_RECEIVED or
+        # REANALYZING. Only those phases may legitimately generate a new diagnosis.
         previous_diagnose = svc.diagnose
+        diagnosable_phases = {"INTAKE", "NEEDS_INFORMATION", "REANALYZING", "RESPONSE_RECEIVED"}
 
         def diagnose_with_post_response_escalation(db, case):
+            if case.status not in diagnosable_phases:
+                raise ValueError("The case is not in a phase that permits a new diagnosis")
             was_response_received = case.status == "RESPONSE_RECEIVED"
             result, decision, generated_action = previous_diagnose(db, case)
             if not (
