@@ -98,4 +98,5 @@
   loadEnhancement('/demo/escalation_guard.js', 'mcr-escalation-guard');
   loadEnhancement('/demo/case_phase_guard.js', 'mcr-case-phase-guard');
   loadEnhancement('/demo/case_progress.js', 'mcr-case-progress');
+  loadEnhancement('/demo/case_next_step.js', 'mcr-case-next-step');
 })();
