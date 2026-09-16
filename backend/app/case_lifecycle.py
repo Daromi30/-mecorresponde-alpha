@@ -53,7 +53,7 @@ def complete_current_action(
         return None
     if only_types is not None and action.type not in only_types:
         return None
-    if action.status == "COMPLETED":
+    if action.status in {"COMPLETED", "SUPERSEDED"}:
         return action
     action.status = "COMPLETED"
     action.completed_at = datetime.now(timezone.utc)
@@ -68,7 +68,14 @@ def set_current_action(
     payload: dict[str, Any] | None = None,
     status: str = "OPEN",
 ) -> Action:
-    """Create the next explicit action and make it the case's current step."""
+    """Create the next explicit action and make it the case's current step.
+
+    A case must never acquire a new current action while its previous current action remains
+    pending. Centralizing that invariant here protects every workflow transition, including
+    structured human-review reanalysis, even when a caller forgets to close its prior step.
+    Historical actions are retained and terminal states such as SUPERSEDED are preserved.
+    """
+    complete_current_action(db, case)
     action = Action(
         case_id=case.id,
         type=action_type,
