@@ -14,7 +14,8 @@
 
   function statusText(item) {
     if (item.ok) return 'Operativo';
-    if (item.severity === 'BETA_BLOCKER') return 'Bloquea beta completa';
+    if (item.severity === 'INTERNAL_BETA_BLOCKER') return 'Bloquea beta interna';
+    if (item.severity === 'BETA_BLOCKER') return 'Bloquea beta con datos reales';
     if (item.severity === 'PUBLIC_BETA_BLOCKER') return 'Bloquea beta pública';
     if (item.severity === 'PUBLIC_LAUNCH_BLOCKER') return 'Bloquea lanzamiento público';
     return 'Pendiente';
@@ -25,8 +26,9 @@
       return 'Listo para beta y lanzamiento público';
     }
     if (data.full_closed_beta_ready && data.public_beta_ready) return 'Beta pública lista; lanzamiento aún no';
-    if (data.full_closed_beta_ready) return 'Beta cerrada completa lista';
-    return 'Beta completa todavía bloqueada';
+    if (data.full_closed_beta_ready) return 'Beta cerrada con datos reales lista';
+    if (data.synthetic_internal_beta_ready) return 'Beta interna con datos ficticios lista para prueba manual';
+    return 'Beta interna todavía bloqueada';
   }
 
   async function renderReadiness() {
@@ -37,7 +39,7 @@
       const checks = data.checks || [];
       panel.innerHTML = `
         <h2>Readiness de beta</h2>
-        <div class="meta">Estado calculado por capacidades reales del sistema; no es una valoración manual.</div>
+        <div class="meta">Estado calculado por capacidades reales del sistema; separa pruebas internas con datos ficticios de cualquier uso con datos reales.</div>
         <div style="margin:12px 0"><b>${esc(readinessLabel(data))}</b></div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
           ${checks.map(item => `
@@ -47,7 +49,8 @@
               <div class="meta">${esc(item.detail)}</div>
             </div>`).join('')}
         </div>
-        ${data.beta_blockers?.length ? `<div class="meta" style="margin-top:10px"><b>Bloqueantes de beta completa:</b> ${esc(data.beta_blockers.join(', '))}</div>` : ''}`;
+        ${data.internal_beta_blockers?.length ? `<div class="meta" style="margin-top:10px"><b>Bloqueantes de beta interna:</b> ${esc(data.internal_beta_blockers.join(', '))}</div>` : ''}
+        ${data.beta_blockers?.length ? `<div class="meta" style="margin-top:6px"><b>Pendientes antes de datos reales:</b> ${esc(data.beta_blockers.filter(x => !(data.internal_beta_blockers || []).includes(x)).join(', '))}</div>` : ''}`;
     } catch (error) {
       panel.innerHTML = `<h2>Readiness de beta</h2><div class="danger">No se ha podido calcular: ${esc(error.message)}</div>`;
     }
