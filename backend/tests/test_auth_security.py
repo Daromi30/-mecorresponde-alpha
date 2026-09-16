@@ -2,14 +2,15 @@ from fastapi import Response
 from sqlalchemy import select
 
 from app.auth import MAX_ACTIVE_SESSIONS, issue_session
-from app.auth_models import User, UserSession
-from app.auth_throttle import login_throttle
+from app.auth_models import AuthThrottleState, User, UserSession
+from app.auth_throttle import LoginThrottle, login_throttle
 
 
-def test_failed_login_throttle_returns_retry_after_without_ip_tracking(client):
+def test_failed_login_throttle_returns_retry_after_without_ip_tracking(client, db):
     old_limit = login_throttle.limit
     login_throttle.limit = 2
-    login_throttle.reset()
+    login_throttle.reset(db)
+    db.commit()
     payload = {"email": "throttle-test@example.com", "password": "wrong-password-long-enough"}
     try:
         assert client.post("/api/auth/login", json=payload).status_code == 401
@@ -17,9 +18,52 @@ def test_failed_login_throttle_returns_retry_after_without_ip_tracking(client):
         blocked = client.post("/api/auth/login", json=payload)
         assert blocked.status_code == 429
         assert int(blocked.headers["retry-after"]) >= 1
+
+        rows = db.scalars(select(AuthThrottleState)).all()
+        assert len(rows) == 1
+        assert rows[0].failure_count == 2
+        assert "throttle-test@example.com" not in rows[0].key_hash
     finally:
         login_throttle.limit = old_limit
-        login_throttle.reset()
+        login_throttle.reset(db)
+        db.commit()
+
+
+def test_throttle_state_survives_new_throttle_instance(client, db):
+    email = "persistent-throttle@example.com"
+    payload = {"email": email, "password": "wrong-password-long-enough"}
+    old_limit = login_throttle.limit
+    login_throttle.limit = 2
+    login_throttle.reset(db)
+    db.commit()
+    try:
+        assert client.post("/api/auth/login", json=payload).status_code == 401
+        assert client.post("/api/auth/login", json=payload).status_code == 401
+
+        restarted_worker = LoginThrottle(limit=2, window_seconds=login_throttle.window_seconds)
+        try:
+            restarted_worker.check(db, email)
+        except Exception as exc:
+            assert getattr(exc, "status_code", None) == 429
+        else:
+            raise AssertionError("A new worker instance must observe persisted throttle state")
+    finally:
+        login_throttle.limit = old_limit
+        login_throttle.reset(db)
+        db.commit()
+
+
+def test_successful_login_clears_persisted_throttle_state(client, db):
+    email = "clear-throttle@example.com"
+    password = "strong-password-for-throttle"
+    assert client.post("/api/auth/register", json={"email": email, "password": password}).status_code == 201
+    assert client.post("/api/auth/logout").status_code == 200
+    assert client.post("/api/auth/login", json={"email": email, "password": "wrong-password-long-enough"}).status_code == 401
+    assert db.get(AuthThrottleState, login_throttle._key(email)) is not None
+
+    assert client.post("/api/auth/login", json={"email": email, "password": password}).status_code == 200
+    db.expire_all()
+    assert db.get(AuthThrottleState, login_throttle._key(email)) is None
 
 
 def test_successful_account_is_limited_to_five_active_sessions(client, db):
