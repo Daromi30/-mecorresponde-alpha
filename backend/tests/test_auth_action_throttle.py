@@ -2,7 +2,7 @@ from sqlalchemy import select
 
 import app.routers.auth as auth_router
 from app.auth_models import AuthThrottleState
-from app.auth_throttle import password_reset_throttle, verification_email_throttle
+from app.auth_throttle import login_throttle, password_reset_throttle, verification_email_throttle
 from app.config import settings
 
 
@@ -44,9 +44,7 @@ def test_password_reset_requests_are_persistently_rate_limited_without_account_e
     assert email not in row.key_hash
 
 
-def test_verification_email_resends_are_limited_and_confirm_clears_throttle(
-    client, db, monkeypatch
-):
+def test_verification_email_resends_are_limited_and_namespaced(client, db, monkeypatch):
     sent = []
     configure_email(monkeypatch, sent)
     email = "verify-throttle@example.com"
@@ -63,7 +61,30 @@ def test_verification_email_resends_are_limited_and_confirm_clears_throttle(
     assert blocked.status_code == 429
     assert len(sent) == verification_email_throttle.limit
 
-    # The throttle is namespaced: verification traffic must not create the login key.
     assert db.get(AuthThrottleState, verification_email_throttle._key(email)) is not None
-    from app.auth_throttle import login_throttle
     assert db.get(AuthThrottleState, login_throttle._key(email)) is None
+
+
+def test_account_deletion_removes_all_auth_action_throttle_digests(client, db):
+    email = "delete-throttles@example.com"
+    password = "strong-password-for-deletion"
+    registered = client.post(
+        "/api/auth/register",
+        json={"email": email, "password": password},
+    )
+    assert registered.status_code == 201
+
+    login_throttle.hit(db, email)
+    password_reset_throttle.hit(db, email)
+    verification_email_throttle.hit(db, email)
+    db.commit()
+    assert len(db.scalars(select(AuthThrottleState)).all()) == 3
+
+    deleted = client.request(
+        "DELETE",
+        "/api/auth/account",
+        json={"password": password, "confirmation": "DELETE"},
+    )
+    assert deleted.status_code == 200
+    db.expire_all()
+    assert db.scalars(select(AuthThrottleState)).all() == []
