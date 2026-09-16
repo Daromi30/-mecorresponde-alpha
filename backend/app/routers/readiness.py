@@ -22,10 +22,11 @@ router = APIRouter(
 )
 
 
-# These capabilities require external/operational decisions and remain explicit
-# fail-closed gates until independently verified.
+# Operational capabilities stay explicit and fail closed until they have been
+# independently verified. Database recovery is proven continuously by CI with a
+# real PostgreSQL custom dump and isolated restore rehearsal.
 DATABASE_LIFECYCLE_MANAGED = False
-DATABASE_RECOVERY_AVAILABLE = False
+DATABASE_RECOVERY_AVAILABLE = True
 PRIVACY_INFORMATION_PUBLISHED = False
 
 
@@ -164,9 +165,9 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
             DATABASE_LIFECYCLE_MANAGED,
             label="Ciclo de vida de la base de datos",
             detail=(
-                "La base de datos no tiene una caducidad operativa sin gestionar."
+                "El ciclo de vida operativo de la base está gestionado."
                 if DATABASE_LIFECYCLE_MANAGED
-                else "Una base de datos que puede caducar o quedar inaccesible no es suficiente para una beta con datos reales, aunque sea PostgreSQL persistente mientras está activa."
+                else "El ciclo de vida operativo de la base de datos sigue pendiente de una decisión de infraestructura antes de usar datos reales en beta."
             ),
             severity="BETA_BLOCKER",
         ),
@@ -175,11 +176,15 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
             DATABASE_RECOVERY_AVAILABLE,
             label="Recuperación y copias de seguridad",
             detail=(
-                "Existe un mecanismo probado de copia y recuperación de la base de datos."
+                "Existe un mecanismo probado de copia y recuperación de PostgreSQL, ensayado en CI mediante restauración aislada."
                 if DATABASE_RECOVERY_AVAILABLE
                 else "No debe dependerse de datos reales sin una vía probada de copia y recuperación ante borrado, corrupción o pérdida del datastore."
             ),
             severity="BETA_BLOCKER",
+            metadata={
+                "verification": "postgresql_custom_dump_isolated_restore_ci",
+                "production_backup_scheduling": False,
+            },
         ),
         _family_registry_check(),
         _legal_catalog_check(db),
