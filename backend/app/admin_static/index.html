@@ -206,21 +206,11 @@ function renderCase(c, reviewId) {
     <section><h3>Decisiones</h3>${rows(c.decisions, [x=>`<b>${esc(x.viability)}</b>`, x=>esc(x.scope_status), x=>`€ ${esc(x.claimable_amount ?? 0)}`, x=>esc(x.reasoning_summary)])}</section>
     <section><h3>Documentos</h3>${rows(c.documents, [x=>esc(x.filename), x=>esc(x.processing_status), x=>`<code>${esc((x.sha256||'').slice(0,12))}…</code>`])}</section>
     <section><h3>Auditoría reciente</h3>${rows((c.audit||[]).slice(0,25), [x=>esc(x.created_at), x=>`<b>${esc(x.event_type)}</b>`, x=>esc(JSON.stringify(x.payload))])}</section>
-    <section>
-      <h3>Completar revisión</h3>
+    <section id="reviewResolutionAnchor" style="display:none">
+      <h3>Resolver revisión</h3>
       <div class="meta">Motivo: ${esc(review?.reason || '')}</div>
-      <textarea id="decision" placeholder="Conclusión de la revisión, cambios necesarios, regla aplicable o motivo de escalado"></textarea>
-      <button id="completeReview">Completar revisión</button>
+      <button id="completeReview" type="button" disabled hidden aria-hidden="true">Finalización genérica desactivada</button>
     </section>`;
-  document.getElementById('completeReview').addEventListener('click', async () => {
-    const text = document.getElementById('decision').value.trim();
-    if (!text) return;
-    try {
-      await api('/api/admin/reviews/' + reviewId + '/complete', {method:'POST', body:JSON.stringify({reviewer_decision:text})});
-      await refreshAll();
-      detailEl.innerHTML = '<div class="empty">Revisión completada. El caso ha quedado listo para reanálisis.</div>';
-    } catch (e) { alert(e.message); }
-  });
 }
 
 document.getElementById('connect').addEventListener('click', connect);
