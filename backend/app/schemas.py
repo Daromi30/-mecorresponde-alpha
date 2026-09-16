@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any
-from pydantic import BaseModel, Field
+from typing import Any, Literal
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .fact_validation import normalize_user_fact_key
 
 
 class CaseCreate(BaseModel):
@@ -10,19 +12,33 @@ class CaseCreate(BaseModel):
 
 
 class FactUpsert(BaseModel):
-    key: str
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=3, max_length=160)
     value: Any
-    state: str = "asserted"
-    materiality: str = "critical"
-    confidence: float | None = None
+    state: Literal["asserted", "confirmed", "unknown"] = "asserted"
+    materiality: Literal["critical", "relevant", "context"] = "critical"
+    confidence: float | None = Field(default=None, ge=0, le=1)
     user_confirmed: bool = True
+
+    @field_validator("key")
+    @classmethod
+    def validate_key(cls, value: str) -> str:
+        return normalize_user_fact_key(value)
 
 
 class DocumentFactConfirm(BaseModel):
-    key: str
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=3, max_length=160)
     value: Any
-    locator: str | None = None
-    excerpt: str | None = None
+    locator: str | None = Field(default=None, max_length=255)
+    excerpt: str | None = Field(default=None, max_length=10000)
+
+    @field_validator("key")
+    @classmethod
+    def validate_key(cls, value: str) -> str:
+        return normalize_user_fact_key(value)
 
 
 class ChargeInput(BaseModel):
