@@ -39,8 +39,8 @@ class ChargesInput(BaseModel):
 
 class SubmissionInput(BaseModel):
     submitted_on: date
-    channel: str = "web"
-    reference_number: str | None = None
+    channel: str = Field(default="web", min_length=2, max_length=40)
+    reference_number: str | None = Field(default=None, max_length=200)
 
 
 class ResponseInput(BaseModel):
