@@ -26,7 +26,12 @@ def _professional_review(client, db):
         ).status_code == 200
     assert client.post(
         f"/api/cases/{case_id}/charges",
-        json={"charges": [{"amount": 8.99, "evidence_verified": True}]},
+        json={"charges": [{
+            "amount": 8.99,
+            "service_period_start": "2026-06-04",
+            "service_period_end": "2026-07-03",
+            "evidence_verified": True,
+        }]},
     ).status_code == 200
     assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 200
     assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 200
