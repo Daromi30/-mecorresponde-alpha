@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from . import services_v2 as svc
 from .engine.guarded_gateway import GuardedModelGateway
 from .family_manifest import FAMILY_MANIFEST, supported_family_codes
@@ -52,6 +54,42 @@ def install_all_families() -> tuple[str, ...]:
             return rules
 
         svc.seed_legal = seed_with_reviewed_provenance
+
+        # Claim-package rendering is also installed at the final multivertical boundary.
+        # Existing renderers remain untouched; missing families are served by the registry.
+        # The wrapper additionally makes package preparation idempotent and closes the
+        # diagnostic action that preceded a successfully prepared submission package.
+        from .claim_packages import EXTENDED_CLAIM_FAMILIES, prepare_extended_claim_package
+        from .models import Action
+
+        previous_prepare_claim = svc.prepare_claim_package
+
+        def prepare_claim_for_all_families(db, case):
+            current = db.get(Action, case.current_action_id) if case.current_action_id else None
+            if (
+                current is not None
+                and current.case_id == case.id
+                and current.type == "SUBMIT_INITIAL_CLAIM"
+                and current.status == "READY"
+            ):
+                return {"action_id": current.id, **(current.payload_json or {})}
+
+            if (case.family or "") in EXTENDED_CLAIM_FAMILIES:
+                return prepare_extended_claim_package(db, case)
+
+            preceding = current
+            result = previous_prepare_claim(db, case)
+            if (
+                preceding is not None
+                and preceding.id != result.get("action_id")
+                and preceding.status != "COMPLETED"
+            ):
+                preceding.status = "COMPLETED"
+                preceding.completed_at = datetime.now(timezone.utc)
+                db.commit()
+            return result
+
+        svc.prepare_claim_package = prepare_claim_for_all_families
         _INSTALLED = True
 
     expected = set(supported_family_codes())
