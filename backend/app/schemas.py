@@ -42,14 +42,19 @@ class DocumentFactConfirm(BaseModel):
 
 
 class ChargeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     amount: float = Field(ge=0)
     service_period_start: date | None = None
     service_period_end: date | None = None
     charged_at: date | None = None
-    evidence_verified: bool = True
+    # Evidence must be asserted explicitly. Omitting this field must never make a
+    # user-entered charge look documented by default.
+    evidence_verified: bool = False
 
 
 class ChargesInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     charges: list[ChargeInput]
 
 
