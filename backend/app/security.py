@@ -6,13 +6,13 @@ import secrets
 from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException, Request, Response
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .auth import get_user_from_request
 from .config import settings
 from .db import Base, get_db
-from .models import Case
+from .models import AuditEvent, Case
 
 
 class CaseAccess(Base):
@@ -63,12 +63,7 @@ def clear_case_access_cookie(response: Response, case_id: str) -> None:
 
 
 def _block_case_user_review_completion(request: Request) -> None:
-    """Keep human/professional review completion behind the protected backoffice.
-
-    Case owners can inspect review state, but they must never be able to mark their own
-    review gate as completed. The legacy case-scoped completion route remains reachable
-    only as an explicit fail-closed response so old clients cannot silently bypass it.
-    """
+    """Keep human/professional review completion behind the protected backoffice."""
     path = request.url.path.rstrip("/")
     if (
         request.method.upper() == "POST"
@@ -81,6 +76,61 @@ def _block_case_user_review_completion(request: Request) -> None:
         )
 
 
+def _block_locked_initial_mutation(request: Request, db: Session, case: Case) -> None:
+    """Prevent case-owner endpoints from rewinding a case after the action phase starts.
+
+    Once an initial claim was submitted, later evidence belongs to the response/review/
+    outcome loop. Re-posting intake facts or rerunning initial diagnosis/claim preparation
+    would otherwise reset status or create duplicate outbound actions. Internal response
+    analysis and protected backoffice review call service functions directly and are not
+    affected by this HTTP boundary.
+
+    Before submission, a HUMAN_REVIEW case still lets /prepare-claim reach the normal
+    decision gate. That endpoint already fails closed with 422 for a non-preparable
+    diagnosis, preserving its established API contract without allowing any mutation.
+    """
+    if request.method.upper() != "POST":
+        return
+
+    path = request.url.path.rstrip("/")
+    initial_mutation = path.endswith(("/facts", "/charges", "/diagnose", "/prepare-claim"))
+    document_fact_confirmation = "/documents/" in path and path.endswith("/confirm-fact")
+    if not (initial_mutation or document_fact_confirmation):
+        return
+
+    submitted = db.scalar(
+        select(AuditEvent.id).where(
+            AuditEvent.case_id == case.id,
+            AuditEvent.event_type == "CLAIM_SUBMITTED",
+        )
+    )
+    protected_phase = case.status in {
+        "HUMAN_REVIEW",
+        "WAITING_RESPONSE",
+        "RESPONSE_RECEIVED",
+        "RESOLVED_PENDING_EXECUTION",
+        "RESOLVED",
+    }
+    allow_existing_prepare_gate = (
+        not submitted
+        and case.status == "HUMAN_REVIEW"
+        and path.endswith("/prepare-claim")
+    )
+    if submitted or (protected_phase and not allow_existing_prepare_gate):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Initial case facts and claim actions are locked in the current phase; "
+                "use the response, evidence, outcome, or protected review flow instead"
+            ),
+        )
+
+
+def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Case) -> None:
+    _block_case_user_review_completion(request)
+    _block_locked_initial_mutation(request, db, case)
+
+
 def require_case_access(request: Request, db: Session = Depends(get_db)) -> None:
     """Protect case routes with either case capability or authenticated ownership."""
     case_id = request.path_params.get("case_id")
@@ -90,7 +140,7 @@ def require_case_access(request: Request, db: Session = Depends(get_db)) -> None
     case = db.get(Case, case_id)
     user = get_user_from_request(request, db)
     if case and user and case.user_id == user.id:
-        _block_case_user_review_completion(request)
+        _enforce_authorized_case_boundaries(request, db, case)
         return
 
     access = db.get(CaseAccess, case_id)
@@ -104,4 +154,6 @@ def require_case_access(request: Request, db: Session = Depends(get_db)) -> None
         # discover whether a given case UUID exists.
         raise HTTPException(status_code=404, detail="Case not found")
 
-    _block_case_user_review_completion(request)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    _enforce_authorized_case_boundaries(request, db, case)
