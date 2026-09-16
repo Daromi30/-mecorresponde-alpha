@@ -52,7 +52,7 @@ def test_backoffice_lists_review_queue_and_case_detail(client, db):
     assert any(event["event_type"] == "HUMAN_REVIEW_TRIGGERED" for event in body["audit"])
 
 
-def test_admin_can_assign_and_complete_review(client, db):
+def test_admin_can_assign_but_generic_free_text_cannot_complete_review(client, db):
     case, review = make_review(db)
 
     assigned = client.post(
@@ -63,18 +63,23 @@ def test_admin_can_assign_and_complete_review(client, db):
     assert assigned.status_code == 200
     assert assigned.json()["assigned_to"] == "beta-reviewer"
 
-    completed = client.post(
+    blocked = client.post(
         f"/api/admin/reviews/{review.id}/complete",
         headers=ADMIN,
         json={"reviewer_decision": "Revisado: solicitar evidencia adicional antes de concluir."},
     )
-    assert completed.status_code == 200
-    assert completed.json()["status"] == "COMPLETED"
-    assert completed.json()["case_status"] == "REANALYZING"
+    assert blocked.status_code == 409
+    assert "Generic free-text review completion is disabled" in blocked.json()["detail"]
 
     db.expire_all()
-    assert db.get(HumanReview, review.id).status == "COMPLETED"
-    assert db.get(Case, case.id).status == "REANALYZING"
+    stored_review = db.get(HumanReview, review.id)
+    stored_case = db.get(Case, case.id)
+    assert stored_review is not None
+    assert stored_review.status == "OPEN"
+    assert stored_review.reviewer_decision is None
+    assert stored_review.completed_at is None
+    assert stored_case is not None
+    assert stored_case.status == "HUMAN_REVIEW"
 
 
 def test_admin_stats_are_aggregate_only(client, db):
