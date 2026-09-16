@@ -39,6 +39,16 @@ class CaseDeletionResult:
     documents_deleted: int
 
 
+def _matches_expected_action_type(action_type: str, only_types: set[str]) -> bool:
+    if action_type in only_types:
+        return True
+    # Engine-generated review actions keep their specific reason in the action type
+    # (for example HUMAN_REVIEW_LEGACY or HUMAN_REVIEW_SECOND_HAND). Callers that
+    # expect the human-review lifecycle step must close those variants as the same
+    # action class, without broadening the match to unrelated workflow actions.
+    return "HUMAN_REVIEW" in only_types and action_type.startswith("HUMAN_REVIEW_")
+
+
 def complete_current_action(
     db: Session,
     case: Case,
@@ -51,7 +61,7 @@ def complete_current_action(
     action = db.get(Action, case.current_action_id)
     if not action or action.case_id != case.id:
         return None
-    if only_types is not None and action.type not in only_types:
+    if only_types is not None and not _matches_expected_action_type(action.type, only_types):
         return None
     if action.status in {"COMPLETED", "SUPERSEDED"}:
         return action
