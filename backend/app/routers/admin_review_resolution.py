@@ -324,6 +324,10 @@ def resolve_structured_review(
             )
 
     _complete_review_row(review, payload.reviewer_decision)
+    # Closing a review must close its workflow action even when the reviewer chooses not
+    # to reanalyze immediately. Otherwise the review row and case action can disagree,
+    # leaving a completed review backed by an orphan OPEN HUMAN_REVIEW action.
+    complete_current_action(db, case, only_types={"HUMAN_REVIEW"})
     case.status = "REANALYZING"
     audit(
         db,
