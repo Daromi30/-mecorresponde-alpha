@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..case_lifecycle import complete_current_action, set_current_action
 from ..config import settings
 from ..db import get_db
 from ..documents import save_upload
-from ..models import Action, Case, Communication, Deadline, Decision, Document, Evidence, Fact, Outcome
+from ..models import Action, AuditEvent, Case, Communication, Deadline, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
 from ..schemas_v2 import (
     CaseCreate, ChargesInput, DocumentFactConfirm, FactUpsert, HumanReviewComplete,
@@ -252,7 +253,28 @@ def prepare_claim(case_id: str, db: Session = Depends(get_db)):
 @router.post("/{case_id}/submission")
 def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
+    already_submitted = db.scalar(
+        select(AuditEvent.id).where(
+            AuditEvent.case_id == case.id,
+            AuditEvent.event_type == "CLAIM_SUBMITTED",
+        )
+    )
+    if already_submitted:
+        raise HTTPException(status_code=409, detail="Initial claim submission is already recorded")
+
+    complete_current_action(db, case, only_types={"SUBMIT_INITIAL_CLAIM"})
+    wait_action = set_current_action(
+        db,
+        case,
+        "WAIT_FOR_RESPONSE",
+        payload={
+            "submitted_on": str(payload.submitted_on),
+            "channel": payload.channel,
+            "reference_number": payload.reference_number,
+        },
+    )
     case.status = "WAITING_RESPONSE"
+
     # The user supplies a calendar date, not a time of day. Store the outbound
     # communication without inventing an exact timestamp; the verified submitted_on
     # date remains in the audit/deadline records.
@@ -268,6 +290,7 @@ def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get
         "submitted_on": str(payload.submitted_on),
         "reference": payload.reference_number,
         "channel": payload.channel,
+        "wait_action_id": wait_action.id,
     })
     if case.vertical != "electricity":
         db.commit()
@@ -316,22 +339,24 @@ def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get
 def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
     result = analyze_company_response(db, case, payload.text)
+    complete_current_action(db, case, only_types={"WAIT_FOR_RESPONSE"})
+    db.commit()
+
     if result["type"] == "UNKNOWN":
         review = create_human_review(
             db, case, reason="UNRECOGNIZED_COMPANY_RESPONSE", priority="HIGH",
             context={"text": payload.text[:2000]},
         )
-        action = Action(case_id=case.id, type="HUMAN_REVIEW", status="OPEN", payload_json={"reason": review.reason})
-        db.add(action)
-        db.flush()
-        case.current_action_id = action.id
+        action = set_current_action(
+            db,
+            case,
+            "HUMAN_REVIEW",
+            payload={"reason": review.reason},
+        )
         db.commit()
         return {"analysis": result, "case_status": case.status, "updated_diagnosis": None}
     if result["type"] == "ACCEPTANCE":
-        action = Action(case_id=case.id, type="VERIFY_EXECUTION", status="OPEN", payload_json={})
-        db.add(action)
-        db.flush()
-        case.current_action_id = action.id
+        action = set_current_action(db, case, "VERIFY_EXECUTION")
         case.status = "RESOLVED_PENDING_EXECUTION"
         audit(db, case.id, "CLAIM_ACCEPTED_PENDING_EXECUTION", {"action_id": action.id})
         db.commit()
@@ -394,9 +419,15 @@ def outcome(case_id: str, payload: OutcomeInput, db: Session = Depends(get_db)):
     outcome_row.amount_recovered = payload.amount_recovered
     outcome_row.verified_by_user = payload.verified_by_user
     if payload.verified_by_user:
+        completed = complete_current_action(db, case, only_types={"VERIFY_EXECUTION"})
+        if completed is not None:
+            case.current_action_id = None
         case.status = "RESOLVED"
         outcome_row.resolved_at = datetime.now(timezone.utc)
     else:
+        current = db.get(Action, case.current_action_id) if case.current_action_id else None
+        if not current or current.case_id != case.id or current.type != "VERIFY_EXECUTION" or current.status == "COMPLETED":
+            set_current_action(db, case, "VERIFY_EXECUTION")
         case.status = "RESOLVED_PENDING_EXECUTION"
     audit(db, case.id, "OUTCOME_RECORDED", {"result": payload.result_type, "verified": payload.verified_by_user})
     db.commit()
