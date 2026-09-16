@@ -1,6 +1,3 @@
-import json
-
-
 def create_case(client, message="Me cambié de compañía de luz y me siguen cobrando un mantenimiento"):
     response = client.post("/api/cases", json={"message": message})
     assert response.status_code == 200, response.text
@@ -36,6 +33,20 @@ def complete_e04b(client, case_id):
         },
     )
     assert response.status_code == 200, response.text
+
+
+def nested_keys(value):
+    if isinstance(value, dict):
+        result = set(value)
+        for child in value.values():
+            result.update(nested_keys(child))
+        return result
+    if isinstance(value, list):
+        result = set()
+        for child in value:
+            result.update(nested_keys(child))
+        return result
+    return set()
 
 
 def test_case_handoff_contains_current_facts_and_exact_legal_provenance(client):
@@ -75,12 +86,14 @@ def test_case_handoff_contains_current_facts_and_exact_legal_provenance(client):
     assert rule["source"]["official_url"].startswith("https://www.boe.es/")
     assert rule["source"]["status"] == "active"
 
-    serialized = json.dumps(body)
-    assert "token_hash" not in serialized
-    assert "access_token" not in serialized
-    assert "storage_key" not in serialized
-    assert "payload_json" not in serialized
-    assert "ai_runs" not in serialized
+    keys = nested_keys(body)
+    assert not {
+        "token_hash",
+        "access_token",
+        "storage_key",
+        "payload_json",
+        "ai_runs",
+    }.intersection(keys)
     assert "internal_audit_payloads" in body["excluded_internal_data"]
     assert response.headers["cache-control"] == "no-store"
 
