@@ -21,8 +21,83 @@
       : null;
   }
 
+  function currentAction() {
+    if (!caseData?.current_action_id || !Array.isArray(caseData.actions)) return null;
+    return caseData.actions.find(item => item.id === caseData.current_action_id) || null;
+  }
+
+  function isPreparableAction(type) {
+    if (!type) return false;
+    return type.startsWith('PREPARE_') || [
+      'GIVE_ADDITIONAL_DELIVERY_PERIOD',
+      'SEND_WITHDRAWAL_NOTICE',
+    ].includes(type);
+  }
+
+  function needsGuidedInput(type) {
+    if (!type) return false;
+    return ['ASK_', 'REQUEST_', 'CONFIRM_', 'CORRECT_', 'CHOOSE_'].some(prefix => type.startsWith(prefix));
+  }
+
+  function diagnosedActionGuidance(currentDecision, current) {
+    const type = current?.type || '';
+
+    if (isPreparableAction(type) && ['HIGH', 'MEDIUM'].includes(currentDecision?.viability)) {
+      return {
+        title: 'Prepara la acción con este diagnóstico',
+        body: 'Revisa primero el razonamiento, el importe y las fuentes. Después puedes abrir la acción que corresponde a esta fase.',
+        button: 'Preparar mi siguiente acción',
+        action: () => prepareClaim(),
+      };
+    }
+
+    if (type.startsWith('WAIT_')) {
+      return {
+        title: 'Todavía no toca enviar una nueva acción',
+        body: 'El Motor ha determinado que esta fase consiste en esperar a que se cumpla el hito indicado en el diagnóstico. No se enviará una reclamación antes de tiempo.',
+        button: 'Ver el motivo y el hito',
+        action: () => document.getElementById('diagnosisCard')?.scrollIntoView({behavior: 'smooth', block: 'start'}),
+      };
+    }
+
+    if (needsGuidedInput(type)) {
+      return {
+        title: 'Completa la decisión que falta',
+        body: 'El siguiente paso depende de un dato u opción que debe confirmar el usuario. MECORRESPONDE no elegirá ese hecho por ti.',
+        button: 'Continuar con la pregunta',
+        action: () => document.getElementById('questionArea')?.scrollIntoView({behavior: 'smooth', block: 'center'}),
+      };
+    }
+
+    if (type === 'RETURN_GOODS_WITH_PROOF') {
+      return {
+        title: 'Devuelve el producto y conserva la prueba',
+        body: 'El desistimiento ya está ejercitado. El siguiente hito depende de la devolución real del producto; conserva el justificante antes de actualizar el expediente.',
+        button: 'Ver el diagnóstico',
+        action: () => document.getElementById('diagnosisCard')?.scrollIntoView({behavior: 'smooth', block: 'start'}),
+      };
+    }
+
+    if (type.startsWith('EXPLAIN_') || type.startsWith('NO_') || type.startsWith('MONITOR_') || type.startsWith('CHECK_') || type === 'VERIFY_AND_CLOSE_WITHDRAWAL') {
+      return {
+        title: 'Revisa la conclusión antes de hacer nada más',
+        body: 'El Motor no está proponiendo una reclamación nueva en esta fase. Revisa la explicación y actualiza el expediente solo si aparece un hecho nuevo verificable.',
+        button: 'Ver diagnóstico',
+        action: () => document.getElementById('diagnosisCard')?.scrollIntoView({behavior: 'smooth', block: 'start'}),
+      };
+    }
+
+    return {
+      title: 'Revisa el siguiente paso del diagnóstico',
+      body: 'La acción corriente no es una reclamación preparada automáticamente. MECORRESPONDE no la convertirá en un envío distinto del indicado por el Motor.',
+      button: 'Ver diagnóstico',
+      action: () => document.getElementById('diagnosisCard')?.scrollIntoView({behavior: 'smooth', block: 'start'}),
+    };
+  }
+
   function guidanceFor(status) {
     const currentDecision = decision();
+    const current = currentAction();
     if (status === 'INTAKE' || status === 'NEEDS_INFORMATION') {
       return {
         title: 'Completa el dato que falta',
@@ -31,21 +106,8 @@
         action: () => document.getElementById('questionArea')?.scrollIntoView({behavior: 'smooth', block: 'center'}),
       };
     }
-    if (status === 'DIAGNOSED' && ['HIGH', 'MEDIUM'].includes(currentDecision?.viability)) {
-      return {
-        title: 'Prepara la acción con este diagnóstico',
-        body: 'Revisa primero el razonamiento, el importe y las fuentes. Después puedes abrir la acción que corresponde a esta fase.',
-        button: 'Preparar mi siguiente acción',
-        action: () => prepareClaim(),
-      };
-    }
     if (status === 'DIAGNOSED') {
-      return {
-        title: 'Revisa el diagnóstico antes de avanzar',
-        body: 'Con los hechos actuales el Motor no está proponiendo una reclamación automática. Revisa la explicación y los puntos que podrían cambiarla.',
-        button: 'Ver diagnóstico',
-        action: () => document.getElementById('diagnosisCard')?.scrollIntoView({behavior: 'smooth', block: 'start'}),
-      };
+      return diagnosedActionGuidance(currentDecision, current);
     }
     if (status === 'READY_TO_SUBMIT') {
       return {
