@@ -63,10 +63,16 @@
     return result;
   };
 
-  if (!document.querySelector('script[data-mcr-admin-handoff]')) {
+  function loadAdminEnhancement(src, datasetKey) {
+    const selector = `script[data-${datasetKey}]`;
+    if (document.querySelector(selector)) return;
     const script = document.createElement('script');
-    script.src = 'case_handoff.js';
-    script.dataset.mcrAdminHandoff = 'true';
+    script.src = src;
+    script.async = false;
+    script.setAttribute(`data-${datasetKey}`, 'true');
     document.body.appendChild(script);
   }
+
+  loadAdminEnhancement('case_handoff.js', 'mcr-admin-handoff');
+  loadAdminEnhancement('review_context.js', 'mcr-review-context');
 })();
