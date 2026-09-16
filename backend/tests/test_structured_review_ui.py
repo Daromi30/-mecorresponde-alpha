@@ -11,6 +11,7 @@ def test_backoffice_loads_structured_review_controls(client):
     response = client.get("/backoffice/")
     assert response.status_code == 200
     assert "structured_review.js" in response.text
+    assert "structured_review_reanalysis_guard.js" in response.text
 
 
 def test_structured_review_ui_reanalyzes_facts_without_manual_legal_fields():
@@ -26,6 +27,15 @@ def test_structured_review_ui_reanalyzes_facts_without_manual_legal_fields():
     assert "success_probability" not in script
 
 
+def test_structured_review_ui_cannot_opt_out_of_deterministic_reanalysis():
+    guard = (ADMIN_STATIC / "structured_review_reanalysis_guard.js").read_text(encoding="utf-8")
+    assert "reanalyzeStructuredReview" in guard
+    assert "checkbox.checked = true" in guard
+    assert "checkbox.disabled = true" in guard
+    assert "obligatorio" in guard
+    assert "MutationObserver" in guard
+
+
 def test_backoffice_hides_legacy_generic_review_completion_path():
     html = (ADMIN_STATIC / "index.html").read_text(encoding="utf-8")
     assert 'id="reviewResolutionAnchor" style="display:none"' in html
@@ -38,9 +48,10 @@ def test_structured_review_javascript_parses_when_node_is_available():
     node = shutil.which("node")
     if not node:
         return
-    script = (ADMIN_STATIC / "structured_review.js").read_text(encoding="utf-8")
-    with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
-        handle.write(script)
-        path = handle.name
-    result = subprocess.run([node, "--check", path], capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
+    for filename in ["structured_review.js", "structured_review_reanalysis_guard.js"]:
+        script = (ADMIN_STATIC / filename).read_text(encoding="utf-8")
+        with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
+            handle.write(script)
+            path = handle.name
+        result = subprocess.run([node, "--check", path], capture_output=True, text=True)
+        assert result.returncode == 0, f"{filename}: {result.stderr}"
