@@ -12,6 +12,9 @@ from typing import Callable
 from urllib.parse import parse_qs, unquote, urlsplit
 
 
+SAFE_RESTORE_DATABASE_PREFIX = "mecorresponde_restore_"
+
+
 class BackupConfigurationError(RuntimeError):
     pass
 
@@ -66,6 +69,23 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _paths_and_manifest(
+    backup_path: str | Path,
+    manifest_path: str | Path,
+) -> tuple[Path, Path, dict[str, object]]:
+    backup = Path(backup_path).expanduser().resolve()
+    manifest_file = Path(manifest_path).expanduser().resolve()
+    if not backup.is_file() or not manifest_file.is_file():
+        raise BackupConfigurationError("Backup archive and manifest are both required")
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BackupConfigurationError("Backup manifest is not valid JSON") from exc
+    if not isinstance(manifest, dict):
+        raise BackupConfigurationError("Backup manifest must be a JSON object")
+    return backup, manifest_file, manifest
 
 
 def create_backup(
@@ -141,12 +161,7 @@ def verify_backup_archive(
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
 ) -> dict[str, object]:
     """Verify checksum and that pg_restore can enumerate the custom archive."""
-    backup = Path(backup_path).expanduser().resolve()
-    manifest_file = Path(manifest_path).expanduser().resolve()
-    if not backup.is_file() or not manifest_file.is_file():
-        raise BackupConfigurationError("Backup archive and manifest are both required")
-
-    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    backup, _manifest_file, manifest = _paths_and_manifest(backup_path, manifest_path)
     expected = str(manifest.get("sha256", ""))
     actual = _sha256(backup)
     if not expected or expected != actual:
@@ -172,4 +187,65 @@ def verify_backup_archive(
         "sha256": actual,
         "size_bytes": backup.stat().st_size,
         "archive_entries": len(entries),
+    }
+
+
+def restore_backup_archive(
+    backup_path: str | Path,
+    manifest_path: str | Path,
+    target_database_url: str,
+    *,
+    pg_restore_binary: str | None = None,
+    runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> dict[str, object]:
+    """Restore a verified archive only into an explicitly disposable rehearsal database.
+
+    This helper deliberately refuses the source database and any target whose name
+    does not start with ``mecorresponde_restore_``. It never creates, drops, or
+    cleans a database; callers must provision an empty disposable target first.
+    """
+    backup, _manifest_file, manifest = _paths_and_manifest(backup_path, manifest_path)
+    source_database = str(manifest.get("database_name") or "").strip()
+    if not source_database:
+        raise BackupConfigurationError("Backup manifest does not identify the source database")
+
+    target = postgres_connection(target_database_url)
+    if target.database == source_database:
+        raise BackupConfigurationError("Restore rehearsal must never target the source database")
+    if not target.database.startswith(SAFE_RESTORE_DATABASE_PREFIX):
+        raise BackupConfigurationError(
+            f"Restore target must start with {SAFE_RESTORE_DATABASE_PREFIX}"
+        )
+
+    verification = verify_backup_archive(
+        backup,
+        manifest_path,
+        pg_restore_binary=pg_restore_binary,
+        runner=runner,
+    )
+    pg_restore = _binary("pg_restore", pg_restore_binary)
+    command = [
+        pg_restore,
+        "--exit-on-error",
+        "--no-owner",
+        "--no-privileges",
+        "--dbname",
+        target.database,
+        str(backup),
+    ]
+    child_env = os.environ.copy()
+    child_env.update(target.env)
+    runner(
+        command,
+        env=child_env,
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return {
+        **verification,
+        "restored": True,
+        "target_database": target.database,
+        "source_database": source_database,
     }
