@@ -75,7 +75,7 @@
     if (review?.reason !== 'UNSUPPORTED_CLASSIFICATION') return false;
     if (document.getElementById('assistedReclassificationSection')) return true;
 
-    completeSection.classList.add('hidden');
+    completeSection.style.display = 'none';
     const section = document.createElement('section');
     section.id = 'assistedReclassificationSection';
     section.innerHTML = `
