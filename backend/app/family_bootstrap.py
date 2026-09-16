@@ -233,13 +233,12 @@ def install_all_families() -> tuple[str, ...]:
 
         svc.analyze_company_response = analyze_company_response_in_resolution_phase
 
-        # Diagnosis is a transition, not a read operation. Re-running it after a completed
-        # diagnosis or prepared claim used to create duplicate Decision/Action rows and leave
-        # superseded OPEN actions behind. Facts or document confirmations already move the
-        # case back to INTAKE; post-response/admin flows explicitly use RESPONSE_RECEIVED or
-        # REANALYZING. Only those phases may legitimately generate a new diagnosis.
+        # Diagnosis is a transition, not a read operation. A case that already produced a
+        # NEEDS_INFORMATION diagnosis must receive a new claimant fact before diagnosis is
+        # attempted again; claimant fact/document writes move it back to INTAKE. Internal
+        # review and post-response flows explicitly use REANALYZING or RESPONSE_RECEIVED.
         previous_diagnose = svc.diagnose
-        diagnosable_phases = {"INTAKE", "NEEDS_INFORMATION", "REANALYZING", "RESPONSE_RECEIVED"}
+        diagnosable_phases = {"INTAKE", "REANALYZING", "RESPONSE_RECEIVED"}
 
         def diagnose_with_post_response_escalation(db, case):
             if case.status not in diagnosable_phases:
