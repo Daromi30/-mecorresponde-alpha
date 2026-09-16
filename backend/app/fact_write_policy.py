@@ -26,6 +26,13 @@ def install_fact_write_policy() -> None:
     if _INSTALLED:
         return
 
+    # Install this before family_bootstrap captures the diagnosis callable for its
+    # post-response wrapper. That way the outer anti-loop guard observes the final
+    # diagnosis even when a deterministic family reclassification happens first.
+    from .reclassification_policy import install_reclassification_policy
+
+    install_reclassification_policy()
+
     previous_upsert_fact = svc.upsert_fact
     previous_confirm_document_fact = svc.confirm_document_fact
 
