@@ -38,11 +38,27 @@
     }).format(localDate);
   }
 
-  function eventTimeCopy(event) {
+  function communicationDateFor(event, communications) {
+    if (event.type === 'CLAIM_SUBMITTED') {
+      const outbound = communications.find(item => item.direction === 'OUTBOUND' && item.kind === 'CLAIM_SUBMISSION');
+      return outbound?.occurred_on || null;
+    }
+    if (event.type === 'CLAIM_ACCEPTED_PENDING_EXECUTION') {
+      const inboundDates = communications
+        .filter(item => item.direction === 'INBOUND' && item.kind === 'COMPANY_RESPONSE' && item.occurred_on)
+        .map(item => item.occurred_on);
+      return inboundDates.length === 1 ? inboundDates[0] : null;
+    }
+    return null;
+  }
+
+  function eventTimeCopy(event, communications) {
     const recorded = formatMoment(event.at);
-    const occurred = formatCalendarDate(event.resolved_on);
-    if (occurred && recorded) return `Cumplido: ${occurred} · Confirmado: ${recorded}`;
-    if (occurred) return `Cumplido: ${occurred}`;
+    const realDate = event.resolved_on || communicationDateFor(event, communications);
+    const occurred = formatCalendarDate(realDate);
+    if (event.resolved_on && occurred && recorded) return `Cumplido: ${occurred} · Confirmado: ${recorded}`;
+    if (event.resolved_on && occurred) return `Cumplido: ${occurred}`;
+    if (occurred) return occurred;
     return recorded;
   }
 
@@ -52,6 +68,13 @@
     if (!panel) return;
     try {
       const data = await req(`/api/cases/${caseId}/timeline`);
+      let communications = [];
+      try {
+        const history = await req(`/api/cases/${caseId}/communications`);
+        communications = history.communications || [];
+      } catch (_) {
+        // Timeline remains usable with technical record times if communication history is unavailable.
+      }
       const events = data.events || [];
       if (!events.length) {
         panel.classList.add('hidden');
@@ -62,7 +85,7 @@
         <div class="timelineItem">
           <b>${escapeHtml(event.label || '')}</b>
           <div>${escapeHtml(event.detail || '')}</div>
-          <div class="tiny muted">${escapeHtml(eventTimeCopy(event))}</div>
+          <div class="tiny muted">${escapeHtml(eventTimeCopy(event, communications))}</div>
         </div>`).join('');
     } catch (_) {
       panel.classList.add('hidden');
