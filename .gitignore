@@ -2,6 +2,8 @@ __pycache__/
 .pytest_cache/
 *.pyc
 *.db
+*.dump
+backend/backups/
 backend/storage/
 backend/.env
 frontend/.env.local
