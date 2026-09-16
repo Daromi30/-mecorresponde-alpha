@@ -93,4 +93,5 @@
   loadEnhancement('/demo/deadline_guidance.js', 'mcr-deadline-guidance');
   loadEnhancement('/demo/documentation.js', 'mcr-documentation');
   loadEnhancement('/demo/response_evidence.js', 'mcr-response-evidence');
+  loadEnhancement('/demo/outcome_evidence.js', 'mcr-outcome-evidence');
 })();

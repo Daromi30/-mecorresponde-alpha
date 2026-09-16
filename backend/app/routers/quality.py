@@ -11,8 +11,9 @@ from ..case_quality import build_dossier_quality
 from ..db import get_db
 from ..models import AuditEvent, Case, Communication, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
-from ..schemas_v2 import ResponseInput
+from ..schemas_v2 import OutcomeInput, ResponseInput
 from ..security import require_case_access
+from .cases_v2 import outcome as process_outcome
 from .cases_v2 import response as process_company_response
 
 
@@ -28,6 +29,15 @@ class CompanyResponseEvidenceInput(BaseModel):
     received_on: date | None = None
     channel: str = Field(default="unknown", min_length=2, max_length=30)
     reference_number: str | None = Field(default=None, max_length=100)
+
+
+class OutcomeEvidenceInput(BaseModel):
+    result_type: str = Field(default="FAVORABLE", min_length=2, max_length=50)
+    amount_recovered: float | None = Field(default=None, ge=0)
+    verified_by_user: bool = False
+    resolved_on: date | None = None
+    non_monetary_result: str | None = Field(default=None, max_length=2000)
+    resolution_channel: str | None = Field(default=None, max_length=80)
 
 
 @router.get("/{case_id}/quality")
@@ -232,6 +242,56 @@ def evidenced_company_response(
     )
     db.commit()
     return result
+
+
+@router.post("/{case_id}/outcome/evidenced")
+def evidenced_outcome(
+    case_id: str,
+    payload: OutcomeEvidenceInput,
+    db: Session = Depends(get_db),
+):
+    """Persist user-confirmed execution details separately from confirmation time."""
+    case = db.get(Case, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    result = process_outcome(
+        case_id,
+        OutcomeInput(
+            result_type=payload.result_type,
+            amount_recovered=payload.amount_recovered,
+            verified_by_user=payload.verified_by_user,
+        ),
+        db,
+    )
+
+    outcome_row = db.scalar(select(Outcome).where(Outcome.case_id == case.id))
+    if outcome_row is None:
+        raise HTTPException(status_code=500, detail="Outcome could not be linked")
+
+    outcome_row.non_monetary_result = payload.non_monetary_result
+    outcome_row.resolution_channel = payload.resolution_channel
+    db.add(
+        AuditEvent(
+            case_id=case.id,
+            event_type="OUTCOME_EVIDENCE_RECORDED",
+            payload_json={
+                "outcome_id": outcome_row.id,
+                "verified": payload.verified_by_user,
+                "resolved_on": payload.resolved_on.isoformat() if payload.resolved_on else None,
+                "resolution_channel": payload.resolution_channel,
+                "amount_recovered": payload.amount_recovered,
+                "has_non_monetary_result": bool(payload.non_monetary_result),
+            },
+        )
+    )
+    db.commit()
+    return {
+        **result,
+        "resolved_on": payload.resolved_on.isoformat() if payload.resolved_on else None,
+        "resolution_channel": payload.resolution_channel,
+        "non_monetary_result": payload.non_monetary_result,
+    }
 
 
 @router.get("/{case_id}/communications")
