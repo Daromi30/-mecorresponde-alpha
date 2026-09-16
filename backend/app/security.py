@@ -12,7 +12,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 from .auth import get_user_from_request
 from .config import settings
 from .db import Base, get_db
-from .models import AuditEvent, Case
+from .models import Action, AuditEvent, Case
 
 
 class CaseAccess(Base):
@@ -77,12 +77,7 @@ def _block_case_user_review_completion(request: Request) -> None:
 
 
 def _block_legacy_untraced_resolution_routes(request: Request) -> None:
-    """Require evidence-aware HTTP routes for responses and outcomes.
-
-    The legacy router functions remain as internal processing primitives for the evidenced
-    endpoints. Direct browser/API callers must use the richer routes so dates/channels and
-    execution evidence cannot be silently omitted.
-    """
+    """Require evidence-aware HTTP routes for responses and outcomes."""
     if request.method.upper() != "POST":
         return
     path = request.url.path.rstrip("/")
@@ -95,6 +90,23 @@ def _block_legacy_untraced_resolution_routes(request: Request) -> None:
         raise HTTPException(
             status_code=409,
             detail="Use the evidenced outcome endpoint for this case",
+        )
+
+
+def _require_prepared_claim_before_submission(request: Request, db: Session, case: Case) -> None:
+    if request.method.upper() != "POST" or not request.url.path.rstrip("/").endswith("/submission"):
+        return
+    current = db.get(Action, case.current_action_id) if case.current_action_id else None
+    if (
+        case.status != "READY_TO_SUBMIT"
+        or current is None
+        or current.case_id != case.id
+        or current.type != "SUBMIT_INITIAL_CLAIM"
+        or current.status != "READY"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The initial claim must be diagnosed and prepared before its submission can be recorded",
         )
 
 
@@ -140,6 +152,7 @@ def _block_locked_initial_mutation(request: Request, db: Session, case: Case) ->
 def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Case) -> None:
     _block_case_user_review_completion(request)
     _block_legacy_untraced_resolution_routes(request)
+    _require_prepared_claim_before_submission(request, db, case)
     _block_locked_initial_mutation(request, db, case)
 
 
