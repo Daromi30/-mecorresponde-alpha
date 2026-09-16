@@ -62,7 +62,6 @@ def test_unsupported_review_must_be_reclassified_instead_of_generically_complete
                     "materiality": "context",
                 }
             ],
-            "reanalyze": False,
         },
     )
     assert structured.status_code == 409, structured.text
