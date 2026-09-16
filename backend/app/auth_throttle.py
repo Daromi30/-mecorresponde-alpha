@@ -65,7 +65,6 @@ class AuthThrottle:
         key = self._key(email)
         current = datetime.now(timezone.utc)
 
-        # Keep the table bounded without retaining stale digests indefinitely.
         db.execute(
             delete(AuthThrottleState).where(
                 AuthThrottleState.updated_at < current - timedelta(days=7)
@@ -90,8 +89,6 @@ class AuthThrottle:
                 db.flush()
                 return
             except IntegrityError:
-                # Another worker may have created the row concurrently. Auth
-                # request paths have no unrelated writes before this call.
                 db.rollback()
                 row = db.scalar(
                     select(AuthThrottleState)
@@ -113,7 +110,6 @@ class AuthThrottle:
         db.flush()
 
     def fail(self, db: Session, email: str) -> None:
-        """Backward-compatible name for recording a failed authentication."""
         self.hit(db, email)
 
     def success(self, db: Session, email: str) -> None:
@@ -152,3 +148,14 @@ verification_email_throttle = AuthThrottle(
     key_prefix="email-verification",
     detail="Too many verification emails requested. Try again later.",
 )
+
+
+def clear_all_auth_throttles(db: Session, email: str) -> None:
+    """Erase every known auth-action digest for an account being deleted."""
+    keys = [
+        login_throttle._key(email),
+        password_reset_throttle._key(email),
+        verification_email_throttle._key(email),
+    ]
+    db.execute(delete(AuthThrottleState).where(AuthThrottleState.key_hash.in_(keys)))
+    db.flush()
