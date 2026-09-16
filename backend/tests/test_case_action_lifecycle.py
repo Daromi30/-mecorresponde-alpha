@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 
 from app.models import Action, AuditEvent, Case, Communication, Deadline
+from app.reviews import HumanReview
 
 
 def create_complete_e04b(client):
@@ -86,7 +87,7 @@ def test_submission_completes_send_action_and_creates_single_wait_step(client, d
     ) == 1
 
 
-def test_company_response_closes_wait_action_before_next_resolution_step(client, db):
+def test_company_denial_closes_wait_and_routes_repeated_claim_to_escalation_review(client, db):
     case_id, _ = create_complete_e04b(client)
     assert client.post(
         f"/api/cases/{case_id}/submission",
@@ -102,13 +103,49 @@ def test_company_response_closes_wait_action_before_next_resolution_step(client,
         json={"text": "Denegamos la devolución porque el contrato de mantenimiento es independiente."},
     )
     assert response.status_code == 200
+    assert response.json()["analysis"]["type"] == "DENIAL"
 
     db.expire_all()
     wait_action = db.get(Action, wait_action_id)
     case = db.get(Case, case_id)
     assert wait_action.status == "COMPLETED"
     assert wait_action.completed_at is not None
+    assert case.status == "HUMAN_REVIEW"
     assert case.current_action_id != wait_action_id
+
+    escalation = db.get(Action, case.current_action_id)
+    assert escalation.type == "HUMAN_REVIEW"
+    assert escalation.status == "OPEN"
+    assert escalation.payload_json["phase"] == "POST_RESPONSE_ESCALATION"
+    assert escalation.payload_json["reason"] == "POST_DENIAL_ESCALATION_REVIEW"
+
+    review = db.scalar(
+        select(HumanReview).where(
+            HumanReview.case_id == case_id,
+            HumanReview.reason == "POST_DENIAL_ESCALATION_REVIEW",
+            HumanReview.status == "OPEN",
+        )
+    )
+    assert review is not None
+    assert review.context_json["phase"] == "POST_RESPONSE_ESCALATION"
+    assert review.context_json["blocked_repeated_action"].startswith("PREPARE_")
+
+    event = db.scalar(
+        select(AuditEvent).where(
+            AuditEvent.case_id == case_id,
+            AuditEvent.event_type == "ESCALATION_REVIEW_REQUIRED",
+        )
+    )
+    assert event is not None
+    assert event.payload_json["review_id"] == review.id
+
+    open_initial_actions = db.scalars(
+        select(Action).where(
+            Action.case_id == case_id,
+            Action.status.in_(("OPEN", "READY")),
+        )
+    ).all()
+    assert not any(action.type.startswith("PREPARE_") for action in open_initial_actions)
 
 
 def test_verified_outcome_closes_execution_action_and_leaves_no_pending_step(client, db):
