@@ -93,8 +93,20 @@ def _route_unregistered_reclassification_to_review(
     return review_action
 
 
+def _requests_reclassification(result: Any) -> bool:
+    """Recognize routing intent from either the explicit viability or action contract.
+
+    Some evaluators historically emitted a RECLASSIFY_* action together with LOW or
+    OUT_OF_SCOPE viability. The action is still a routing transition: leaving it as an
+    ordinary DIAGNOSED action strands the case because claimant UI must never guess the
+    destination. Registered transitions are executed; every other RECLASSIFY_* action
+    fails closed to protected human review.
+    """
+    return result.viability == "RECLASSIFY" or str(result.next_action or "").startswith("RECLASSIFY_")
+
+
 def install_reclassification_policy() -> None:
-    """Resolve registered family redirects and fail closed for every other RECLASSIFY.
+    """Resolve registered family redirects and fail closed for every other reclassification.
 
     The policy is installed before the post-response diagnosis wrapper. That ordering is
     intentional: if a company response causes a deterministic family redirect, the outer
@@ -114,7 +126,7 @@ def install_reclassification_policy() -> None:
         for _ in range(_MAX_RECLASSIFICATION_HOPS):
             source_family = case.family or ""
             result, decision, action = previous_diagnose(db, case)
-            if result.viability != "RECLASSIFY":
+            if not _requests_reclassification(result):
                 return result, decision, action
 
             last_reclassification = (source_family, result, decision, action)
