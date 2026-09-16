@@ -26,11 +26,13 @@ def install_fact_write_policy() -> None:
     if _INSTALLED:
         return
 
-    # Install this before family_bootstrap captures the diagnosis callable for its
-    # post-response wrapper. That way the outer anti-loop guard observes the final
-    # diagnosis even when a deterministic family reclassification happens first.
+    # Install workflow-wide invariants before family_bootstrap captures diagnosis for its
+    # post-response wrapper. Reclassification therefore stays inside the anti-loop guard,
+    # while terminal state timestamps are enforced at the persistence boundary.
+    from .case_state_policy import install_case_state_policy
     from .reclassification_policy import install_reclassification_policy
 
+    install_case_state_policy()
     install_reclassification_policy()
 
     previous_upsert_fact = svc.upsert_fact
