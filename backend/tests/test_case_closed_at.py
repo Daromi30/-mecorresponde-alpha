@@ -50,7 +50,7 @@ def _awaiting_execution(client):
     return case_id
 
 
-def test_persistence_policy_sets_closed_at_only_when_case_becomes_resolved(db):
+def test_persistence_policy_sets_closed_at_only_for_terminal_states(db):
     case = Case(status="INTAKE", vertical="electricity", family="E02-A", title="Closure invariant")
     db.add(case)
     db.commit()
@@ -70,6 +70,12 @@ def test_persistence_policy_sets_closed_at_only_when_case_becomes_resolved(db):
     db.commit()
     db.refresh(case)
     assert case.closed_at == first_closed_at
+
+    unsupported = Case(status="CLOSED_UNSUPPORTED", title="Unsupported terminal case")
+    db.add(unsupported)
+    db.commit()
+    db.refresh(unsupported)
+    assert unsupported.closed_at is not None
 
 
 def test_verified_outcome_closes_case_and_handoff_exposes_technical_close_time(client, db):
