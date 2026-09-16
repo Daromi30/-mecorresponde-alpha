@@ -91,6 +91,7 @@
   loadEnhancement('/demo/account_recovery.js', 'mcr-account-recovery');
   loadEnhancement('/demo/account_password.js', 'mcr-account-password');
   loadEnhancement('/demo/account_sessions.js', 'mcr-account-sessions');
+  loadEnhancement('/demo/account_case_labels.js', 'mcr-account-case-labels');
   loadEnhancement('/demo/case_deletion.js', 'mcr-case-deletion');
   loadEnhancement('/demo/case_timeline.js', 'mcr-case-timeline');
   loadEnhancement('/demo/case_handoff.js', 'mcr-case-handoff');
