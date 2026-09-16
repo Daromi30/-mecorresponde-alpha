@@ -10,7 +10,10 @@ from .case_lifecycle import complete_current_action, set_current_action
 from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, LegalSource
 
 
-EXTENDED_CLAIM_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03"})
+# These families were historically installed as a chain of extension wrappers.
+# The registry gives them one final dispatch boundary without changing their public
+# claim-package contract.
+REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03"})
 
 
 @dataclass(frozen=True)
@@ -92,149 +95,150 @@ def _verified_legal_basis(db: Session, decision: Decision) -> list[dict[str, Any
 
 def _render_e01(ctx: ClaimContext) -> dict[str, Any]:
     if ctx.next_action == "PREPARE_E01_PRICING_CORRECTION":
-        promised = ctx.facts.get("electricity.pricing_promised_terms") or "las condiciones económicas contratadas"
-        applied = ctx.facts.get("electricity.pricing_applied_terms") or "las condiciones aplicadas en factura"
         text = (
-            f"Solicito que se apliquen las condiciones económicas contratadas u ofertadas y se refacture el periodo afectado. "
-            f"En el expediente consta como condición documentada: {promised}; y como condición aplicada: {applied}. "
-            "Si de la refacturación verificable resulta una cantidad a mi favor, solicito su devolución. "
-            "No fijo una cuantía monetaria hasta disponer del cálculo sustentado por facturas y magnitudes comprobables."
+            "Solicito que se aplique el precio o modalidad económica efectivamente ofertada/contratada y que se revisen las facturas del periodo afectado. "
+            "El artículo 30 del RD 88/2026 exige condiciones económicas claras y transparentes y el artículo 61 del TRLGDCU hace exigible el contenido de la oferta o promoción. "
+            "La cuantía concreta de cualquier devolución deberá calcularse con las facturas, consumos y precios verificables."
         )
-        claim_type = "E01_PRICING_CORRECTION"
+        claim_type = "E01_CONTRACTED_PRICE_OR_TARIFF_CORRECTION"
     elif ctx.next_action == "PREPARE_E01_DISCOUNT_CORRECTION":
         text = (
-            "Solicito que se respete el descuento promocional documentado y se refacture el periodo afectado conforme a las condiciones ofertadas. "
-            "Si la refacturación verificable arroja un cobro superior al debido, solicito la devolución que corresponda. "
-            "No se fija una cantidad concreta mientras no exista un cálculo respaldado por la oferta y las facturas."
+            "Solicito que se respeten las condiciones del descuento/promoción ofertado y que se revisen las facturas afectadas. "
+            "El artículo 30.1.k del RD 88/2026 exige indicar expresamente la duración de los descuentos promocionales y los términos o precios sobre los que se aplican, y el artículo 61 del TRLGDCU integra la oferta en el contrato. "
+            "La devolución exacta, si procede, se calculará únicamente con documentación de facturación verificable."
         )
-        claim_type = "E01_DISCOUNT_CORRECTION"
+        claim_type = "E01_PROMOTIONAL_DISCOUNT_CORRECTION"
     else:
-        raise ValueError("Current E01 action is not ready for a claim package")
-    return {"claim_type": claim_type, "amount": 0.0, "text": text}
+        raise ValueError("Current E01 action requires information, explanation or human review rather than a claim")
+    return {
+        "claim_type": claim_type,
+        "amount": 0.0,
+        "amount_status": "REQUIRES_VERIFIED_BILLING_CALCULATION",
+        "text": text,
+    }
 
 
 def _render_e03(ctx: ClaimContext) -> dict[str, Any]:
     if ctx.next_action != "PREPARE_UNAUTHORIZED_SWITCH_RESTORATION":
-        raise ValueError("Current E03 action is not ready for a claim package")
-    previous = ctx.facts.get("electricity.previous_supplier") or "el comercializador saliente"
-    incoming = ctx.facts.get("electricity.incoming_supplier") or "el comercializador entrante"
-    wrong_cups = ctx.facts.get("electricity.switch_cups_correct") is False
-    no_consent = ctx.facts.get("electricity.express_consent_given") is False
-    reason_parts = []
-    if no_consent:
-        reason_parts.append("sin mi consentimiento expreso")
-    if wrong_cups:
-        reason_parts.append("con identificación incorrecta del CUPS")
-    reason = " y ".join(reason_parts) or "de forma no validada en el expediente"
+        raise ValueError("Current E03 action requires more information or human review")
+    previous = ctx.facts.get("electricity.previous_supplier") or "comercializadora anterior"
+    incoming = ctx.facts.get("electricity.incoming_supplier") or "comercializadora entrante"
     amount = round(float(ctx.decision.claimable_amount or 0.0), 2)
-    refund = (
-        f" Solicito además la devolución de {amount:.2f} € que constan como pagos efectuados por el suministro no solicitado."
-        if amount > 0
-        else ""
-    )
     text = (
-        f"Comunico que el cambio hacia {incoming} se produjo {reason}. "
-        f"Solicito restituir el punto de suministro a {previous} y al contrato previo al cambio, así como cesar los cargos vinculados al cambio no consentido o erróneo."
-        f"{refund}"
+        f"Impugno el cambio de suministro desde {previous} a {incoming} por falta de consentimiento expreso o por error en la identificación del punto, según los hechos confirmados del expediente. "
+        "Solicito la restitución al comercializador saliente y al contrato previo conforme a los artículos 18 y 51.3 del RD 88/2026, así como el cese de cargos por suministro no solicitado."
     )
+    if amount > 0:
+        text += f" Solicito además la devolución de {amount:.2f} € ya pagados por el suministro no solicitado identificado en el expediente."
     return {"claim_type": "E03_UNAUTHORIZED_SWITCH_RESTORATION", "amount": amount, "text": text}
 
 
 def _render_e05(ctx: ClaimContext) -> dict[str, Any]:
     if ctx.next_action != "PREPARE_E05_PENALTY_REFUND":
-        raise ValueError("Current E05 action is not ready for a claim package")
+        raise ValueError("Current E05 action requires review rather than an automated claim")
     amount = round(float(ctx.decision.claimable_amount or 0.0), 2)
     if amount <= 0:
-        raise ValueError("No verified termination penalty amount is available")
+        raise ValueError("No verified termination penalty amount to recover")
     text = (
-        f"Solicito dejar sin efecto la penalización por rescisión y devolver {amount:.2f} €, importe identificado en el expediente como penalización cobrada o exigida. "
-        "La evaluación actual concluye que, con los hechos confirmados, no concurre una excepción que permita automatizar esa penalización."
+        f"Solicito la anulación y devolución de la penalización por rescisión de {amount:.2f} €. "
+        "Soy persona física acogida al segmento 2.0TD y, conforme al artículo 28.3 del Real Decreto 88/2026, el contrato y sus prórrogas pueden rescindirse sin penalización salvo el supuesto excepcional de contrato a precio fijo antes de la primera prórroga anual, que no concurre según los hechos confirmados del expediente."
     )
     return {"claim_type": "E05_TERMINATION_PENALTY_REFUND", "amount": amount, "text": text}
 
 
 def _render_e06(ctx: ClaimContext) -> dict[str, Any]:
+    if ctx.next_action == "PREPARE_E06_READING_CORRECTION":
+        text = (
+            "Solicito la revisión de la lectura utilizada, la obtención o utilización de una lectura real verificable y la refacturación que corresponda conforme a los artículos 43 a 45 del RD 88/2026. "
+            "La reclamación se limita al procedimiento de lectura/facturación acreditado y no presupone una cuantía monetaria que no haya sido calculada con datos verificables."
+        )
+        return {
+            "claim_type": "E06_READING_CORRECTION",
+            "amount": 0.0,
+            "amount_status": "PENDING_VERIFIED_REBILLING",
+            "text": text,
+        }
     if ctx.next_action == "PREPARE_E06_LIMIT_REGULARIZATION":
         months = ctx.facts.get("electricity.regularization_period_months")
         text = (
-            f"Solicito revisar y recalcular la regularización, que en el expediente figura referida a {months} meses, "
-            "limitando el periodo rectificable al máximo legal aplicable y facilitando el desglose de lecturas, consumos, periodos e importes utilizado. "
-            "No atribuyo una cantidad concreta como indebida hasta disponer del desglose temporal necesario para calcularla."
+            f"La regularización pretende rectificar {months} meses. Solicito que se limite el periodo corregido al máximo de un año previsto en el artículo 45.2 del RD 88/2026 y que se facilite un desglose mensual reproducible del nuevo cálculo. "
+            "No fijo automáticamente una cantidad a devolver o dejar de pagar sin ese desglose."
         )
-        return {"claim_type": "E06_LIMIT_REGULARIZATION", "amount": 0.0, "text": text}
-    if ctx.next_action == "PREPARE_E06_READING_CORRECTION":
-        text = (
-            "Solicito revisar la facturación basada en la lectura controvertida, obtener o utilizar una lectura real o aportada válidamente según corresponda y refacturar a partir de una medida verificable. "
-            "Solicito también el detalle de las lecturas y del cálculo aplicado. No se fija una devolución concreta sin reconstruir primero la facturación correcta."
-        )
-        return {"claim_type": "E06_READING_CORRECTION", "amount": 0.0, "text": text}
-    raise ValueError("Current E06 action is not ready for a claim package")
+        return {
+            "claim_type": "E06_LIMIT_UNDERBILLING_REGULARIZATION",
+            "amount": 0.0,
+            "amount_status": "REQUIRES_MONTHLY_BREAKDOWN",
+            "text": text,
+        }
+    raise ValueError("Current E06 action requires information or human review rather than a claim")
 
 
 def _render_e07(ctx: ClaimContext) -> dict[str, Any]:
     variants = {
         "PREPARE_E07_CHANGE_CHALLENGE": (
-            "E07_CONTRACT_CHANGE_CHALLENGE",
-            "Solicito revisar la modificación de condiciones contractuales porque la comunicación registrada en el expediente no cumple todos los requisitos aplicables. "
-            "Solicito que se respete la situación contractual previa mientras se revisa la modificación y que se reconozca, cuando proceda, el derecho a resolver el contrato sin coste.",
-        ),
-        "PREPARE_E07_FIXED_PRICE_CHALLENGE": (
-            "E07_FIXED_PRICE_REVIEW_CHALLENGE",
-            "Solicito dejar sin efecto la revisión de precio aplicada dentro del periodo que consta como precio fijo y mantener las condiciones contractuales pactadas mientras se revisa la incidencia. "
-            "Si existiera un exceso facturado, su cuantificación debe hacerse con las facturas verificadas y no mediante una estimación automática.",
+            "E07_CONTRACT_CHANGE_NOTICE_CHALLENGE",
+            "Impugno la aplicación de la modificación de condiciones por no constar una comunicación que cumpla íntegramente el artículo 6.1.m del RD 88/2026. "
+            "Solicito una comunicación previa válida y confirmación de mi derecho a rescindir sin coste. Si existe una diferencia económica ya facturada, deberá cuantificarse con las facturas y precios verificables antes de reclamar un importe concreto.",
         ),
         "PREPARE_E07_PRICE_REVIEW_CHALLENGE": (
             "E07_PRICE_REVIEW_NOTICE_CHALLENGE",
-            "Solicito revisar la aplicación de la revisión de precios porque la comunicación registrada no cumple todos los requisitos de antelación, separación, explicación o contenido comparativo aplicables. "
-            "Solicito una comunicación completa y la revisión de los importes aplicados; cualquier devolución monetaria se cuantificará únicamente con facturación verificable.",
+            "Impugno la aplicación de la revisión de precio hasta que se acredite una comunicación conforme al artículo 6.1.n y a la disposición transitoria séptima del RD 88/2026, incluyendo antelación, razones y alcance, comparación de precios y estimación comparativa del coste anual. "
+            "Cualquier devolución monetaria se calculará separadamente si las facturas prueban un exceso.",
+        ),
+        "PREPARE_E07_FIXED_PRICE_CHALLENGE": (
+            "E07_FIXED_PRICE_REVIEW_CHALLENGE",
+            "Impugno la revisión aplicada durante el periodo de precio fijo del contrato. Solicito que se respete el precio pactado o que se identifique la base contractual y normativa específica que permitiría el cambio, teniendo en cuenta que el artículo 30.1.i del RD 88/2026 excluye las cláusulas de revisión en contratos a precio fijo.",
         ),
     }
     variant = variants.get(ctx.next_action)
     if variant is None:
-        raise ValueError("Current E07 action is not ready for a claim package")
+        raise ValueError("Current E07 action requires information, reclassification or explanation rather than a claim")
     claim_type, text = variant
-    return {"claim_type": claim_type, "amount": 0.0, "text": text}
+    return {
+        "claim_type": claim_type,
+        "amount": 0.0,
+        "amount_status": "MONETARY_EFFECT_REQUIRES_VERIFIED_INVOICES",
+        "text": text,
+    }
 
 
 def _render_c02(ctx: ClaimContext) -> dict[str, Any]:
-    product = ctx.facts.get("purchase.product_name") or "el producto"
+    product = ctx.facts.get("purchase.product_name") or "producto"
     if ctx.next_action == "PREPARE_C02_TERMINATION":
-        material = ctx.facts.get("purchase.defect_material")
         amount = round(float(ctx.decision.claimable_amount or 0.0), 2)
-        if material is not True or amount <= 0:
-            raise ValueError("C02 termination is not sufficiently supported for an automatic monetary claim")
+        if amount <= 0:
+            raise ValueError("Termination is not sufficiently supported to calculate a full-price refund")
         text = (
-            f"Tras el intento previo de puesta en conformidad del {product}, comunico la resolución del contrato por la falta de conformidad que persiste y solicito la devolución de {amount:.2f} €. "
-            "El expediente confirma que la falta no ha sido tratada como de escasa importancia para esta vía."
+            f"Tras el intento previo de puesta en conformidad del {product}, persiste o ha aparecido una nueva falta de conformidad. "
+            f"Comunico mi voluntad de resolver el contrato y solicito la restitución de {amount:.2f} €, con fundamento en los artículos 119 y 119 ter del TRLGDCU. "
+            "La resolución queda sujeta a que la falta no sea de escasa importancia."
         )
-        return {"claim_type": "C02_POST_REPAIR_TERMINATION", "amount": amount, "text": text}
+        return {"claim_type": "C02_TERMINATION_AFTER_FAILED_CONFORMITY", "amount": amount, "text": text}
     if ctx.next_action == "PREPARE_C02_PRICE_REDUCTION":
         text = (
-            f"Tras el intento previo de puesta en conformidad del {product}, solicito una reducción proporcional del precio por la falta de conformidad que persiste. "
-            "La cuantía debe corresponder a la diferencia de valor legalmente relevante; MECORRESPONDE no inventa ese valor sin evidencia suficiente para calcularlo."
+            f"Tras el intento previo de puesta en conformidad del {product}, persiste o ha aparecido una nueva falta de conformidad. "
+            "Solicito una reducción proporcionada del precio conforme a los artículos 119 y 119 bis del TRLGDCU. "
+            "El importe debe fijarse de forma proporcional a la diferencia de valor y no se inventa automáticamente en esta alpha."
         )
-        return {"claim_type": "C02_PROPORTIONAL_PRICE_REDUCTION", "amount": 0.0, "text": text}
-    raise ValueError("Current C02 action is not ready for a claim package")
+        return {"claim_type": "C02_PRICE_REDUCTION_AFTER_FAILED_CONFORMITY", "amount": 0.0, "text": text}
+    raise ValueError("Choose the secondary remedy before preparing the C02 claim")
 
 
 def _render_c03(ctx: ClaimContext) -> dict[str, Any]:
-    product = ctx.facts.get("purchase.product_name") or "el producto"
-    ordered = ctx.facts.get("purchase.contract_description") or "lo contratado"
-    received = ctx.facts.get("purchase.received_description") or "lo recibido"
+    product = ctx.facts.get("purchase.product_name") or "producto"
     if ctx.next_action == "PREPARE_C03_CONFORMITY_CLAIM":
         text = (
-            f"Solicito poner en conformidad sin coste {product}. Lo contratado se describe como: {ordered}; lo recibido se describe como: {received}. "
-            "Solicito completar, sustituir o reparar el bien según resulte adecuado para que coincida con lo contratado, sin cargos para la persona consumidora."
+            f"El {product} recibido no se ajusta a lo contratado en descripción, tipo, cantidad, calidad o accesorios. "
+            "Solicito su puesta en conformidad sin coste mediante sustitución, entrega de lo faltante o la medida correctora que corresponda, conforme a los artículos 115 bis, 117 y 118 del TRLGDCU."
         )
         return {"claim_type": "C03_CONTRACT_MISMATCH_CONFORMITY", "amount": 0.0, "text": text}
     if ctx.next_action == "PREPARE_C03_ESCALATED_REMEDY":
         text = (
-            f"Reitero la falta de conformidad de {product}: lo contratado se describe como {ordered}, mientras que lo recibido se describe como {received}. "
-            "Ante la negativa registrada a poner el bien en conformidad, solicito una medida correctora secundaria conforme a la normativa aplicable. "
-            "La reducción del precio o la resolución del contrato, cuando proceda, deberán concretarse según la importancia de la falta y la valoración acreditada; no se fija una cuantía o remedio final sin esa base."
+            f"El {product} recibido no se ajusta a lo contratado y el vendedor ya ha rechazado ponerlo en conformidad. "
+            "Solicito la medida correctora secundaria que corresponda —reducción proporcionada del precio o resolución si la falta no es de escasa importancia— conforme a los artículos 119 a 119 ter del TRLGDCU."
         )
-        return {"claim_type": "C03_ESCALATED_CONFORMITY_REMEDY", "amount": 0.0, "text": text}
-    raise ValueError("Current C03 action is not ready for a claim package")
+        return {"claim_type": "C03_CONTRACT_MISMATCH_ESCALATED", "amount": 0.0, "text": text}
+    raise ValueError("Current C03 action does not require sending a claim yet")
 
 
 RENDERERS: dict[str, Renderer] = {
@@ -248,10 +252,10 @@ RENDERERS: dict[str, Renderer] = {
 }
 
 
-def prepare_extended_claim_package(db: Session, case: Case) -> dict[str, Any]:
+def prepare_registered_claim_package(db: Session, case: Case) -> dict[str, Any]:
     renderer = RENDERERS.get(case.family or "")
     if renderer is None:
-        raise ValueError("No extended claim renderer is registered for this family")
+        raise ValueError("No registry claim renderer is registered for this family")
 
     decision = _latest_decision(db, case.id)
     if decision is None:
@@ -282,6 +286,8 @@ def prepare_extended_claim_package(db: Session, case: Case) -> dict[str, Any]:
         "legal_basis": legal_basis,
         "text": rendered["text"],
     }
+    if rendered.get("amount_status"):
+        payload["amount_status"] = rendered["amount_status"]
 
     complete_current_action(db, case, only_types={current.type})
     action = set_current_action(
@@ -299,6 +305,7 @@ def prepare_extended_claim_package(db: Session, case: Case) -> dict[str, Any]:
             payload_json={
                 "action_id": action.id,
                 "amount": amount,
+                "amount_status": payload.get("amount_status"),
                 "economic_value": decision.economic_value,
                 "family": case.family,
             },
