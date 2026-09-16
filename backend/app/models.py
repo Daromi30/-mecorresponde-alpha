@@ -208,6 +208,7 @@ class Communication(Base):
     direction: Mapped[str] = mapped_column(String(30))
     channel: Mapped[str] = mapped_column(String(30))
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    occurred_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reference_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
