@@ -241,6 +241,7 @@ def resolve_structured_review(
             "assigned_to": review.assigned_to,
             "fact_updates": update_audit,
             "reanalyze_requested": payload.reanalyze,
+            "review_reason": review.reason,
         },
     )
     db.flush()
@@ -249,6 +250,13 @@ def resolve_structured_review(
     decision_id = None
     action_id = None
     if payload.reanalyze and (case.family or "") in EVALUATORS:
+        # A structured resolution after a company denial/partial response is still part
+        # of the response phase. Preserve that phase marker so the global diagnostic
+        # guard can never turn a reviewer-added fact into a second initial claim. If the
+        # deterministic result still proposes the original outbound action, the Motor
+        # opens a fresh protected escalation review instead.
+        if review.reason == "POST_DENIAL_ESCALATION_REVIEW":
+            case.status = "RESPONSE_RECEIVED"
         try:
             result, decision, action = diagnose(db, case)
         except Exception:
