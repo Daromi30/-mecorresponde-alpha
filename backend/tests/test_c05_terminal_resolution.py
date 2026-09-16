@@ -1,6 +1,6 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from app.models import Action, AuditEvent, Case, Outcome
+from app.models import Action, AuditEvent, Case, Decision, Outcome
 
 
 def _fact(client, case_id: str, key: str, value, *, user_confirmed: bool = True):
@@ -51,6 +51,10 @@ def _c05_refunded_case(client, *, refund_confirmed: bool = True) -> str:
     return case_id
 
 
+def _count(db, model, case_id: str) -> int:
+    return db.scalar(select(func.count()).select_from(model).where(model.case_id == case_id)) or 0
+
+
 def test_confirmed_complete_c05_refund_closes_case_with_traceable_outcome(client, db):
     case_id = _c05_refunded_case(client)
 
@@ -66,6 +70,7 @@ def test_confirmed_complete_c05_refund_closes_case_with_traceable_outcome(client
     assert case.status == "RESOLVED"
     assert case.current_action_id is None
     assert case.closed_at is not None
+    first_closed_at = case.closed_at
 
     action = db.get(Action, body["action_id"])
     assert action is not None
@@ -94,8 +99,39 @@ def test_confirmed_complete_c05_refund_closes_case_with_traceable_outcome(client
     assert terminal_event.payload_json["resolved_on"] is None
     assert terminal_event.payload_json["resolution_channel"] is None
 
+    before = {
+        "decisions": _count(db, Decision, case_id),
+        "actions": _count(db, Action, case_id),
+        "outcomes": _count(db, Outcome, case_id),
+        "terminal_events": db.scalar(
+            select(func.count())
+            .select_from(AuditEvent)
+            .where(
+                AuditEvent.case_id == case_id,
+                AuditEvent.event_type == "TERMINAL_FACT_RESOLUTION_RECORDED",
+            )
+        ),
+    }
     replay = client.post(f"/api/cases/{case_id}/diagnose")
-    assert replay.status_code == 422
+    assert replay.status_code == 409
+
+    db.expire_all()
+    case = db.get(Case, case_id)
+    assert case is not None
+    assert case.status == "RESOLVED"
+    assert case.current_action_id is None
+    assert case.closed_at == first_closed_at
+    assert _count(db, Decision, case_id) == before["decisions"]
+    assert _count(db, Action, case_id) == before["actions"]
+    assert _count(db, Outcome, case_id) == before["outcomes"]
+    assert db.scalar(
+        select(func.count())
+        .select_from(AuditEvent)
+        .where(
+            AuditEvent.case_id == case_id,
+            AuditEvent.event_type == "TERMINAL_FACT_RESOLUTION_RECORDED",
+        )
+    ) == before["terminal_events"]
 
 
 def test_c05_refund_without_user_confirmation_does_not_auto_close(client, db):
