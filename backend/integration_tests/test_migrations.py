@@ -30,7 +30,7 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id) is not None
         revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0006_outcome_resolved_on"
+        assert revision == "0007_communication_occurred_on"
 
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
@@ -40,6 +40,7 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     assert "email_action_tokens" in tables
     assert "auth_throttle_state" in tables
     assert "resolved_on" in {column["name"] for column in inspector.get_columns("outcomes")}
+    assert "occurred_on" in {column["name"] for column in inspector.get_columns("communications")}
 
     # 2) The migration chain must also bootstrap a fresh database.
     Base.metadata.drop_all(bind=engine)
@@ -59,3 +60,4 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     assert "human_reviews" in tables
     assert "legal_rule_versions" in tables
     assert "resolved_on" in {column["name"] for column in inspector.get_columns("outcomes")}
+    assert "occurred_on" in {column["name"] for column in inspector.get_columns("communications")}
