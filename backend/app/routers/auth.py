@@ -175,19 +175,21 @@ def login(
     db: Session = Depends(get_db),
 ):
     email = normalize_email(payload.email)
-    login_throttle.check(email)
+    login_throttle.check(db, email)
     user = db.scalar(select(User).where(User.email == email))
     if not user:
         # Spend roughly the same password-derivation work as a real lookup so
         # a missing account is less obvious from response timing.
         hash_password(payload.password)
-        login_throttle.fail(email)
+        login_throttle.fail(db, email)
+        db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if user.disabled_at is not None or not verify_password(payload.password, user.password_hash):
-        login_throttle.fail(email)
+        login_throttle.fail(db, email)
+        db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    login_throttle.success(email)
+    login_throttle.success(db, email)
     issue_session(db, user, response)
     db.commit()
     return {"user": user_payload(user)}
@@ -346,12 +348,13 @@ def delete_account(
     db: Session = Depends(get_db),
 ):
     # A valid session is not enough for destructive account deletion. Require the
-    # password again and reuse the login throttle to limit online guessing.
-    login_throttle.check(user.email)
+    # password again and apply the same persistent online-guessing throttle.
+    login_throttle.check(db, user.email)
     if not verify_password(payload.password, user.password_hash):
-        login_throttle.fail(user.email)
+        login_throttle.fail(db, user.email)
+        db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    login_throttle.success(user.email)
+    login_throttle.success(db, user.email)
 
     try:
         result = delete_account_and_owned_data(db, user)
