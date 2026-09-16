@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 
 
 # Reuse the single beta scenario catalogue without maintaining a second copy of
@@ -13,6 +16,25 @@ assert _spec and _spec.loader
 _matrix = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_matrix)
 SCENARIOS = _matrix.SCENARIOS
+STATIC = Path(__file__).parents[1] / "app" / "static"
+
+_UI_EXACT_INPUT_TYPES = {
+    "text",
+    "boolean",
+    "boolean_unknown",
+    "money",
+    "number",
+    "integer",
+    "date",
+    "date_optional",
+    "charges",
+    "choice",
+}
+
+
+def _ui_supports_input_type(input_type: str | None) -> bool:
+    value = input_type or "text"
+    return value in _UI_EXACT_INPUT_TYPES or value.startswith("choice:")
 
 
 def _answer_fact(client, case_id: str, field: str, value):
@@ -46,10 +68,15 @@ def test_every_beta_family_can_be_completed_using_only_the_guided_question_contr
                 break
 
             field = q.get("field")
+            input_type = q.get("input_type")
+            assert _ui_supports_input_type(input_type), (
+                f"{family}: the Motor emitted input_type={input_type!r}, but the product UI "
+                "has no declared safe renderer for it"
+            )
             assert field, (family, q)
             assert field not in answered, f"{family}: guided intake repeated {field}"
 
-            if q.get("input_type") == "charges":
+            if input_type == "charges":
                 charges = scenario.get("charges")
                 assert charges, f"{family}: question flow requests charges absent from beta fixture"
                 response = client.post(
@@ -78,3 +105,31 @@ def test_every_beta_family_can_be_completed_using_only_the_guided_question_contr
         prepared = client.post(f"/api/cases/{case_id}/prepare-claim")
         assert prepared.status_code == 200, f"{family}: {prepared.text}"
         assert prepared.json()["legal_basis"], family
+
+
+def test_guided_question_ui_contract_is_loaded_and_javascript_parses():
+    loader = (STATIC / "dossier_quality.js").read_text(encoding="utf-8")
+    script = (STATIC / "guided_question_inputs.js").read_text(encoding="utf-8")
+
+    assert "/demo/guided_question_inputs.js" in loader
+    assert "mcr-guided-question-inputs" in loader
+    # These conditional branches are not guaranteed to be traversed by the single
+    # HIGH-viability scenario for every family, so protect the renderers directly.
+    assert "type.startsWith('choice:')" in script
+    assert "type === 'integer'" in script
+    assert "type === 'date_optional'" in script
+    assert "Number.isInteger" in script
+    assert "No voy a pedirte un dato con un formato" in script
+    assert "localStorage" not in script
+    assert "sessionStorage" not in script
+
+    node = shutil.which("node")
+    if not node:
+        return
+    for filename in ["dossier_quality.js", "guided_question_inputs.js"]:
+        source = (STATIC / filename).read_text(encoding="utf-8")
+        with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
+            handle.write(source)
+            path = handle.name
+        result = subprocess.run([node, "--check", path], capture_output=True, text=True)
+        assert result.returncode == 0, f"{filename}: {result.stderr}"
