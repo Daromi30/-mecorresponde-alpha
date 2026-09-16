@@ -7,23 +7,49 @@ import tempfile
 STATIC = Path(__file__).parents[1] / "app" / "static"
 
 
-def test_case_communication_history_combines_verified_submission_and_company_response(client):
+def create_submitted_e04b(client, submitted_on="2026-09-10", reference="REF-123"):
     created = client.post(
         "/api/cases",
         json={"message": "Me cambié de compañía de luz y me siguen cobrando un mantenimiento"},
     )
     assert created.status_code == 200
     case_id = created.json()["id"]
-
+    for key, value in {
+        "electricity.supply_end_date": "2026-06-03",
+        "electricity.addon.identity": "Protección Hogar",
+        "electricity.addon.ever_contracted": True,
+        "electricity.addon.contracted_with_supply": True,
+        "electricity.addon.keep_requested": False,
+    }.items():
+        assert client.post(
+            f"/api/cases/{case_id}/facts",
+            json={"key": key, "value": value, "state": "confirmed", "user_confirmed": True},
+        ).status_code == 200
+    assert client.post(
+        f"/api/cases/{case_id}/charges",
+        json={"charges": [{
+            "amount": 8.99,
+            "service_period_start": "2026-06-04",
+            "service_period_end": "2026-07-03",
+            "evidence_verified": True,
+        }]},
+    ).status_code == 200
+    assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 200
+    assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 200
     submitted = client.post(
         f"/api/cases/{case_id}/submission",
         json={
-            "submitted_on": "2026-09-10",
+            "submitted_on": submitted_on,
             "channel": "web_form",
-            "reference_number": "REF-123",
+            "reference_number": reference,
         },
     )
-    assert submitted.status_code == 200
+    assert submitted.status_code == 200, submitted.text
+    return case_id
+
+
+def test_case_communication_history_combines_verified_submission_and_company_response(client):
+    case_id = create_submitted_e04b(client)
 
     response_text = "Denegamos la devolución porque el contrato de mantenimiento es independiente."
     received = client.post(
@@ -66,36 +92,18 @@ def test_case_communication_history_combines_verified_submission_and_company_res
     assert "event_type" not in inbound
 
 
-def test_legacy_pasted_response_does_not_turn_processing_day_into_verified_receipt_day(client):
-    created = client.post(
-        "/api/cases",
-        json={"message": "Me cambié de compañía de luz y me siguen cobrando un mantenimiento"},
-    )
-    assert created.status_code == 200
-    case_id = created.json()["id"]
-
+def test_legacy_pasted_response_route_is_closed_in_favor_of_evidenced_response(client):
+    case_id = create_submitted_e04b(client)
     response = client.post(
         f"/api/cases/{case_id}/responses",
         json={"text": "Rechazamos su reclamación porque el servicio es independiente."},
     )
-    assert response.status_code == 200
-
-    history = client.get(f"/api/cases/{case_id}/communications").json()
-    inbound = history["communications"][0]
-    assert inbound["direction"] == "INBOUND"
-    assert inbound["occurred_on"] is None
-    assert inbound["channel"] is None
-    assert inbound["reference_number"] is None
-    assert inbound["recorded_at"]
+    assert response.status_code == 409
+    assert "evidenced" in response.json()["detail"]
 
 
 def test_response_date_may_remain_unknown_without_fabrication(client):
-    created = client.post(
-        "/api/cases",
-        json={"message": "Compra online no entregada"},
-    )
-    assert created.status_code == 200
-    case_id = created.json()["id"]
+    case_id = create_submitted_e04b(client)
 
     response = client.post(
         f"/api/cases/{case_id}/responses/evidenced",
@@ -107,7 +115,7 @@ def test_response_date_may_remain_unknown_without_fabrication(client):
         },
     )
     assert response.status_code == 200, response.text
-    inbound = client.get(f"/api/cases/{case_id}/communications").json()["communications"][0]
+    inbound = client.get(f"/api/cases/{case_id}/communications").json()["communications"][1]
     assert inbound["occurred_on"] is None
     assert inbound["channel"] == "unknown"
 
