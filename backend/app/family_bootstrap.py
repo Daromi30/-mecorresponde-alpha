@@ -83,6 +83,12 @@ def install_all_families() -> tuple[str, ...]:
     """
     global _INSTALLED
     if not _INSTALLED:
+        # Install source-aware fact persistence before extension modules capture the shared
+        # service functions. Company/human evidence must not rewind an advanced case to INTAKE.
+        from .fact_write_policy import install_fact_write_policy
+
+        install_fact_write_policy()
+
         # Any present or future model provider must pass through the strict structured
         # intelligence boundary before its output can reach the resolution engine.
         if not isinstance(svc.gateway, GuardedModelGateway):
@@ -205,9 +211,10 @@ def install_all_families() -> tuple[str, ...]:
 
         svc.create_case = create_case_with_assisted_fallback
 
-        # Extension response analyzers may persist company assertions through upsert_fact,
-        # which legitimately records provenance but also resets case.status to INTAKE. At
-        # the final boundary restore the true workflow phase after all those facts exist.
+        # Keep a final workflow-phase guard around the composed response analyzer. The
+        # source-aware fact policy already prevents non-user evidence from rewinding the
+        # case, while this boundary guarantees the composed analyzer exits in the expected
+        # post-response phase before routing acceptance/denial/unknown outcomes.
         previous_analyze_response = svc.analyze_company_response
 
         def analyze_company_response_in_resolution_phase(db, case, text):
