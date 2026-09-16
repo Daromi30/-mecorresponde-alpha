@@ -62,6 +62,25 @@ def clear_case_access_cookie(response: Response, case_id: str) -> None:
     response.headers["Cache-Control"] = "no-store"
 
 
+def _block_case_user_review_completion(request: Request) -> None:
+    """Keep human/professional review completion behind the protected backoffice.
+
+    Case owners can inspect review state, but they must never be able to mark their own
+    review gate as completed. The legacy case-scoped completion route remains reachable
+    only as an explicit fail-closed response so old clients cannot silently bypass it.
+    """
+    path = request.url.path.rstrip("/")
+    if (
+        request.method.upper() == "POST"
+        and "/reviews/" in path
+        and path.endswith("/complete")
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Human review can only be completed through the protected backoffice",
+        )
+
+
 def require_case_access(request: Request, db: Session = Depends(get_db)) -> None:
     """Protect case routes with either case capability or authenticated ownership."""
     case_id = request.path_params.get("case_id")
@@ -71,6 +90,7 @@ def require_case_access(request: Request, db: Session = Depends(get_db)) -> None
     case = db.get(Case, case_id)
     user = get_user_from_request(request, db)
     if case and user and case.user_id == user.id:
+        _block_case_user_review_completion(request)
         return
 
     access = db.get(CaseAccess, case_id)
@@ -83,3 +103,5 @@ def require_case_access(request: Request, db: Session = Depends(get_db)) -> None
         # Return 404 instead of 401/403 so callers cannot use the endpoint to
         # discover whether a given case UUID exists.
         raise HTTPException(status_code=404, detail="Case not found")
+
+    _block_case_user_review_completion(request)
