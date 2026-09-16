@@ -30,7 +30,7 @@
           <option value="other">Otro</option>
         </select></div>
       </div>
-      <div style="margin-top:10px"><label for="submissionReference">Referencia o número de reclamación <span class="muted">(opcional)</span></label><input id="submissionReference" type="text" maxlength="200" autocomplete="off" placeholder="Ej.: RE-2026-12345"></div>
+      <div style="margin-top:10px"><label for="submissionReference">Referencia o número de reclamación <span class="muted">(opcional)</span></label><input id="submissionReference" type="text" maxlength="100" autocomplete="off" placeholder="Ej.: RE-2026-12345"></div>
       <div class="actions"><button id="confirmSubmissionBtn" type="button">Confirmar que ya la envié</button><button id="cancelSubmissionBtn" class="secondary" type="button">Cancelar</button></div>`;
     claim.appendChild(panel);
 
