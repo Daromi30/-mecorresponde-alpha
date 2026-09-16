@@ -79,6 +79,56 @@
     }
   };
 
+  // The legacy charge editor silently marked every manually entered charge as
+  // unverified and used a field name the API does not accept. Keep the legal
+  // boundary explicit: a charge only becomes evidence_verified when the user
+  // positively confirms they can see that amount/period in a bill, receipt or
+  // bank record they hold. No document is claimed to have been uploaded.
+  addChargeRow = function () {
+    const box = document.getElementById('chargeRows');
+    if (!box) return;
+    const n = box.children.length + 1;
+    box.insertAdjacentHTML('beforeend', `
+      <div class="metric chargeRow">
+        <b>Cargo ${n}</b>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <input class="chargeAmount" type="number" min="0" step="0.01" placeholder="Importe €">
+          <input class="chargeDate" type="date" title="Fecha del cargo">
+        </div>
+        <input class="chargeStart" type="date" title="Inicio del periodo de servicio">
+        <input class="chargeEnd" type="date" title="Fin del periodo de servicio">
+        <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:13px">
+          <input class="chargeEvidence" type="checkbox" style="width:auto;margin-top:3px">
+          <span>Confirmo que puedo comprobar este cargo y sus datos en una factura, recibo o movimiento bancario que tengo.</span>
+        </label>
+      </div>`);
+  };
+
+  saveCharges = async function () {
+    const rows = [...document.querySelectorAll('.chargeRow')];
+    const charges = rows.map(row => ({
+      amount: Number(row.querySelector('.chargeAmount').value || 0),
+      charged_at: row.querySelector('.chargeDate').value || null,
+      service_period_start: row.querySelector('.chargeStart').value || null,
+      service_period_end: row.querySelector('.chargeEnd').value || null,
+      evidence_verified: Boolean(row.querySelector('.chargeEvidence')?.checked),
+    })).filter(item => item.amount > 0);
+
+    if (!charges.length) return message('Añade al menos un cargo con importe.', 'error');
+    if (!charges.some(item => item.evidence_verified)) {
+      message('Puedes guardar los cargos, pero el Motor no los tratará como acreditados hasta que confirmes que puedes comprobarlos documentalmente.', 'error');
+    }
+    try {
+      await req(`/api/cases/${caseId}/charges`, {
+        method: 'POST',
+        body: JSON.stringify({charges}),
+      });
+      await refresh();
+    } catch (error) {
+      message(escapeHtml(error.message), 'error');
+    }
+  };
+
   window.mcrGuidedQuestionInputs = {
     isSupportedQuestionType,
     choiceOptions,
