@@ -5,7 +5,7 @@ from app.reviews import HumanReview
 ADMIN = {"Authorization": "Bearer test-admin-token"}
 
 
-def test_structured_review_completion_closes_current_human_review_action_without_reanalysis(client, db):
+def test_structured_review_completion_closes_prior_review_action_and_reanalyzes(client, db):
     case = Case(
         status="HUMAN_REVIEW",
         vertical="electricity",
@@ -38,8 +38,7 @@ def test_structured_review_completion_closes_current_human_review_action_without
         f"/api/admin/reviews/{review.id}/resolve-structured",
         headers=ADMIN,
         json={
-            "reviewer_decision": "Dato material verificado; el Motor se reanalizará después.",
-            "reanalyze": False,
+            "reviewer_decision": "Dato material verificado; el Motor debe reanalizar ahora.",
             "fact_updates": [{
                 "key": "electricity.billing.correct_amount",
                 "value": 80.0,
@@ -50,8 +49,10 @@ def test_structured_review_completion_closes_current_human_review_action_without
         },
     )
     assert resolved.status_code == 200, resolved.text
-    assert resolved.json()["review_status"] == "COMPLETED"
-    assert resolved.json()["case_status"] == "REANALYZING"
+    body = resolved.json()
+    assert body["review_status"] == "COMPLETED"
+    assert body["updated_diagnosis"] is not None
+    assert body["case_status"] != "REANALYZING"
 
     db.expire_all()
     stored_review = db.get(HumanReview, review.id)
@@ -61,4 +62,8 @@ def test_structured_review_completion_closes_current_human_review_action_without
     assert stored_review.completed_at is not None
     assert stored_action is not None and stored_action.status == "COMPLETED"
     assert stored_action.completed_at is not None
-    assert stored_case is not None and stored_case.status == "REANALYZING"
+    assert stored_case is not None
+    assert stored_case.current_action_id != action.id
+    next_action = db.get(Action, stored_case.current_action_id)
+    assert next_action is not None
+    assert next_action.status in {"OPEN", "READY"}

@@ -1,29 +1,42 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models import AuditEvent, Case, Evidence, Fact
 from app.reviews import HumanReview
 from app.services_v2 import create_case, create_human_review
 
-
 ADMIN = {"Authorization": "Bearer test-admin-token"}
 
 
-def make_review(db, message="La factura de luz es incorrecta y me han cobrado de más"):
-    case = create_case(db, message)
-    review = create_human_review(
-        db,
-        case,
-        reason="MATERIAL_FACT_REVIEW",
-        priority="HIGH",
-        context={"source": "test"},
-    )
+def make_review(db):
+    case = create_case(db, "La factura de luz es incorrecta y me han cobrado de más")
+    review = create_human_review(db, case, reason="MATERIAL_FACT_REVIEW", priority="HIGH")
     db.commit()
     db.refresh(case)
     db.refresh(review)
     return case, review
 
 
-def test_structured_review_records_human_fact_with_strong_traceability(client, db):
+def test_structured_review_rejects_reanalysis_opt_out_without_mutation(client, db):
+    case, review = make_review(db)
+    before = db.scalar(select(func.count()).select_from(Fact).where(Fact.case_id == case.id))
+    response = client.post(
+        f"/api/admin/reviews/{review.id}/resolve-structured",
+        headers=ADMIN,
+        json={
+            "reviewer_decision": "Dato revisado manualmente.",
+            "reanalyze": False,
+            "fact_updates": [{"key": "electricity.billing.correct_amount", "value": 80.0}],
+        },
+    )
+    assert response.status_code == 422
+    db.expire_all()
+    assert db.get(HumanReview, review.id).status == "OPEN"
+    assert db.get(Case, case.id).status == "HUMAN_REVIEW"
+    after = db.scalar(select(func.count()).select_from(Fact).where(Fact.case_id == case.id))
+    assert after == before
+
+
+def test_structured_review_records_human_facts_then_reanalyzes(client, db):
     case, review = make_review(db)
     previous = Fact(
         case_id=case.id,
@@ -42,25 +55,26 @@ def test_structured_review_records_human_fact_with_strong_traceability(client, d
         f"/api/admin/reviews/{review.id}/resolve-structured",
         headers=ADMIN,
         json={
-            "reviewer_decision": "La factura permite fijar el importe correcto.",
-            "reanalyze": False,
+            "reviewer_decision": "Importes y fecha contrastados en revisión humana.",
             "fact_updates": [
+                {"key": "electricity.billing.invoice_date", "value": "2026-07-01", "materiality": "critical"},
+                {"key": "electricity.billing.billed_amount", "value": 120.0, "materiality": "critical"},
                 {
                     "key": "electricity.billing.correct_amount",
                     "value": 80.0,
-                    "state": "confirmed",
                     "materiality": "critical",
                     "note": "Importe contrastado manualmente con la factura aportada.",
-                }
+                },
             ],
         },
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     body = response.json()
     assert body["review_status"] == "COMPLETED"
-    assert body["case_status"] == "REANALYZING"
-    assert len(body["fact_ids"]) == 1
-    assert body["updated_diagnosis"] is None
+    assert body["case_status"] == "DIAGNOSED"
+    assert body["updated_diagnosis"]["viability"] == "HIGH"
+    assert body["updated_diagnosis"]["claimable_amount"] == 40.0
+    assert body["decision_id"] and body["action_id"]
 
     db.expire_all()
     newest = db.scalars(
@@ -68,78 +82,30 @@ def test_structured_review_records_human_fact_with_strong_traceability(client, d
         .where(Fact.case_id == case.id, Fact.key == "electricity.billing.correct_amount")
         .order_by(Fact.created_at.desc())
     ).first()
-    assert newest is not None
     assert newest.created_by == "human"
     assert newest.state == "confirmed"
     assert newest.user_confirmed is False
     assert newest.supersedes_fact_id == previous.id
     evidence = db.scalar(select(Evidence).where(Evidence.fact_id == newest.id))
-    assert evidence is not None
-    assert evidence.source_type == "human"
-    assert evidence.strength == "strong"
-    assert db.get(HumanReview, review.id).status == "COMPLETED"
-    assert db.scalar(
+    assert evidence is not None and evidence.source_type == "human" and evidence.strength == "strong"
+    event = db.scalar(
         select(AuditEvent).where(
             AuditEvent.case_id == case.id,
             AuditEvent.event_type == "HUMAN_REVIEW_STRUCTURED_RESOLUTION",
         )
-    ) is not None
-
-
-def test_structured_review_can_reanalyze_deterministically_from_human_facts(client, db):
-    case, review = make_review(db)
-    response = client.post(
-        f"/api/admin/reviews/{review.id}/resolve-structured",
-        headers=ADMIN,
-        json={
-            "reviewer_decision": "Importes y fecha contrastados en revisión humana.",
-            "fact_updates": [
-                {
-                    "key": "electricity.billing.invoice_date",
-                    "value": "2026-07-01",
-                    "state": "confirmed",
-                    "materiality": "critical",
-                },
-                {
-                    "key": "electricity.billing.billed_amount",
-                    "value": 120.0,
-                    "state": "confirmed",
-                    "materiality": "critical",
-                },
-                {
-                    "key": "electricity.billing.correct_amount",
-                    "value": 80.0,
-                    "state": "confirmed",
-                    "materiality": "critical",
-                },
-            ],
-        },
     )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["updated_diagnosis"] is not None
-    assert body["updated_diagnosis"]["viability"] == "HIGH"
-    assert body["updated_diagnosis"]["claimable_amount"] == 40.0
-    assert body["decision_id"]
-    assert body["action_id"]
-    assert body["case_status"] == "DIAGNOSED"
-
-    db.expire_all()
-    stored_case = db.get(Case, case.id)
-    assert stored_case is not None
-    assert stored_case.current_decision_id == body["decision_id"]
+    assert event is not None
+    assert event.payload_json["reanalyze_requested"] is True
 
 
-def test_structured_review_rejects_reserved_fact_namespaces_and_legal_overrides(client, db):
+def test_structured_review_rejects_reserved_or_manual_legal_fields(client, db):
     _, review = make_review(db)
     reserved = client.post(
         f"/api/admin/reviews/{review.id}/resolve-structured",
         headers=ADMIN,
         json={
-            "reviewer_decision": "Intento inválido",
-            "fact_updates": [
-                {"key": "system.analysis_date", "value": "2030-01-01", "state": "confirmed"}
-            ],
+            "reviewer_decision": "Revisión de dato.",
+            "fact_updates": [{"key": "system.analysis_date", "value": "2030-01-01"}],
         },
     )
     assert reserved.status_code == 422
@@ -148,15 +114,9 @@ def test_structured_review_rejects_reserved_fact_namespaces_and_legal_overrides(
         f"/api/admin/reviews/{review.id}/resolve-structured",
         headers=ADMIN,
         json={
-            "reviewer_decision": "Intento inválido",
+            "reviewer_decision": "Revisión de dato.",
             "viability": "HIGH",
-            "fact_updates": [
-                {
-                    "key": "electricity.billing.correct_amount",
-                    "value": 80,
-                    "legal_basis": "invented",
-                }
-            ],
+            "fact_updates": [{"key": "electricity.billing.correct_amount", "value": 80}],
         },
     )
     assert legal_override.status_code == 422
@@ -169,10 +129,8 @@ def test_structured_review_requires_admin_secret(client, db):
     response = client.post(
         f"/api/admin/reviews/{review.id}/resolve-structured",
         json={
-            "reviewer_decision": "No autorizado",
-            "fact_updates": [
-                {"key": "electricity.billing.correct_amount", "value": 80}
-            ],
+            "reviewer_decision": "Revisión de dato.",
+            "fact_updates": [{"key": "electricity.billing.correct_amount", "value": 80}],
         },
     )
     assert response.status_code == 401
