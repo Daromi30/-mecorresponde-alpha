@@ -120,7 +120,7 @@ def test_partial_company_response_never_loops_back_to_a_second_initial_claim(cli
         response = client.post(
             f"/api/cases/{case_id}/responses/evidenced",
             json={
-                "text": "Devolvemos una parte del importe reclamado, pero no aceptamos el resto.",
+                "text": "Devolvemos una parte del importe reclamado; el resto queda rechazado.",
                 "received_on": "2026-09-12",
                 "channel": "email",
                 "reference_number": f"PARTIAL-{family}",
