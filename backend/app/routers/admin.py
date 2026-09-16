@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..admin_auth import require_admin
+from ..case_handoff import build_case_handoff
 from ..db import get_db
 from ..models import (
     AuditEvent,
@@ -112,9 +113,6 @@ def admin_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
         .order_by(func.count(Case.id).desc())
     ).all()
 
-    # Funnel stages are deduplicated by case. They are intentionally based on audited
-    # lifecycle events rather than page views, so beta metrics measure work the Motor
-    # actually completed rather than UI clicks.
     funnel = {
         "started": int(total_cases),
         "diagnosed": _distinct_cases_for_event(db, "DIAGNOSIS_GENERATED"),
@@ -261,6 +259,12 @@ def case_detail(case_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
             "failure_reason": outcome.failure_reason,
         },
     }
+
+
+@router.get("/cases/{case_id}/handoff")
+def admin_case_handoff(case_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    case = _case_or_404(db, case_id)
+    return build_case_handoff(db, case)
 
 
 @router.post("/reviews/{review_id}/assign")
