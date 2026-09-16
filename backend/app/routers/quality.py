@@ -97,6 +97,11 @@ def _require_pending_execution_verification(db: Session, case: Case) -> None:
 def _validate_response_chronology(db: Session, case: Case, received_on: date | None) -> None:
     if received_on is None:
         return
+    if received_on > date.today():
+        raise HTTPException(
+            status_code=422,
+            detail="The company response date cannot be in the future",
+        )
     submitted_on = _audit_calendar_date(db, case.id, "CLAIM_SUBMITTED", "submitted_on")
     if submitted_on and received_on < submitted_on:
         raise HTTPException(
@@ -126,6 +131,11 @@ def _validate_outcome_evidence(db: Session, case: Case, payload: OutcomeEvidence
 
     if payload.resolved_on is None:
         return
+    if payload.resolved_on > date.today():
+        raise HTTPException(
+            status_code=422,
+            detail="The recorded fulfillment date cannot be in the future",
+        )
     response_on = _audit_calendar_date(db, case.id, "COMPANY_RESPONSE_RECORDED", "received_on")
     submitted_on = _audit_calendar_date(db, case.id, "CLAIM_SUBMITTED", "submitted_on")
     lower_bound = response_on or submitted_on
