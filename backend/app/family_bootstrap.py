@@ -83,14 +83,10 @@ def install_all_families() -> tuple[str, ...]:
     """
     global _INSTALLED
     if not _INSTALLED:
-        # Install source-aware fact persistence before extension modules capture the shared
-        # service functions. Company/human evidence must not rewind an advanced case to INTAKE.
         from .fact_write_policy import install_fact_write_policy
 
         install_fact_write_policy()
 
-        # Any present or future model provider must pass through the strict structured
-        # intelligence boundary before its output can reach the resolution engine.
         if not isinstance(svc.gateway, GuardedModelGateway):
             svc.gateway = GuardedModelGateway(svc.gateway)
 
@@ -110,9 +106,6 @@ def install_all_families() -> tuple[str, ...]:
 
         install_energy_pricing_extensions()
 
-        # Extension modules have now built the final seed wrapper chain. Add provenance
-        # reconciliation last so corrections to official source metadata are also applied
-        # to databases that already contain the source rows.
         previous_seed = svc.seed_legal
 
         def seed_with_reviewed_provenance(db):
@@ -122,10 +115,6 @@ def install_all_families() -> tuple[str, ...]:
 
         svc.seed_legal = seed_with_reviewed_provenance
 
-        # Centralize extension-family claim rendering and enforce the same reviewed legal
-        # provenance on every claim package. Existing base renderers keep their wording and
-        # claim types, but their legal_basis is replaced by the exact approved rule versions
-        # used by the current Decision before the package can leave the Motor.
         from .claim_packages import (
             REGISTERED_EXTENSION_FAMILIES,
             prepare_registered_claim_package,
@@ -162,10 +151,6 @@ def install_all_families() -> tuple[str, ...]:
             if (case.family or "") in REGISTERED_EXTENSION_FAMILIES:
                 return prepare_registered_claim_package(db, case)
 
-            # Fail closed on legal provenance before the legacy/base renderer creates a
-            # READY action. A preparable procedural action can legitimately have a result
-            # label other than APPLIES, so provenance is resolved from every exact rule
-            # version attached to the current decision rather than from that label alone.
             verified_basis = _verified_basis_for_preparable_decision(db, decision)
 
             preceding = current
@@ -191,10 +176,6 @@ def install_all_families() -> tuple[str, ...]:
 
         svc.prepare_claim_package = prepare_claim_for_all_families
 
-        # Unsupported classification is a boundary of the automated Motor, not a reason to
-        # silently abandon the expediente. Keep the legal engine fail-closed, but route the
-        # case into the protected assisted-review queue so a human can decide whether it can
-        # be reclassified or must remain out of scope. No legal result is generated here.
         previous_create_case = svc.create_case
 
         def create_case_with_assisted_fallback(db, message):
@@ -219,10 +200,6 @@ def install_all_families() -> tuple[str, ...]:
 
         svc.create_case = create_case_with_assisted_fallback
 
-        # Keep a final workflow-phase guard around the composed response analyzer. The
-        # source-aware fact policy already prevents non-user evidence from rewinding the
-        # case, while this boundary guarantees the composed analyzer exits in the expected
-        # post-response phase before routing acceptance/denial/unknown outcomes.
         previous_analyze_response = svc.analyze_company_response
 
         def analyze_company_response_in_resolution_phase(db, case, text):
@@ -233,16 +210,20 @@ def install_all_families() -> tuple[str, ...]:
 
         svc.analyze_company_response = analyze_company_response_in_resolution_phase
 
-        # Diagnosis is a transition, not a read operation. A case that already produced a
-        # NEEDS_INFORMATION diagnosis must receive a new claimant fact before diagnosis is
-        # attempted again; claimant fact/document writes move it back to INTAKE. Internal
-        # review and post-response flows explicitly use REANALYZING or RESPONSE_RECEIVED.
         previous_diagnose = svc.diagnose
         diagnosable_phases = {"INTAKE", "REANALYZING", "RESPONSE_RECEIVED"}
 
         def diagnose_with_post_response_escalation(db, case):
             if case.status not in diagnosable_phases:
                 raise ValueError("The case is not in a phase that permits a new diagnosis")
+            if case.status == "REANALYZING":
+                current = db.get(Action, case.current_action_id) if case.current_action_id else None
+                if (
+                    current is not None
+                    and current.case_id == case.id
+                    and current.status in {"OPEN", "READY"}
+                ):
+                    raise ValueError("Complete the current action before reanalyzing the case")
             was_response_received = case.status == "RESPONSE_RECEIVED"
             result, decision, generated_action = previous_diagnose(db, case)
             if not (
