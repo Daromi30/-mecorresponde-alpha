@@ -69,7 +69,7 @@ def test_admin_can_assign_but_generic_free_text_cannot_complete_review(client, d
         json={"reviewer_decision": "Revisado: solicitar evidencia adicional antes de concluir."},
     )
     assert blocked.status_code == 409
-    assert "Generic free-text review completion is disabled" in blocked.json()["detail"]
+    assert "generic note" in blocked.json()["detail"]
 
     db.expire_all()
     stored_review = db.get(HumanReview, review.id)
