@@ -143,6 +143,74 @@
     return true;
   }
 
+  function enhanceProfessionalEscalation(reviewId, review, completeSection) {
+    if (review?.reason !== 'POST_DENIAL_ESCALATION_REVIEW') return false;
+    if (document.getElementById('professionalEscalationSection')) return true;
+
+    completeSection.style.display = 'none';
+    const section = document.createElement('section');
+    section.id = 'professionalEscalationSection';
+    section.innerHTML = `
+      <h3>Escalado tras la respuesta de la empresa</h3>
+      <div class="meta">Si la revisión descubre hechos verificables nuevos, incorpóralos en la revisión estructurada y deja que el Motor vuelva a evaluar. Si el siguiente paso exige criterio jurídico no automatizado, deriva el expediente a revisión profesional. Esta acción no selecciona organismo, vía, plazo, remedio ni probabilidad de éxito.</div>
+      <div style="margin-top:10px">
+        <div class="meta">Motivo del escalado profesional</div>
+        <textarea id="professionalEscalationDecision" placeholder="Explica por qué el Motor debe detenerse y qué necesita revisar el profesional"></textarea>
+      </div>
+      <button type="button" id="escalateProfessionalReview">Escalar a revisión profesional</button>
+      <div id="professionalEscalationResult"></div>`;
+    completeSection.parentNode.insertBefore(section, completeSection);
+
+    const button = document.getElementById('escalateProfessionalReview');
+    const resultEl = document.getElementById('professionalEscalationResult');
+    button.addEventListener('click', async () => {
+      const decision = document.getElementById('professionalEscalationDecision').value.trim();
+      if (decision.length < 3) {
+        resultEl.innerHTML = '<div class="danger" style="margin-top:10px">Explica por qué el expediente requiere revisión profesional.</div>';
+        return;
+      }
+      button.disabled = true;
+      button.textContent = 'Escalando…';
+      try {
+        await api(`/api/admin/reviews/${reviewId}/escalate-professional`, {
+          method: 'POST',
+          body: JSON.stringify({reviewer_decision: decision}),
+        });
+        await refreshAll();
+        detailEl.innerHTML = '<div class="empty">El expediente ha quedado detenido en revisión profesional. No se ha inventado ninguna vía jurídica automática.</div>';
+      } catch (error) {
+        resultEl.innerHTML = `<div class="danger" style="margin-top:10px">${esc(error.message)}</div>`;
+        button.disabled = false;
+        button.textContent = 'Escalar a revisión profesional';
+      }
+    });
+    return true;
+  }
+
+  function enhanceProfessionalReviewPending(c, review, completeSection) {
+    if (review?.reason !== 'PROFESSIONAL_ESCALATION_REQUIRED') return false;
+    completeSection.style.display = 'none';
+    if (document.getElementById('professionalReviewPendingSection')) return true;
+    const section = document.createElement('section');
+    section.id = 'professionalReviewPendingSection';
+    section.innerHTML = `
+      <h3>Revisión profesional pendiente</h3>
+      <div class="meta">El Motor automático se ha detenido aquí. Este expediente requiere criterio profesional antes de definir un siguiente escalado jurídico. Puedes seguir incorporando hechos estructurados si el profesional verifica nueva información; la plataforma no cerrará este punto con una nota genérica.</div>
+      <button type="button" class="secondary" id="loadProfessionalHandoff">Cargar dossier para handoff</button>
+      <div id="professionalHandoffResult"></div>`;
+    completeSection.parentNode.insertBefore(section, completeSection);
+    document.getElementById('loadProfessionalHandoff').addEventListener('click', async () => {
+      const resultEl = document.getElementById('professionalHandoffResult');
+      try {
+        const dossier = await api(`/api/admin/cases/${c.id}/handoff`);
+        resultEl.innerHTML = `<pre>${esc(JSON.stringify(dossier, null, 2))}</pre>`;
+      } catch (error) {
+        resultEl.innerHTML = `<div class="danger" style="margin-top:10px">${esc(error.message)}</div>`;
+      }
+    });
+    return true;
+  }
+
   function enhanceStructuredReview(c, reviewId) {
     const completeSection = document.getElementById('completeReview')?.closest('section');
     if (!completeSection || document.getElementById('structuredReviewSection')) return;
@@ -152,6 +220,9 @@
       enhanceAssistedReclassification(c, reviewId, review, completeSection);
       return;
     }
+
+    enhanceProfessionalEscalation(reviewId, review, completeSection);
+    enhanceProfessionalReviewPending(c, review, completeSection);
 
     const knownKeys = [...new Set((c.facts || []).map(item => item.key).filter(Boolean))].sort();
     const datalist = document.createElement('datalist');
@@ -177,12 +248,14 @@
       <div id="structuredReviewResult"></div>`;
     completeSection.parentNode.insertBefore(section, completeSection);
 
-    const oldHeading = completeSection.querySelector('h3');
-    if (oldHeading) oldHeading.textContent = 'Cerrar revisión solo con una nota interna';
-    const oldMeta = completeSection.querySelector('.meta');
-    if (oldMeta) oldMeta.insertAdjacentHTML('afterend', '<div class="meta">Esta opción no añade hechos estructurados. Úsala solo si no hay nada verificable que incorporar al Motor.</div>');
-    const oldButton = document.getElementById('completeReview');
-    if (oldButton) oldButton.textContent = 'Completar solo con nota';
+    if (completeSection.style.display !== 'none') {
+      const oldHeading = completeSection.querySelector('h3');
+      if (oldHeading) oldHeading.textContent = 'Cerrar revisión solo con una nota interna';
+      const oldMeta = completeSection.querySelector('.meta');
+      if (oldMeta) oldMeta.insertAdjacentHTML('afterend', '<div class="meta">Esta opción no añade hechos estructurados. Úsala solo si no hay nada verificable que incorporar al Motor.</div>');
+      const oldButton = document.getElementById('completeReview');
+      if (oldButton) oldButton.textContent = 'Completar solo con nota';
+    }
 
     const rows = document.getElementById('structuredFactRows');
     let sequence = 0;
