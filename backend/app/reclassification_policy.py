@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from . import services_v2 as svc
 from .family_manifest import FAMILY_MANIFEST
-from .models import Action, Case
+from .models import Action, Case, Decision
 
 
 _INSTALLED = False
@@ -109,7 +109,7 @@ def install_reclassification_policy() -> None:
 
     def diagnose_with_registered_reclassification(db: Session, case: Case):
         visited_families: list[str] = []
-        last_reclassification: tuple[str, Any, str, Action] | None = None
+        last_reclassification: tuple[str, Any, Decision, Action] | None = None
 
         for _ in range(_MAX_RECLASSIFICATION_HOPS):
             source_family = case.family or ""
@@ -117,7 +117,7 @@ def install_reclassification_policy() -> None:
             if result.viability != "RECLASSIFY":
                 return result, decision, action
 
-            last_reclassification = (source_family, result, decision.id, action)
+            last_reclassification = (source_family, result, decision, action)
             target_family = _REGISTERED_TRANSITIONS.get((source_family, result.next_action))
             if (
                 target_family is None
@@ -172,17 +172,17 @@ def install_reclassification_policy() -> None:
         # individual edge was registered. Do not execute one more diagnosis just to detect
         # it: use the last proven redirect as the review handoff context.
         assert last_reclassification is not None
-        source_family, result, decision_id, action = last_reclassification
+        source_family, result, decision, action = last_reclassification
         review_action = _route_unregistered_reclassification_to_review(
             db,
             case,
             source_family=source_family,
             result=result,
-            decision_id=decision_id,
+            decision_id=decision.id,
             source_action=action,
             reason="maximum_reclassification_hops_exceeded",
         )
-        return result, db.get(type(action), action.id) and db.get(type(action), action.id), review_action
+        return result, decision, review_action
 
     svc.diagnose = diagnose_with_registered_reclassification
     _INSTALLED = True
