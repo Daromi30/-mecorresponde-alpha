@@ -84,6 +84,10 @@ def _block_locked_initial_mutation(request: Request, db: Session, case: Case) ->
     would otherwise reset status or create duplicate outbound actions. Internal response
     analysis and protected backoffice review call service functions directly and are not
     affected by this HTTP boundary.
+
+    Before submission, a HUMAN_REVIEW case still lets /prepare-claim reach the normal
+    decision gate. That endpoint already fails closed with 422 for a non-preparable
+    diagnosis, preserving its established API contract without allowing any mutation.
     """
     if request.method.upper() != "POST":
         return
@@ -107,7 +111,12 @@ def _block_locked_initial_mutation(request: Request, db: Session, case: Case) ->
         "RESOLVED_PENDING_EXECUTION",
         "RESOLVED",
     }
-    if submitted or protected_phase:
+    allow_existing_prepare_gate = (
+        not submitted
+        and case.status == "HUMAN_REVIEW"
+        and path.endswith("/prepare-claim")
+    )
+    if submitted or (protected_phase and not allow_existing_prepare_gate):
         raise HTTPException(
             status_code=409,
             detail=(
