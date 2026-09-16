@@ -35,6 +35,7 @@ PRIVACY_INFORMATION_PUBLISHED = False
 # from reaching main.
 FOURTEEN_FAMILY_ACCEPTANCE_PROVEN = True
 FOURTEEN_FAMILY_RESPONSE_RESOLUTION_LOOP_PROVEN = True
+PROFESSIONAL_ESCALATION_HANDOFF_PROVEN = True
 GUIDED_BROWSER_INPUT_CONTRACT_PROVEN = True
 FULL_SAVED_ACCOUNT_JOURNEY_PROVEN = True
 
@@ -224,6 +225,22 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
                 "family_count": len(FAMILY_MANIFEST),
                 "verification": "ci_all_family_response_resolution_loop",
                 "partial_response_escalation_guard": True,
+            },
+        ),
+        _check(
+            "post_response_professional_handoff",
+            PROFESSIONAL_ESCALATION_HANDOFF_PROVEN,
+            label="Escalado profesional protegido",
+            detail=(
+                "CI prueba que un expediente detenido tras la respuesta de la empresa puede pasar a revisión profesional con dossier trazable, "
+                "sin reabrir la reclamación inicial ni seleccionar automáticamente una vía jurídica, organismo, plazo o probabilidad de éxito."
+            ),
+            severity="INTERNAL_BETA_BLOCKER",
+            metadata={
+                "verification": "ci_professional_escalation_handoff_and_guards",
+                "generic_note_completion_fail_closed": True,
+                "post_response_reanalysis_guard": True,
+                "automatic_legal_route_selection": False,
             },
         ),
         _check(
