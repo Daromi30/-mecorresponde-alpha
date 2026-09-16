@@ -128,6 +128,11 @@ class DeterministicAlphaGateway:
 
     def analyze_response(self, text: str) -> dict[str, Any]:
         t = _normalized(text)
+        # Mixed concessions must be classified before broad acceptance keywords. This is
+        # deliberately conservative: "aceptamos una parte" or "devolvemos una parte"
+        # cannot close the whole expediente as if every requested remedy had been accepted.
+        if any(x in t for x in ["parcial", "parte del importe", "devolvemos una", "aceptamos una parte", "aceptamos parte"]):
+            return {"type": "PARTIAL", "arguments": []}
         if any(x in t for x in ["aceptamos", "estimamos su reclamacion", "devolveremos", "procedemos a devolver", "procedemos a reparar", "procedemos a sustituir", "restableceremos su contrato anterior"]):
             return {"type": "ACCEPTANCE", "arguments": []}
         if "independiente" in t and any(x in t for x in ["contrato", "servicio", "mantenimiento"]):
@@ -166,6 +171,4 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["WITHDRAWAL_LATE_ASSERTED"]}
         if any(x in t for x in ["excluido del desistimiento", "no admite desistimiento", "producto personalizado", "por razones de higiene"]):
             return {"type": "DENIAL", "arguments": ["WITHDRAWAL_EXCEPTION_ASSERTED"]}
-        if any(x in t for x in ["parcial", "parte del importe", "devolvemos una"]):
-            return {"type": "PARTIAL", "arguments": []}
         return {"type": "UNKNOWN", "arguments": []}
