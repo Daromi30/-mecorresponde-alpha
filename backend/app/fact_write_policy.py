@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import services_v2 as svc
-from .models import Action, Case, Evidence, Fact
+from .models import Action, Case, Document, Evidence, Fact
 
 
 _INSTALLED = False
@@ -16,16 +16,41 @@ _INSTALLED = False
 def install_fact_write_policy() -> None:
     """Keep fact provenance and workflow lifecycle aligned.
 
-    Claimant answers legitimately reopen the intake/diagnosis phase. Any decision or action
-    produced from the previous fact snapshot is therefore superseded and must stop being
-    current. Facts derived from a company response or protected human review are evidence
-    inside an already-advanced phase and must not turn the case back into INTAKE.
+    Claimant answers and claimant-confirmed document facts legitimately reopen the
+    intake/diagnosis phase. Any decision or action produced from the previous fact snapshot
+    is therefore superseded and must stop being current. Facts derived from a company
+    response or protected human review are evidence inside an already-advanced phase and
+    must not turn the case back into INTAKE.
     """
     global _INSTALLED
     if _INSTALLED:
         return
 
     previous_upsert_fact = svc.upsert_fact
+    previous_confirm_document_fact = svc.confirm_document_fact
+
+    def supersede_current_analysis(db: Session, case: Case, *, fact_key: str, source: str) -> None:
+        previous_action_id = case.current_action_id
+        previous_decision_id = case.current_decision_id
+        current = db.get(Action, previous_action_id) if previous_action_id else None
+        if current is not None and current.case_id == case.id and current.status != "COMPLETED":
+            current.status = "SUPERSEDED"
+            current.completed_at = datetime.now(timezone.utc)
+        if previous_action_id or previous_decision_id:
+            svc.audit(
+                db,
+                case.id,
+                "CURRENT_ANALYSIS_SUPERSEDED",
+                {
+                    "fact_key": fact_key,
+                    "source": source,
+                    "previous_action_id": previous_action_id,
+                    "previous_decision_id": previous_decision_id,
+                },
+            )
+        case.current_action_id = None
+        case.current_decision_id = None
+        case.status = "INTAKE"
 
     def upsert_fact_with_source_aware_lifecycle(
         db: Session,
@@ -39,25 +64,7 @@ def install_fact_write_policy() -> None:
         created_by: str = "user",
     ) -> Fact:
         if created_by == "user":
-            previous_action_id = case.current_action_id
-            previous_decision_id = case.current_decision_id
-            current = db.get(Action, previous_action_id) if previous_action_id else None
-            if current is not None and current.case_id == case.id and current.status != "COMPLETED":
-                current.status = "SUPERSEDED"
-                current.completed_at = datetime.now(timezone.utc)
-            if previous_action_id or previous_decision_id:
-                svc.audit(
-                    db,
-                    case.id,
-                    "CURRENT_ANALYSIS_SUPERSEDED",
-                    {
-                        "fact_key": key,
-                        "previous_action_id": previous_action_id,
-                        "previous_decision_id": previous_decision_id,
-                    },
-                )
-            case.current_action_id = None
-            case.current_decision_id = None
+            supersede_current_analysis(db, case, fact_key=key, source="user")
             return previous_upsert_fact(
                 db,
                 case,
@@ -114,5 +121,29 @@ def install_fact_write_policy() -> None:
         db.refresh(fact)
         return fact
 
+    def confirm_document_fact_with_invalidation(
+        db: Session,
+        case: Case,
+        document: Document,
+        *,
+        key: str,
+        value: Any,
+        locator: str | None = None,
+        excerpt: str | None = None,
+        materiality: str = "critical",
+    ) -> Fact:
+        supersede_current_analysis(db, case, fact_key=key, source="document")
+        return previous_confirm_document_fact(
+            db,
+            case,
+            document,
+            key=key,
+            value=value,
+            locator=locator,
+            excerpt=excerpt,
+            materiality=materiality,
+        )
+
     svc.upsert_fact = upsert_fact_with_source_aware_lifecycle
+    svc.confirm_document_fact = confirm_document_fact_with_invalidation
     _INSTALLED = True
