@@ -40,7 +40,8 @@ def test_backoffice_handoff_ui_is_loaded_and_javascript_parses():
     script = (STATIC / "case_handoff.js").read_text(encoding="utf-8")
 
     assert "case_handoff.js" in loader
-    assert "mcrAdminHandoff" in loader
+    assert "mcr-admin-handoff" in loader
+    assert "script.async = false" in loader
     assert "/api/admin/cases/" in script
     assert "/handoff" in script
     assert "Descargar paquete estructurado" in script
