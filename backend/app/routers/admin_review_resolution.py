@@ -128,6 +128,8 @@ def reclassify_unsupported_review(
         raise HTTPException(status_code=404, detail="Case not found")
     if case.family is not None:
         raise HTTPException(status_code=409, detail="Case is already assigned to a resolution family")
+    if case.status != "HUMAN_REVIEW":
+        raise HTTPException(status_code=409, detail="Case is no longer waiting for assisted classification")
 
     entry = FAMILY_MANIFEST[payload.target_family]
     previous_vertical = case.vertical
@@ -175,6 +177,11 @@ def resolve_structured_review(
     review = _review_or_404(db, review_id)
     if review.status != "OPEN":
         raise HTTPException(status_code=409, detail="Review is not open")
+    if review.reason == "UNSUPPORTED_CLASSIFICATION":
+        raise HTTPException(
+            status_code=409,
+            detail="Unsupported-intake routing reviews must be reclassified before structured fact resolution",
+        )
 
     case = db.get(Case, review.case_id)
     if not case:
