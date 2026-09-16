@@ -59,4 +59,11 @@
     await renderReadiness();
     return result;
   };
+
+  if (!document.querySelector('script[data-mcr-admin-handoff]')) {
+    const script = document.createElement('script');
+    script.src = 'case_handoff.js';
+    script.dataset.mcrAdminHandoff = 'true';
+    document.body.appendChild(script);
+  }
 })();
