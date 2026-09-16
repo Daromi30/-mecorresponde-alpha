@@ -18,6 +18,7 @@ from ..account_tokens import (
     VERIFY_EMAIL,
     VERIFY_EMAIL_TTL,
     consume_action_token,
+    invalidate_action_tokens,
     issue_action_token,
     revoke_all_sessions,
 )
@@ -104,6 +105,18 @@ class PasswordResetConfirm(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, value: str) -> str:
+        return _validate_password(value)
+
+
+class PasswordChangeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(min_length=10, max_length=128)
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
         return _validate_password(value)
 
 
@@ -225,8 +238,6 @@ def request_email_verification(
         return {"status": "already_verified"}
     _require_operational_email()
     verification_email_throttle.check(db, user.email)
-    # Commit the request slot before calling the external provider so a concurrent
-    # first request cannot roll back a token after its email has already been sent.
     verification_email_throttle.hit(db, user.email)
     db.commit()
 
@@ -315,6 +326,30 @@ def confirm_password_reset(
     db.commit()
     clear_session_cookie(response)
     return {"status": "password_updated"}
+
+
+@router.post("/password-change")
+def change_password(
+    payload: PasswordChangeRequest,
+    response: Response,
+    user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+):
+    login_throttle.check(db, user.email)
+    if not verify_password(payload.current_password, user.password_hash):
+        login_throttle.fail(db, user.email)
+        db.commit()
+        raise HTTPException(status_code=401, detail="Invalid current password")
+    if payload.current_password == payload.new_password:
+        raise HTTPException(status_code=422, detail="New password must be different")
+
+    login_throttle.success(db, user.email)
+    user.password_hash = hash_password(payload.new_password)
+    invalidate_action_tokens(db, user, purpose=PASSWORD_RESET)
+    revoked = revoke_all_sessions(db, user)
+    issue_session(db, user, response)
+    db.commit()
+    return {"status": "password_updated", "sessions_revoked": revoked}
 
 
 @router.get("/cases")

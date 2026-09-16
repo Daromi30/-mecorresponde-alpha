@@ -29,6 +29,20 @@ def hash_action_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def invalidate_action_tokens(db: Session, user: User, *, purpose: str) -> int:
+    invalidated_at = now()
+    rows = db.scalars(
+        select(EmailActionToken).where(
+            EmailActionToken.user_id == user.id,
+            EmailActionToken.purpose == purpose,
+            EmailActionToken.used_at.is_(None),
+        )
+    ).all()
+    for row in rows:
+        row.used_at = invalidated_at
+    return len(rows)
+
+
 def issue_action_token(
     db: Session,
     user: User,
@@ -37,18 +51,9 @@ def issue_action_token(
     ttl: timedelta,
 ) -> str:
     issued_at = now()
-    # Only one live token per user/purpose is useful. Invalidate older unused
-    # tokens before creating another one, so requesting a new email makes old
-    # links harmless.
-    previous = db.scalars(
-        select(EmailActionToken).where(
-            EmailActionToken.user_id == user.id,
-            EmailActionToken.purpose == purpose,
-            EmailActionToken.used_at.is_(None),
-        )
-    ).all()
-    for row in previous:
-        row.used_at = issued_at
+    # Only one live token per user/purpose is useful. Requesting a new email
+    # makes every older link for that purpose harmless.
+    invalidate_action_tokens(db, user, purpose=purpose)
 
     raw = secrets.token_urlsafe(32)
     db.add(

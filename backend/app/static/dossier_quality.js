@@ -85,6 +85,7 @@
   loadEnhancement('/demo/account_deletion.js', 'mcr-account-deletion');
   loadEnhancement('/demo/account_export.js', 'mcr-account-export');
   loadEnhancement('/demo/account_recovery.js', 'mcr-account-recovery');
+  loadEnhancement('/demo/account_password.js', 'mcr-account-password');
   loadEnhancement('/demo/case_deletion.js', 'mcr-case-deletion');
   loadEnhancement('/demo/deadline_guidance.js', 'mcr-deadline-guidance');
   loadEnhancement('/demo/documentation.js', 'mcr-documentation');
