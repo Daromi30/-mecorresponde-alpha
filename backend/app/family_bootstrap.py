@@ -177,6 +177,34 @@ def install_all_families() -> tuple[str, ...]:
 
         svc.prepare_claim_package = prepare_claim_for_all_families
 
+        # Unsupported classification is a boundary of the automated Motor, not a reason to
+        # silently abandon the expediente. Keep the legal engine fail-closed, but route the
+        # case into the protected assisted-review queue so a human can decide whether it can
+        # be reclassified or must remain out of scope. No legal result is generated here.
+        previous_create_case = svc.create_case
+
+        def create_case_with_assisted_fallback(db, message):
+            case = previous_create_case(db, message)
+            if case.family is not None:
+                return case
+            case.title = "Caso para revisión asistida"
+            svc.create_human_review(
+                db,
+                case,
+                reason="UNSUPPORTED_CLASSIFICATION",
+                priority="NORMAL",
+                context={
+                    "phase": "INTAKE_CLASSIFICATION",
+                    "vertical": case.vertical,
+                    "family": case.family,
+                },
+            )
+            db.commit()
+            db.refresh(case)
+            return case
+
+        svc.create_case = create_case_with_assisted_fallback
+
         # Extension response analyzers may persist company assertions through upsert_fact,
         # which legitimately records provenance but also resets case.status to INTAKE. At
         # the final boundary restore the true workflow phase after all those facts exist.
