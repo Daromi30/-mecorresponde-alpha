@@ -89,6 +89,7 @@
   loadEnhancement('/demo/account_sessions.js', 'mcr-account-sessions');
   loadEnhancement('/demo/case_deletion.js', 'mcr-case-deletion');
   loadEnhancement('/demo/case_timeline.js', 'mcr-case-timeline');
+  loadEnhancement('/demo/communication_history.js', 'mcr-communication-history');
   loadEnhancement('/demo/deadline_guidance.js', 'mcr-deadline-guidance');
   loadEnhancement('/demo/documentation.js', 'mcr-documentation');
 })();

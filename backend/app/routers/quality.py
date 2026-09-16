@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..case_quality import build_dossier_quality
 from ..db import get_db
-from ..models import AuditEvent, Case, Decision, Document, Evidence, Fact, Outcome
+from ..models import AuditEvent, Case, Communication, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
 from ..security import require_case_access
 
@@ -158,3 +158,63 @@ def case_timeline(case_id: str, db: Session = Depends(get_db)):
         "current_status": case.status,
         "events": events,
     }
+
+
+@router.get("/{case_id}/communications")
+def case_communications(case_id: str, db: Session = Depends(get_db)):
+    """Return user-facing communication history without exposing internal audit payloads."""
+    case = db.get(Case, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    items: list[dict] = []
+
+    # Outbound submission dates are user-supplied calendar dates. They remain in
+    # the audited submission event so MECORRESPONDE never fabricates a time of day.
+    submissions = db.scalars(
+        select(AuditEvent)
+        .where(
+            AuditEvent.case_id == case.id,
+            AuditEvent.event_type == "CLAIM_SUBMITTED",
+        )
+        .order_by(AuditEvent.created_at.asc())
+    ).all()
+    for event in submissions:
+        payload = event.payload_json or {}
+        items.append(
+            {
+                "direction": "OUTBOUND",
+                "kind": "CLAIM_SUBMISSION",
+                "channel": payload.get("channel"),
+                "reference_number": payload.get("reference"),
+                "body": None,
+                "occurred_on": payload.get("submitted_on"),
+                "recorded_at": event.created_at,
+            }
+        )
+
+    inbound = db.scalars(
+        select(Communication)
+        .where(
+            Communication.case_id == case.id,
+            Communication.direction == "INBOUND",
+        )
+        .order_by(Communication.received_at.asc())
+    ).all()
+    for communication in inbound:
+        items.append(
+            {
+                "direction": "INBOUND",
+                "kind": "COMPANY_RESPONSE",
+                "channel": communication.channel,
+                "reference_number": communication.reference_number,
+                "body": communication.body,
+                "occurred_on": communication.received_at.date().isoformat()
+                if communication.received_at is not None
+                else None,
+                "recorded_at": communication.received_at,
+            }
+        )
+
+    items.sort(key=lambda item: item["recorded_at"])
+    return {"case_id": case.id, "communications": items}
