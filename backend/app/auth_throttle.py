@@ -17,21 +17,30 @@ def _utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-class LoginThrottle:
-    """Database-backed authentication throttle keyed by a one-way email digest.
+class AuthThrottle:
+    """Database-backed per-email action throttle using only a one-way digest.
 
-    No raw email or IP address is stored. Keeping the state in the application
-    database means restart/deploy cycles do not reset online password-guessing
-    protection, and multiple app instances can observe the same throttle state.
+    ``key_prefix`` namespaces different actions without storing the email or action
+    label in the database. The empty prefix preserves the original login hashes so
+    deploying this generalization does not reset an already-active login block.
     """
 
-    def __init__(self, limit: int = 8, window_seconds: int = 15 * 60):
+    def __init__(
+        self,
+        limit: int,
+        window_seconds: int,
+        *,
+        key_prefix: str = "",
+        detail: str = "Too many authentication attempts. Try again later.",
+    ):
         self.limit = limit
         self.window_seconds = window_seconds
+        self.key_prefix = key_prefix
+        self.detail = detail
 
-    @staticmethod
-    def _key(email: str) -> str:
-        return hashlib.sha256(email.encode("utf-8")).hexdigest()
+    def _key(self, email: str) -> str:
+        material = f"{self.key_prefix}:{email}" if self.key_prefix else email
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
     def _window_end(self, row: AuthThrottleState) -> datetime:
         return _utc(row.window_started_at) + timedelta(seconds=self.window_seconds)
@@ -47,11 +56,12 @@ class LoginThrottle:
             retry_after = max(1, int((block_end - current).total_seconds()))
             raise HTTPException(
                 status_code=429,
-                detail="Too many login attempts. Try again later.",
+                detail=self.detail,
                 headers={"Retry-After": str(retry_after)},
             )
 
-    def fail(self, db: Session, email: str) -> None:
+    def hit(self, db: Session, email: str) -> None:
+        """Record an attempt/request in the current throttle window."""
         key = self._key(email)
         current = datetime.now(timezone.utc)
 
@@ -80,8 +90,8 @@ class LoginThrottle:
                 db.flush()
                 return
             except IntegrityError:
-                # Another worker may have created the row concurrently. Login has
-                # no other pending writes at this point, so retry safely.
+                # Another worker may have created the row concurrently. Auth
+                # request paths have no unrelated writes before this call.
                 db.rollback()
                 row = db.scalar(
                     select(AuthThrottleState)
@@ -102,6 +112,10 @@ class LoginThrottle:
         row.updated_at = current
         db.flush()
 
+    def fail(self, db: Session, email: str) -> None:
+        """Backward-compatible name for recording a failed authentication."""
+        self.hit(db, email)
+
     def success(self, db: Session, email: str) -> None:
         db.execute(
             delete(AuthThrottleState).where(
@@ -116,4 +130,25 @@ class LoginThrottle:
         db.flush()
 
 
+class LoginThrottle(AuthThrottle):
+    def __init__(self, limit: int = 8, window_seconds: int = 15 * 60):
+        super().__init__(
+            limit,
+            window_seconds,
+            detail="Too many login attempts. Try again later.",
+        )
+
+
 login_throttle = LoginThrottle()
+password_reset_throttle = AuthThrottle(
+    3,
+    15 * 60,
+    key_prefix="password-reset",
+    detail="Too many recovery requests. Try again later.",
+)
+verification_email_throttle = AuthThrottle(
+    3,
+    15 * 60,
+    key_prefix="email-verification",
+    detail="Too many verification emails requested. Try again later.",
+)
