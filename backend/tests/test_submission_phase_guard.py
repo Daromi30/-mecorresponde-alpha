@@ -1,13 +1,14 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from pydantic import ValidationError
 
+from app.calendar_clock import spain_today
 from app.schemas import SubmissionInput
 
 
 def test_submission_input_rejects_future_dates():
-    tomorrow = date.today() + timedelta(days=1)
+    tomorrow = spain_today() + timedelta(days=1)
     with pytest.raises(ValidationError):
         SubmissionInput(
             submitted_on=tomorrow,
@@ -27,7 +28,7 @@ def test_submission_cannot_skip_diagnosis_and_prepared_action(client):
     attempted = client.post(
         f"/api/cases/{case_id}/submission",
         json={
-            "submitted_on": date.today().isoformat(),
+            "submitted_on": spain_today().isoformat(),
             "channel": "email",
             "reference_number": "SHOULD-NOT-BE-RECORDED",
         },

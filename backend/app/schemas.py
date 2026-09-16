@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .calendar_clock import spain_today
 from .fact_validation import normalize_user_fact_key
 
 
@@ -66,7 +67,7 @@ class SubmissionInput(BaseModel):
     @field_validator("submitted_on")
     @classmethod
     def reject_future_submission_date(cls, value: date) -> date:
-        if value > date.today():
+        if value > spain_today():
             raise ValueError("Submission date cannot be in the future")
         return value
 
