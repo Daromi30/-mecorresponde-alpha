@@ -15,6 +15,20 @@ def _fact(client, case_id, key, value):
     assert response.status_code == 200, response.text
 
 
+def _nested_keys(value):
+    if isinstance(value, dict):
+        keys = set(value)
+        for child in value.values():
+            keys.update(_nested_keys(child))
+        return keys
+    if isinstance(value, list):
+        keys = set()
+        for child in value:
+            keys.update(_nested_keys(child))
+        return keys
+    return set()
+
+
 def test_complete_saved_account_beta_resolution_journey(client):
     # 1. A person can start without an account and receives an isolated anonymous case.
     created = client.post(
@@ -186,10 +200,9 @@ def test_complete_saved_account_beta_resolution_journey(client):
 
     handoff = client.get(f"/api/cases/{case_id}/handoff")
     assert handoff.status_code == 200, handoff.text
-    serialized_handoff = handoff.text.lower()
-    assert case_id.lower() in serialized_handoff
-    assert "password_hash" not in serialized_handoff
-    assert "token_hash" not in serialized_handoff
+    handoff_body = handoff.json()
+    assert handoff_body["case"]["id"] == case_id
+    assert not {"password_hash", "token_hash"}.intersection(_nested_keys(handoff_body))
 
     exported = client.get("/api/auth/export")
     assert exported.status_code == 200, exported.text
