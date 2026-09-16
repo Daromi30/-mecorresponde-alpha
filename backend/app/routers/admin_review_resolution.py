@@ -62,7 +62,10 @@ class StructuredReviewResolution(BaseModel):
 
     reviewer_decision: str = Field(min_length=3, max_length=10000)
     fact_updates: list[HumanFactUpdate] = Field(min_length=1, max_length=25)
-    reanalyze: bool = True
+    # Structured human review changes facts; the legal conclusion must therefore be
+    # regenerated immediately by the deterministic Motor. There is no supported dormant
+    # REANALYZING queue, so accepting False would create an operational dead end.
+    reanalyze: Literal[True] = True
 
     @field_validator("fact_updates")
     @classmethod
@@ -281,6 +284,11 @@ def resolve_structured_review(
     case = db.get(Case, review.case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    if (case.family or "") not in EVALUATORS:
+        raise HTTPException(
+            status_code=409,
+            detail="Structured facts cannot close this review until the case is routed to an automated family",
+        )
 
     created_fact_ids: list[str] = []
     update_audit: list[dict[str, str]] = []
@@ -324,9 +332,6 @@ def resolve_structured_review(
             )
 
     _complete_review_row(review, payload.reviewer_decision)
-    # Closing a review must close its workflow action even when the reviewer chooses not
-    # to reanalyze immediately. Otherwise the review row and case action can disagree,
-    # leaving a completed review backed by an orphan OPEN HUMAN_REVIEW action.
     complete_current_action(db, case, only_types={"HUMAN_REVIEW"})
     case.status = "REANALYZING"
     audit(
@@ -337,31 +342,22 @@ def resolve_structured_review(
             "review_id": review.id,
             "assigned_to": review.assigned_to,
             "fact_updates": update_audit,
-            "reanalyze_requested": payload.reanalyze,
+            "reanalyze_requested": True,
             "review_reason": review.reason,
         },
     )
     db.flush()
 
-    updated_diagnosis = None
-    decision_id = None
-    action_id = None
-    if payload.reanalyze and (case.family or "") in EVALUATORS:
-        # Reviews created after a company response remain in the response phase even if a
-        # person adds verified facts. This keeps the anti-loop guard active across both
-        # the first escalation review and the later professional-review handoff.
-        if review.reason in _POST_RESPONSE_REVIEW_REASONS:
-            case.status = "RESPONSE_RECEIVED"
-        try:
-            result, decision, action = diagnose(db, case)
-        except Exception:
-            db.rollback()
-            raise
-        updated_diagnosis = result.to_dict()
-        decision_id = decision.id
-        action_id = action.id
-    else:
-        db.commit()
+    # Reviews created after a company response remain in the response phase even if a
+    # person adds verified facts. This keeps the anti-loop guard active across both
+    # the first escalation review and the later professional-review handoff.
+    if review.reason in _POST_RESPONSE_REVIEW_REASONS:
+        case.status = "RESPONSE_RECEIVED"
+    try:
+        result, decision, action = diagnose(db, case)
+    except Exception:
+        db.rollback()
+        raise
 
     return {
         "review_id": review.id,
@@ -369,7 +365,7 @@ def resolve_structured_review(
         "case_id": case.id,
         "case_status": case.status,
         "fact_ids": created_fact_ids,
-        "updated_diagnosis": updated_diagnosis,
-        "decision_id": decision_id,
-        "action_id": action_id,
+        "updated_diagnosis": result.to_dict(),
+        "decision_id": decision.id,
+        "action_id": action.id,
     }
