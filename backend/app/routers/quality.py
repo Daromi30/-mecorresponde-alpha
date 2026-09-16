@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..case_quality import build_dossier_quality
 from ..db import get_db
-from ..models import AuditEvent, Case, Communication, Decision, Document, Evidence, Fact, Outcome
+from ..models import Action, AuditEvent, Case, Communication, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
 from ..schemas_v2 import OutcomeInput, ResponseInput
 from ..security import require_case_access
@@ -38,6 +38,102 @@ class OutcomeEvidenceInput(BaseModel):
     resolved_on: date | None = None
     non_monetary_result: str | None = Field(default=None, max_length=2000)
     resolution_channel: str | None = Field(default=None, max_length=80)
+
+
+def _audit_calendar_date(db: Session, case_id: str, event_type: str, field: str) -> date | None:
+    events = db.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.case_id == case_id, AuditEvent.event_type == event_type)
+        .order_by(AuditEvent.created_at.desc())
+    ).all()
+    for event in events:
+        raw = (event.payload_json or {}).get(field)
+        if not raw:
+            continue
+        try:
+            return date.fromisoformat(str(raw))
+        except ValueError:
+            continue
+    return None
+
+
+def _require_waiting_for_company_response(db: Session, case: Case) -> None:
+    current = db.get(Action, case.current_action_id) if case.current_action_id else None
+    submitted = db.scalar(
+        select(AuditEvent.id).where(
+            AuditEvent.case_id == case.id,
+            AuditEvent.event_type == "CLAIM_SUBMITTED",
+        )
+    )
+    if (
+        not submitted
+        or case.status != "WAITING_RESPONSE"
+        or current is None
+        or current.case_id != case.id
+        or current.type != "WAIT_FOR_RESPONSE"
+        or current.status != "OPEN"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="A company response can only be recorded while this case is waiting for a submitted claim response",
+        )
+
+
+def _require_pending_execution_verification(db: Session, case: Case) -> None:
+    current = db.get(Action, case.current_action_id) if case.current_action_id else None
+    if (
+        case.status != "RESOLVED_PENDING_EXECUTION"
+        or current is None
+        or current.case_id != case.id
+        or current.type != "VERIFY_EXECUTION"
+        or current.status != "OPEN"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="An outcome can only be recorded after a favorable response is awaiting execution verification",
+        )
+
+
+def _validate_response_chronology(db: Session, case: Case, received_on: date | None) -> None:
+    if received_on is None:
+        return
+    submitted_on = _audit_calendar_date(db, case.id, "CLAIM_SUBMITTED", "submitted_on")
+    if submitted_on and received_on < submitted_on:
+        raise HTTPException(
+            status_code=422,
+            detail="The company response date cannot be earlier than the recorded claim submission date",
+        )
+
+
+def _validate_outcome_evidence(db: Session, case: Case, payload: OutcomeEvidenceInput) -> None:
+    if payload.verified_by_user:
+        if not (payload.resolution_channel or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail="Verified outcomes must record how the result was fulfilled",
+            )
+        recovered = float(payload.amount_recovered or 0)
+        if recovered <= 0 and len((payload.non_monetary_result or "").strip()) < 3:
+            raise HTTPException(
+                status_code=422,
+                detail="Verified non-monetary outcomes must describe what was fulfilled",
+            )
+    elif payload.resolved_on is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="An execution date cannot be confirmed while the outcome is still unverified",
+        )
+
+    if payload.resolved_on is None:
+        return
+    response_on = _audit_calendar_date(db, case.id, "COMPANY_RESPONSE_RECORDED", "received_on")
+    submitted_on = _audit_calendar_date(db, case.id, "CLAIM_SUBMITTED", "submitted_on")
+    lower_bound = response_on or submitted_on
+    if lower_bound and payload.resolved_on < lower_bound:
+        raise HTTPException(
+            status_code=422,
+            detail="The recorded fulfillment date cannot be earlier than the verified case chronology",
+        )
 
 
 @router.get("/{case_id}/quality")
@@ -188,16 +284,12 @@ def evidenced_company_response(
     payload: CompanyResponseEvidenceInput,
     db: Session = Depends(get_db),
 ):
-    """Analyze a response and attach user-confirmed communication metadata.
-
-    The existing response-analysis path records when MECORRESPONDE processed the text.
-    That processing timestamp is not treated as the date the company actually replied.
-    The user's calendar date, channel and reference are preserved separately in an audit
-    event linked to the exact inbound Communication row, so no hour/minute is fabricated.
-    """
+    """Analyze a response and attach user-confirmed communication metadata."""
     case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    _require_waiting_for_company_response(db, case)
+    _validate_response_chronology(db, case, payload.received_on)
 
     existing_ids = set(
         db.scalars(
@@ -254,6 +346,8 @@ def evidenced_outcome(
     case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    _require_pending_execution_verification(db, case)
+    _validate_outcome_evidence(db, case, payload)
 
     result = process_outcome(
         case_id,
@@ -303,8 +397,6 @@ def case_communications(case_id: str, db: Session = Depends(get_db)):
 
     items: list[dict] = []
 
-    # Outbound submission dates are user-supplied calendar dates. They remain in
-    # the audited submission event so MECORRESPONDE never fabricates a time of day.
     submissions = db.scalars(
         select(AuditEvent)
         .where(

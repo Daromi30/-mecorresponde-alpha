@@ -32,6 +32,18 @@ def build_c01_case(client):
     return cid
 
 
+def prepare_and_submit_c01(client, cid):
+    diagnosis = client.post(f"/api/cases/{cid}/diagnose")
+    assert diagnosis.status_code == 200
+    claim = client.post(f"/api/cases/{cid}/prepare-claim")
+    assert claim.status_code == 200
+    submitted = client.post(
+        f"/api/cases/{cid}/submission",
+        json={"submitted_on": "2026-09-15", "channel": "web_form"},
+    )
+    assert submitted.status_code == 200, submitted.text
+
+
 def test_c01_end_to_end_diagnosis(client):
     cid = build_c01_case(client)
     diagnosis = client.post(f"/api/cases/{cid}/diagnose")
@@ -61,7 +73,7 @@ def test_c01_submission_does_not_invent_electricity_deadline(client):
     cid = build_c01_case(client)
     client.post(f"/api/cases/{cid}/diagnose")
     client.post(f"/api/cases/{cid}/prepare-claim")
-    response = client.post(f"/api/cases/{cid}/submission", json={"submitted_on": "2026-09-15"})
+    response = client.post(f"/api/cases/{cid}/submission", json={"submitted_on": "2026-09-15", "channel": "web_form"})
     assert response.status_code == 200
     body = response.json()
     assert body["deadline"] is None
@@ -70,12 +82,13 @@ def test_c01_submission_does_not_invent_electricity_deadline(client):
 
 def test_c01_company_misuse_response_reanalyzes_case(client):
     cid = build_c01_case(client)
-    first = client.post(f"/api/cases/{cid}/diagnose").json()
-    assert first["viability"] == "HIGH"
-    response = client.post(f"/api/cases/{cid}/responses", json={
-        "text": "Rechazamos la garantía porque el equipo presenta daño por golpe y mal uso."
+    prepare_and_submit_c01(client, cid)
+    response = client.post(f"/api/cases/{cid}/responses/evidenced", json={
+        "text": "Rechazamos la garantía porque el equipo presenta daño por golpe y mal uso.",
+        "received_on": "2026-09-16",
+        "channel": "email",
     })
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     body = response.json()
     assert body["analysis"]["type"] == "DENIAL"
     assert body["updated_diagnosis"]["viability"] == "MEDIUM"

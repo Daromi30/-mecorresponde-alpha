@@ -12,7 +12,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 from .auth import get_user_from_request
 from .config import settings
 from .db import Base, get_db
-from .models import AuditEvent, Case
+from .models import Action, AuditEvent, Case
 
 
 class CaseAccess(Base):
@@ -76,19 +76,42 @@ def _block_case_user_review_completion(request: Request) -> None:
         )
 
 
+def _block_legacy_untraced_resolution_routes(request: Request) -> None:
+    """Require evidence-aware HTTP routes for responses and outcomes."""
+    if request.method.upper() != "POST":
+        return
+    path = request.url.path.rstrip("/")
+    if path.endswith("/responses"):
+        raise HTTPException(
+            status_code=409,
+            detail="Use the evidenced company-response endpoint for this case",
+        )
+    if path.endswith("/outcome"):
+        raise HTTPException(
+            status_code=409,
+            detail="Use the evidenced outcome endpoint for this case",
+        )
+
+
+def _require_prepared_claim_before_submission(request: Request, db: Session, case: Case) -> None:
+    if request.method.upper() != "POST" or not request.url.path.rstrip("/").endswith("/submission"):
+        return
+    current = db.get(Action, case.current_action_id) if case.current_action_id else None
+    if (
+        case.status != "READY_TO_SUBMIT"
+        or current is None
+        or current.case_id != case.id
+        or current.type != "SUBMIT_INITIAL_CLAIM"
+        or current.status != "READY"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The initial claim must be diagnosed and prepared before its submission can be recorded",
+        )
+
+
 def _block_locked_initial_mutation(request: Request, db: Session, case: Case) -> None:
-    """Prevent case-owner endpoints from rewinding a case after the action phase starts.
-
-    Once an initial claim was submitted, later evidence belongs to the response/review/
-    outcome loop. Re-posting intake facts or rerunning initial diagnosis/claim preparation
-    would otherwise reset status or create duplicate outbound actions. Internal response
-    analysis and protected backoffice review call service functions directly and are not
-    affected by this HTTP boundary.
-
-    Before submission, a HUMAN_REVIEW case still lets /prepare-claim reach the normal
-    decision gate. That endpoint already fails closed with 422 for a non-preparable
-    diagnosis, preserving its established API contract without allowing any mutation.
-    """
+    """Prevent case-owner endpoints from rewinding a case after the action phase starts."""
     if request.method.upper() != "POST":
         return
 
@@ -128,6 +151,8 @@ def _block_locked_initial_mutation(request: Request, db: Session, case: Case) ->
 
 def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Case) -> None:
     _block_case_user_review_completion(request)
+    _block_legacy_untraced_resolution_routes(request)
+    _require_prepared_claim_before_submission(request, db, case)
     _block_locked_initial_mutation(request, db, case)
 
 
@@ -150,8 +175,6 @@ def require_case_access(request: Request, db: Session = Depends(get_db)) -> None
 
     supplied_hash = hash_case_token(supplied)
     if not hmac.compare_digest(supplied_hash, access.token_hash):
-        # Return 404 instead of 401/403 so callers cannot use the endpoint to
-        # discover whether a given case UUID exists.
         raise HTTPException(status_code=404, detail="Case not found")
 
     if case is None:

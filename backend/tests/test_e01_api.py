@@ -136,10 +136,20 @@ def test_e01_company_says_pricing_matches_contract_reduces_confidence(client):
     post_fact(client, cid, "electricity.pricing_applied_terms", "0,18 €/kWh")
     post_fact(client, cid, "electricity.pricing_difference_confirmed", True)
     assert client.post(f"/api/cases/{cid}/diagnose").json()["viability"] == "HIGH"
+    assert client.post(f"/api/cases/{cid}/prepare-claim").status_code == 200
+    submitted = client.post(
+        f"/api/cases/{cid}/submission",
+        json={"submitted_on": "2026-09-15", "channel": "web"},
+    )
+    assert submitted.status_code == 200, submitted.text
 
     response = client.post(
-        f"/api/cases/{cid}/responses",
-        json={"text": "El precio coincide con el contrato firmado y por tanto rechazamos su reclamación."},
+        f"/api/cases/{cid}/responses/evidenced",
+        json={
+            "text": "El precio coincide con el contrato firmado y por tanto rechazamos su reclamación.",
+            "received_on": "2026-09-16",
+            "channel": "email",
+        },
     )
     assert response.status_code == 200, response.text
     body = response.json()

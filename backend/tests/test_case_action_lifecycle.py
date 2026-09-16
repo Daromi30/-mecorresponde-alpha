@@ -41,6 +41,16 @@ def create_complete_e04b(client):
     return case_id, package.json()["action_id"]
 
 
+def submit_complete_e04b(client, submitted_on="2026-09-16"):
+    case_id, action_id = create_complete_e04b(client)
+    submitted = client.post(
+        f"/api/cases/{case_id}/submission",
+        json={"submitted_on": submitted_on, "channel": "web_form", "reference_number": "REF-1"},
+    )
+    assert submitted.status_code == 200, submitted.text
+    return case_id, action_id
+
+
 def test_submission_completes_send_action_and_creates_single_wait_step(client, db):
     case_id, send_action_id = create_complete_e04b(client)
 
@@ -88,19 +98,19 @@ def test_submission_completes_send_action_and_creates_single_wait_step(client, d
 
 
 def test_company_denial_closes_wait_and_routes_repeated_claim_to_escalation_review(client, db):
-    case_id, _ = create_complete_e04b(client)
-    assert client.post(
-        f"/api/cases/{case_id}/submission",
-        json={"submitted_on": "2026-09-16", "channel": "web"},
-    ).status_code == 200
+    case_id, _ = submit_complete_e04b(client)
 
     db.expire_all()
     case = db.get(Case, case_id)
     wait_action_id = case.current_action_id
 
     response = client.post(
-        f"/api/cases/{case_id}/responses",
-        json={"text": "Denegamos la devolución porque el contrato de mantenimiento es independiente."},
+        f"/api/cases/{case_id}/responses/evidenced",
+        json={
+            "text": "Denegamos la devolución porque el contrato de mantenimiento es independiente.",
+            "received_on": "2026-09-16",
+            "channel": "email",
+        },
     )
     assert response.status_code == 200
     assert response.json()["analysis"]["type"] == "DENIAL"
@@ -149,30 +159,36 @@ def test_company_denial_closes_wait_and_routes_repeated_claim_to_escalation_revi
 
 
 def test_verified_outcome_closes_execution_action_and_leaves_no_pending_step(client, db):
-    created = client.post(
-        "/api/cases",
-        json={"message": "Me han cobrado dos veces la misma factura de luz"},
+    case_id, _ = submit_complete_e04b(client, submitted_on="2026-09-10")
+    accepted = client.post(
+        f"/api/cases/{case_id}/responses/evidenced",
+        json={
+            "text": "Aceptamos su reclamación y procederemos a devolver el importe.",
+            "received_on": "2026-09-12",
+            "channel": "email",
+        },
     )
-    assert created.status_code == 200
-    case_id = created.json()["id"]
+    assert accepted.status_code == 200, accepted.text
 
-    pending = client.post(
-        f"/api/cases/{case_id}/outcome",
-        json={"result_type": "FAVORABLE", "amount_recovered": 20.0, "verified_by_user": False},
-    )
-    assert pending.status_code == 200
     db.expire_all()
     case = db.get(Case, case_id)
     execution_action_id = case.current_action_id
     execution_action = db.get(Action, execution_action_id)
+    assert case.status == "RESOLVED_PENDING_EXECUTION"
     assert execution_action.type == "VERIFY_EXECUTION"
     assert execution_action.status == "OPEN"
 
     verified = client.post(
-        f"/api/cases/{case_id}/outcome",
-        json={"result_type": "FAVORABLE", "amount_recovered": 20.0, "verified_by_user": True},
+        f"/api/cases/{case_id}/outcome/evidenced",
+        json={
+            "result_type": "FAVORABLE",
+            "amount_recovered": 20.0,
+            "verified_by_user": True,
+            "resolved_on": "2026-09-13",
+            "resolution_channel": "bank_or_card_refund",
+        },
     )
-    assert verified.status_code == 200
+    assert verified.status_code == 200, verified.text
 
     db.expire_all()
     case = db.get(Case, case_id)
