@@ -32,6 +32,7 @@ from .routers.admin_review_resolution import router as admin_review_resolution_r
 from .routers.auth import router as auth_router
 from .routers.case_deletion import router as case_deletion_router
 from .routers.cases_v2 import router as cases_router
+from .routers.handoff import router as handoff_router
 from .routers.quality import router as quality_router
 from .routers.readiness import router as readiness_router
 from .routers.seo import router as seo_router
@@ -286,6 +287,7 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
 
 
 app.include_router(cases_router)
+app.include_router(handoff_router)
 app.include_router(case_deletion_router)
 app.include_router(quality_router)
 app.include_router(account_cases_router)
