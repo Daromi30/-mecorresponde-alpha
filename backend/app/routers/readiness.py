@@ -34,6 +34,7 @@ PRIVACY_INFORMATION_PUBLISHED = False
 # of the underlying regressions break, branch protection prevents that revision
 # from reaching main.
 FOURTEEN_FAMILY_ACCEPTANCE_PROVEN = True
+FOURTEEN_FAMILY_RESPONSE_RESOLUTION_LOOP_PROVEN = True
 GUIDED_BROWSER_INPUT_CONTRACT_PROVEN = True
 FULL_SAVED_ACCOUNT_JOURNEY_PROVEN = True
 
@@ -209,6 +210,21 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
             detail="Las 14 familias registradas tienen un escenario de aceptación que llega desde intake hasta una acción con procedencia jurídica verificada.",
             severity="INTERNAL_BETA_BLOCKER",
             metadata={"family_count": len(FAMILY_MANIFEST), "verification": "ci_beta_acceptance_matrix"},
+        ),
+        _check(
+            "fourteen_family_response_resolution_loop",
+            FOURTEEN_FAMILY_RESPONSE_RESOLUTION_LOOP_PROVEN,
+            label="Respuesta y resolución end-to-end de familias",
+            detail=(
+                "Las 14 familias registradas recorren en CI el envío, una respuesta favorable, la comprobación de cumplimiento y la resolución; "
+                "también se prueba que una respuesta parcial no reabre una segunda reclamación inicial y deriva a revisión humana de escalado."
+            ),
+            severity="INTERNAL_BETA_BLOCKER",
+            metadata={
+                "family_count": len(FAMILY_MANIFEST),
+                "verification": "ci_all_family_response_resolution_loop",
+                "partial_response_escalation_guard": True,
+            },
         ),
         _check(
             "guided_browser_input_contract",
