@@ -31,6 +31,10 @@ _RESERVED_FACT_PREFIXES = (
     "decision.",
     "action.",
 )
+_POST_RESPONSE_REVIEW_REASONS = {
+    "POST_DENIAL_ESCALATION_REVIEW",
+    "PROFESSIONAL_ESCALATION_REQUIRED",
+}
 
 
 class HumanFactUpdate(BaseModel):
@@ -339,12 +343,10 @@ def resolve_structured_review(
     decision_id = None
     action_id = None
     if payload.reanalyze and (case.family or "") in EVALUATORS:
-        # A structured resolution after a company denial/partial response is still part
-        # of the response phase. Preserve that phase marker so the global diagnostic
-        # guard can never turn a reviewer-added fact into a second initial claim. If the
-        # deterministic result still proposes the original outbound action, the Motor
-        # opens a fresh protected escalation review instead.
-        if review.reason == "POST_DENIAL_ESCALATION_REVIEW":
+        # Reviews created after a company response remain in the response phase even if a
+        # person adds verified facts. This keeps the anti-loop guard active across both
+        # the first escalation review and the later professional-review handoff.
+        if review.reason in _POST_RESPONSE_REVIEW_REASONS:
             case.status = "RESPONSE_RECEIVED"
         try:
             result, decision, action = diagnose(db, case)
