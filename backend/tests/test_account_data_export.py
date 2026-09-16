@@ -1,7 +1,10 @@
+from datetime import date
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+
+from app.models import Outcome
 
 
 STATIC = Path(__file__).parents[1] / "app" / "static"
@@ -34,7 +37,7 @@ def test_account_export_requires_authenticated_account(client):
     assert response.status_code == 401
 
 
-def test_account_export_contains_owned_case_data_without_authentication_secrets(client):
+def test_account_export_contains_owned_case_data_without_authentication_secrets(client, db):
     user_id = register(client)
     case_id = create_and_claim(client)
     fact = client.post(
@@ -47,6 +50,16 @@ def test_account_export_contains_owned_case_data_without_authentication_secrets(
         },
     )
     assert fact.status_code == 200, fact.text
+    db.add(
+        Outcome(
+            case_id=case_id,
+            result_type="FAVORABLE",
+            amount_recovered=12.5,
+            resolved_on=date(2026, 9, 15),
+            verified_by_user=True,
+        )
+    )
+    db.commit()
 
     response = client.get("/api/auth/export")
     assert response.status_code == 200, response.text
@@ -65,6 +78,7 @@ def test_account_export_contains_owned_case_data_without_authentication_secrets(
         item["key"] == "electricity.billing.synthetic_note" and item["value"] == "dato de prueba"
         for item in body["cases"][0]["facts"]
     )
+    assert body["cases"][0]["outcomes"][0]["resolved_on"] == "2026-09-15"
 
     serialized = response.text.lower()
     assert "password_hash" not in serialized
