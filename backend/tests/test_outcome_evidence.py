@@ -5,23 +5,60 @@ import tempfile
 
 from sqlalchemy import select
 
-from app.models import AuditEvent, Case, Outcome
+from app.models import AuditEvent, Outcome
 
 
 STATIC = Path(__file__).parents[1] / "app" / "static"
 
 
-def create_case(client):
-    response = client.post(
+def create_case_awaiting_execution(client):
+    created = client.post(
         "/api/cases",
         json={"message": "Me cambié de compañía de luz y me siguen cobrando un mantenimiento"},
     )
-    assert response.status_code == 200, response.text
-    return response.json()["id"]
+    assert created.status_code == 200, created.text
+    case_id = created.json()["id"]
+    for key, value in {
+        "electricity.supply_end_date": "2026-06-03",
+        "electricity.addon.identity": "Protección Hogar",
+        "electricity.addon.ever_contracted": True,
+        "electricity.addon.contracted_with_supply": True,
+        "electricity.addon.keep_requested": False,
+    }.items():
+        assert client.post(
+            f"/api/cases/{case_id}/facts",
+            json={"key": key, "value": value, "state": "confirmed", "user_confirmed": True},
+        ).status_code == 200
+    assert client.post(
+        f"/api/cases/{case_id}/charges",
+        json={"charges": [{
+            "amount": 8.99,
+            "service_period_start": "2026-06-04",
+            "service_period_end": "2026-07-03",
+            "evidence_verified": True,
+        }]},
+    ).status_code == 200
+    assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 200
+    assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 200
+    assert client.post(
+        f"/api/cases/{case_id}/submission",
+        json={"submitted_on": "2026-09-10", "channel": "web_form"},
+    ).status_code == 200
+    accepted = client.post(
+        f"/api/cases/{case_id}/responses/evidenced",
+        json={
+            "text": "Aceptamos su reclamación y procederemos a devolver el importe.",
+            "received_on": "2026-09-12",
+            "channel": "email",
+        },
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["analysis"]["type"] == "ACCEPTANCE"
+    return case_id
 
 
 def test_verified_non_monetary_resolution_preserves_execution_evidence(client, db):
-    case_id = create_case(client)
+    case_id = create_case_awaiting_execution(client)
     response = client.post(
         f"/api/cases/{case_id}/outcome/evidenced",
         json={
@@ -57,7 +94,7 @@ def test_verified_non_monetary_resolution_preserves_execution_evidence(client, d
 
 
 def test_unknown_execution_date_remains_unknown(client, db):
-    case_id = create_case(client)
+    case_id = create_case_awaiting_execution(client)
     response = client.post(
         f"/api/cases/{case_id}/outcome/evidenced",
         json={
