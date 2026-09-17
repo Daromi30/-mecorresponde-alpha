@@ -1,6 +1,7 @@
 (() => {
   let storageStatusPromise = null;
   const uploadResults = new Map();
+  const terminalStatuses = new Set(['RESOLVED', 'CLOSED_UNSUPPORTED']);
 
   function storageStatus() {
     if (!storageStatusPromise) {
@@ -82,6 +83,16 @@
     const panel = ensureDocumentPanel();
     if (!panel) return;
     panel.classList.remove('hidden');
+
+    const currentStatus = typeof caseData !== 'undefined' ? caseData?.status : null;
+    if (terminalStatuses.has(currentStatus)) {
+      panel.innerHTML = `
+        <div class="label">Documentación</div>
+        <h3>Expediente cerrado · documentación en solo lectura</h3>
+        <div class="notice">Este expediente está cerrado. Puedes consultar su documentación y trazabilidad, pero no añadir archivos nuevos.</div>`;
+      return;
+    }
+
     panel.innerHTML = '<div class="label">Documentación</div><p class="muted">Comprobando si el almacenamiento documental está disponible…</p>';
 
     const status = await storageStatus();
