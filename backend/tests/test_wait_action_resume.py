@@ -50,6 +50,34 @@ def _c04_case(client, *, order_date: str, additional_deadline: str | None = None
     return case_id
 
 
+def _c05_refund_wait_case(client) -> str:
+    created = client.post(
+        "/api/cases",
+        json={"message": "Compré unos auriculares online, desistí y sigo esperando el reembolso"},
+    )
+    assert created.status_code == 200, created.text
+    case_id = created.json()["id"]
+    assert created.json()["family"] == "C05"
+    facts = {
+        "purchase.buyer_is_consumer": True,
+        "purchase.seller_is_business": True,
+        "purchase.distance_contract": True,
+        "purchase.product_name": "Auriculares",
+        "purchase.received_date": "2026-08-20",
+        "purchase.amount_paid": 100.0,
+        "purchase.premium_delivery_extra": 0.0,
+        "purchase.withdrawal_exception_possible": False,
+        "purchase.withdrawal_information_provided": True,
+        "purchase.withdrawal_sent": True,
+        "purchase.withdrawal_sent_date": "2026-09-03",
+        "purchase.refund_received": False,
+        "purchase.seller_offered_collection": True,
+    }
+    for key, value in facts.items():
+        _fact(client, case_id, key, value)
+    return case_id
+
+
 def _set_spain_day(monkeypatch, value: date) -> None:
     monkeypatch.setattr("app.analysis_clock_policy.spain_today", lambda: value)
     monkeypatch.setattr("app.wait_resume.spain_today", lambda: value)
@@ -166,6 +194,41 @@ def test_additional_delivery_wait_can_resume_into_termination(client, db, monkey
     assert resumed.status_code == 200, resumed.text
     assert resumed.json()["next_action"] == "PREPARE_NON_DELIVERY_TERMINATION"
     assert resumed.json()["case_status"] == "DIAGNOSED"
+
+    db.expire_all()
+    assert db.get(Action, old_action_id).status == "COMPLETED"
+
+
+def test_withdrawal_refund_wait_resumes_only_after_existing_refund_due_date(client, db, monkeypatch):
+    # The evaluator's existing rule is sent_date + 14 days and remains waiting through
+    # the due date itself. No new legal period is introduced by the resume transition.
+    _set_spain_day(monkeypatch, date(2026, 9, 17))
+    case_id = _c05_refund_wait_case(client)
+
+    diagnosis = client.post(f"/api/cases/{case_id}/diagnose")
+    assert diagnosis.status_code == 200, diagnosis.text
+    assert diagnosis.json()["next_action"] == "WAIT_WITHDRAWAL_REFUND_PERIOD"
+    assert diagnosis.json()["calculation"]["refund_due_date"] == "2026-09-17"
+    old_action_id = diagnosis.json()["action_id"]
+    old_decision_id = diagnosis.json()["decision_id"]
+
+    same_day = client.post(f"/api/cases/{case_id}/resume-wait")
+    assert same_day.status_code == 409
+    db.expire_all()
+    case = db.get(Case, case_id)
+    assert case.current_action_id == old_action_id
+    assert case.current_decision_id == old_decision_id
+    assert db.get(Action, old_action_id).status == "OPEN"
+
+    _set_spain_day(monkeypatch, date(2026, 9, 18))
+    resumed = client.post(f"/api/cases/{case_id}/resume-wait")
+    assert resumed.status_code == 200, resumed.text
+    body = resumed.json()
+    assert body["next_action"] == "PREPARE_WITHDRAWAL_REFUND_CLAIM"
+    assert body["case_status"] == "DIAGNOSED"
+    assert body["claimable_amount"] == 100.0
+    assert body["action_id"] != old_action_id
+    assert body["decision_id"] != old_decision_id
 
     db.expire_all()
     assert db.get(Action, old_action_id).status == "COMPLETED"
