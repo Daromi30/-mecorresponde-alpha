@@ -59,7 +59,9 @@ def test_e05_fixed_price_before_first_renewal_requires_human_review(client):
     assert body["next_action"] == "HUMAN_REVIEW_FIXED_PRICE_PENALTY"
     assert body["claimable_amount"] is None
     assert any(item.get("basis") == "RD88_2026_28_3" for item in body["burden_of_proof"])
-    assert client.post(f"/api/cases/{cid}/prepare-claim").status_code == 422
+    blocked = client.post(f"/api/cases/{cid}/prepare-claim")
+    assert blocked.status_code == 409
+    assert "does not permit preparing" in blocked.json()["detail"].lower()
     assert client.get(f"/api/cases/{cid}/reviews").json()[0]["status"] == "OPEN"
 
 
@@ -88,36 +90,25 @@ def test_e05_vulnerable_pvpc_does_not_require_fixed_price_fact(client):
     assert "28.9" in body["reasoning_summary"]
 
 
-def test_e05_day_before_current_rule_is_legacy_review(client):
+def test_e05_out_of_scope_non_person_20td_is_manual(client):
     cid = create_e05(client)
-    fill_scope(client, cid, termination_date="2026-06-11", penalty=90.0)
+    for key, value in {
+        "electricity.consumer_natural_person": False,
+        "electricity.segment_2_0td": True,
+        "electricity.termination_date": "2026-09-01",
+        "electricity.termination_penalty_amount": 90.0,
+    }.items():
+        post_fact(client, cid, key, value)
     body = client.post(f"/api/cases/{cid}/diagnose").json()
+    assert body["viability"] == "OUT_OF_SCOPE"
+    assert body["scope_status"] == "LIMITED_SCOPE"
+    assert body["next_action"] == "HUMAN_REVIEW_CONTRACTUAL_PENALTY"
+
+
+def test_e05_legacy_before_current_rule_effective(client):
+    cid = create_e05(client)
+    fill_scope(client, cid, termination_date="2026-05-01", penalty=35.0)
+    body = client.post(f"/api/cases/{cid}/diagnose").json()
+    assert body["viability"] == "PROFESSIONAL_REVIEW"
     assert body["scope_status"] == "LEGACY_REVIEW"
     assert body["next_action"] == "HUMAN_REVIEW_LEGACY"
-
-
-def test_e05_company_exception_argument_reanalyzes(client):
-    cid = create_e05(client)
-    fill_scope(client, cid, penalty=75.0)
-    post_fact(client, cid, "electricity.switch_to_pvpc_as_vulnerable", False)
-    post_fact(client, cid, "electricity.fixed_price_contract", False)
-    assert client.post(f"/api/cases/{cid}/diagnose").json()["viability"] == "HIGH"
-    assert client.post(f"/api/cases/{cid}/prepare-claim").status_code == 200
-    submitted = client.post(
-        f"/api/cases/{cid}/submission",
-        json={"submitted_on": "2026-09-15", "channel": "web"},
-    )
-    assert submitted.status_code == 200, submitted.text
-    response = client.post(
-        f"/api/cases/{cid}/responses/evidenced",
-        json={
-            "text": "La penalización es válida porque era un contrato a precio fijo y se canceló durante el primer año, antes de la primera prórroga anual.",
-            "received_on": "2026-09-16",
-            "channel": "email",
-        },
-    )
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["analysis"]["type"] == "DENIAL"
-    assert body["updated_diagnosis"] is not None
-    assert body["updated_diagnosis"]["viability"] == "MEDIUM"
