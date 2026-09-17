@@ -181,6 +181,7 @@ def _block_locked_initial_mutation(request: Request, db: Session, case: Case) ->
     )
     protected_phase = case.status in {
         "HUMAN_REVIEW",
+        "REANALYZING",
         "WAITING_RESPONSE",
         "RESPONSE_RECEIVED",
         "RESOLVED_PENDING_EXECUTION",
