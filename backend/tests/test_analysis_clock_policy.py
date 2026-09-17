@@ -1,8 +1,10 @@
 from datetime import date, timedelta
+import inspect
 
 from sqlalchemy import select
 
 from app import analysis_clock_policy, services_v2 as svc
+from app.engine import questions as question_engine
 from app.models import Fact
 
 
@@ -40,12 +42,13 @@ def test_analysis_date_uses_spain_clock_without_persisting_a_fact(client, db, mo
 
 def test_c04_diagnosis_and_guided_question_share_spain_analysis_date(client, monkeypatch):
     # Model the midnight edge explicitly: Madrid is already tomorrow while a UTC server
-    # can still be on today. The default 30-day delivery period ends on server_today, so
-    # only the Spain civil date says that the period has actually expired.
+    # can still be on today. Both the evaluator and guided-question layer must therefore
+    # use the Europe/Madrid civil date rather than the host's local date.
     server_today = date.today()
     madrid_today = server_today + timedelta(days=1)
     order_date = server_today - timedelta(days=30)
     monkeypatch.setattr(analysis_clock_policy, "spain_today", lambda: madrid_today)
+    monkeypatch.setattr(question_engine, "spain_today", lambda: madrid_today)
 
     case_id = _c04_case(client)
     for key, value in {
@@ -72,3 +75,9 @@ def test_c04_diagnosis_and_guided_question_share_spain_analysis_date(client, mon
     assert body["next_action"] == "ASK_IF_ADDITIONAL_PERIOD_GIVEN"
     assert body["rule_result"] == "APPLIES_DELIVERY_OVERDUE"
     assert body["missing_facts"] == ["purchase.additional_delivery_period_requested"]
+
+
+def test_guided_questions_do_not_use_host_local_today():
+    source = inspect.getsource(question_engine)
+    assert "date.today()" not in source
+    assert "spain_today()" in source
