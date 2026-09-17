@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
 
@@ -11,6 +12,7 @@ from .models import Action, Case, Document, Evidence, Fact
 
 
 _INSTALLED = False
+_COMPANY_RESPONSE_BATCH = ContextVar("mcr_company_response_batch", default=False)
 
 
 def install_fact_write_policy() -> None:
@@ -137,26 +139,28 @@ def install_fact_write_policy() -> None:
                 "supersedes": previous.id if previous else None,
             },
         )
-        # Company arguments belong to one response snapshot. The response analyzer owns
-        # the transaction and commits all derived facts, evidence, communication and audit
-        # together. A failure on a later argument must not leave earlier arguments durable.
-        if created_by == "company":
+
+        # Only company facts produced while parsing one company communication are batched.
+        # Direct company writes outside that response transaction keep their established
+        # immediate-durability contract. ContextVar keeps this request/task local.
+        if created_by == "company" and _COMPANY_RESPONSE_BATCH.get():
             return fact
 
-        # Protected human-review fact writes remain individually durable because they are
-        # explicit reviewer actions, not a batch parsed from one company communication.
         db.commit()
         db.refresh(fact)
         return fact
 
     def analyze_company_response_atomically(db: Session, case: Case, text: str):
+        token = _COMPANY_RESPONSE_BATCH.set(True)
         try:
             return previous_analyze_company_response(db, case, text)
         except Exception:
-            # Company facts are deliberately uncommitted until the analyzer's final commit.
-            # Roll back the whole response snapshot if parsing/persistence fails anywhere.
+            # Batched company facts, evidence, communication and response audit must either
+            # all reach the analyzer's final commit or none of them become durable.
             db.rollback()
             raise
+        finally:
+            _COMPANY_RESPONSE_BATCH.reset(token)
 
     def confirm_document_fact_with_invalidation(
         db: Session,
