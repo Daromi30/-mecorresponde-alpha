@@ -75,6 +75,15 @@ def test_phase_ui_restores_prepared_claim_and_hides_stale_action_cards():
     assert "setCardVisible('outcomeCard', status === 'RESOLVED_PENDING_EXECUTION')" in script
 
 
+def test_reanalyzing_phase_replaces_stale_question_controls_with_locked_copy():
+    script = (STATIC / "case_phase_guard.js").read_text(encoding="utf-8")
+    assert "REANALYZING:" in script
+    assert "Reanalizando el expediente" in script
+    assert "No edites la fase inicial mientras termina esta transición" in script
+    assert "lockedPhaseCopy[caseData?.status]" in script
+    assert "area.innerHTML" in script
+
+
 def test_phase_ui_javascript_parses_when_node_is_available():
     node = shutil.which("node")
     if not node:
