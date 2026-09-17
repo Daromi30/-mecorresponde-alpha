@@ -110,7 +110,7 @@ def test_claimant_cannot_trigger_diagnosis_while_protected_reanalysis_is_pending
     before = _counts(db, case_id)
     attempted = client.post(f"/api/cases/{case_id}/diagnose")
     assert attempted.status_code == 409, attempted.text
-    assert "locked in the current phase" in attempted.json()["detail"]
+    assert attempted.json()["detail"] == "This case is being reanalyzed through the protected review workflow"
 
     db.expire_all()
     refreshed = db.get(Case, case_id)
