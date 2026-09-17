@@ -48,6 +48,7 @@ def install_fact_write_policy() -> None:
 
     previous_upsert_fact = svc.upsert_fact
     previous_confirm_document_fact = svc.confirm_document_fact
+    previous_analyze_company_response = svc.analyze_company_response
 
     def supersede_current_analysis(db: Session, case: Case, *, fact_key: str, source: str) -> None:
         previous_action_id = case.current_action_id
@@ -136,10 +137,26 @@ def install_fact_write_policy() -> None:
                 "supersedes": previous.id if previous else None,
             },
         )
-        # Do not alter case.status here. The response/review workflow owns the lifecycle.
+        # Company arguments belong to one response snapshot. The response analyzer owns
+        # the transaction and commits all derived facts, evidence, communication and audit
+        # together. A failure on a later argument must not leave earlier arguments durable.
+        if created_by == "company":
+            return fact
+
+        # Protected human-review fact writes remain individually durable because they are
+        # explicit reviewer actions, not a batch parsed from one company communication.
         db.commit()
         db.refresh(fact)
         return fact
+
+    def analyze_company_response_atomically(db: Session, case: Case, text: str):
+        try:
+            return previous_analyze_company_response(db, case, text)
+        except Exception:
+            # Company facts are deliberately uncommitted until the analyzer's final commit.
+            # Roll back the whole response snapshot if parsing/persistence fails anywhere.
+            db.rollback()
+            raise
 
     def confirm_document_fact_with_invalidation(
         db: Session,
@@ -165,5 +182,6 @@ def install_fact_write_policy() -> None:
         )
 
     svc.upsert_fact = upsert_fact_with_source_aware_lifecycle
+    svc.analyze_company_response = analyze_company_response_atomically
     svc.confirm_document_fact = confirm_document_fact_with_invalidation
     _INSTALLED = True
