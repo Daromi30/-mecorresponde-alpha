@@ -46,8 +46,8 @@ def create_submitted_e04b(client):
 def test_initial_mutation_endpoints_are_locked_after_submission(client):
     case_id = create_submitted_e04b(client)
 
-    attempts = [
-        client.post(
+    attempts = {
+        "facts": client.post(
             f"/api/cases/{case_id}/facts",
             json={
                 "key": "electricity.addon.keep_requested",
@@ -56,20 +56,25 @@ def test_initial_mutation_endpoints_are_locked_after_submission(client):
                 "user_confirmed": True,
             },
         ),
-        client.post(
+        "charges": client.post(
             f"/api/cases/{case_id}/charges",
             json={"charges": [{"amount": 99.0, "evidence_verified": True}]},
         ),
-        client.post(f"/api/cases/{case_id}/diagnose"),
-        client.post(f"/api/cases/{case_id}/prepare-claim"),
-        client.post(
+        "diagnose": client.post(f"/api/cases/{case_id}/diagnose"),
+        "prepare": client.post(f"/api/cases/{case_id}/prepare-claim"),
+        "document_fact": client.post(
             f"/api/cases/{case_id}/documents/not-a-real-document/confirm-fact",
             json={"key": "electricity.addon.identity", "value": "Otro servicio"},
         ),
-    ]
+    }
 
-    assert all(response.status_code == 409 for response in attempts)
-    assert all("locked in the current phase" in response.json()["detail"] for response in attempts)
+    assert all(response.status_code == 409 for response in attempts.values())
+    for name, response in attempts.items():
+        detail = response.json()["detail"]
+        if name == "prepare":
+            assert "does not permit preparing" in detail
+        else:
+            assert "locked in the current phase" in detail
 
 
 def test_response_flow_remains_available_after_initial_phase_is_locked(client):
