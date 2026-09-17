@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from ..calendar_clock import spain_today
 from .common import FactValue
 
 
@@ -154,11 +155,12 @@ def _c04_question(facts: dict[str, FactValue]) -> dict:
     order_date = _date(_value(facts, "purchase.order_date"))
     agreed_date = _date(_value(facts, "purchase.agreed_delivery_date"))
     due_date = agreed_date if _value(facts, "purchase.delivery_date_was_agreed") and agreed_date else (order_date + timedelta(days=30) if order_date else None)
+    today = spain_today()
     immediate = _value(facts, "purchase.seller_refused_delivery") is True or (
-        _value(facts, "purchase.delivery_date_essential") is True and due_date and date.today() > due_date
+        _value(facts, "purchase.delivery_date_essential") is True and due_date and today > due_date
     )
 
-    if due_date and date.today() > due_date and not immediate:
+    if due_date and today > due_date and not immediate:
         if "purchase.additional_delivery_period_requested" not in facts:
             return _ask(
                 "purchase.additional_delivery_period_requested",
