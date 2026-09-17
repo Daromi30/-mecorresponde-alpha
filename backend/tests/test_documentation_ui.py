@@ -21,6 +21,15 @@ def test_documentation_ui_fails_closed_when_persistent_storage_is_unavailable():
     assert "No se ha enviado ni guardado ningún archivo" in script
 
 
+def test_terminal_cases_show_documentation_as_read_only_without_upload_controls():
+    script = (STATIC / "documentation.js").read_text(encoding="utf-8")
+    assert "new Set(['RESOLVED', 'CLOSED_UNSUPPORTED'])" in script
+    assert "terminalStatuses.has(currentStatus)" in script
+    assert "Expediente cerrado · documentación en solo lectura" in script
+    assert "no añadir archivos nuevos" in script
+    assert script.index("terminalStatuses.has(currentStatus)") < script.index("const status = await storageStatus()")
+
+
 def test_document_upload_uses_multipart_and_does_not_auto_confirm_extraction():
     script = (STATIC / "documentation.js").read_text(encoding="utf-8")
     assert "new FormData()" in script
