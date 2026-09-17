@@ -24,6 +24,7 @@ _EXACT_KINDS: dict[str, ActionKind] = {
     "GIVE_ADDITIONAL_DELIVERY_PERIOD": "prepare_outbound",
     "SEND_WITHDRAWAL_NOTICE": "prepare_outbound",
     "RETURN_GOODS_WITH_PROOF": "external_step",
+    "CHECK_BILL_AGAINST_REAL_READING": "external_step",
     "VERIFY_AND_CLOSE_WITHDRAWAL": "terminal_resolution",
     "SUBMIT_INITIAL_CLAIM": "workflow_submit",
     "WAIT_FOR_RESPONSE": "workflow_wait_response",
