@@ -93,8 +93,8 @@ def test_prepare_claim_requires_current_diagnosis_after_claimant_fact_change(cli
     )
 
     blocked = client.post(f"/api/cases/{case_id}/prepare-claim")
-    assert blocked.status_code == 422, blocked.text
-    assert "current fact snapshot" in blocked.json()["detail"].lower()
+    assert blocked.status_code == 409, blocked.text
+    assert "does not permit preparing" in blocked.json()["detail"].lower()
 
     db.expire_all()
     case = db.get(Case, case_id)
