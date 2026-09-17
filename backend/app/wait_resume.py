@@ -63,7 +63,7 @@ def resume_wait_action(db: Session, case: Case):
     the current action must be a registered WAIT action, must still be OPEN, and its factual
     calendar milestone must have elapsed according to the Spain civil-date analysis clock.
     Before the milestone there is zero mutation. Once elapsed, the old wait becomes historical
-    and the Motor evaluates the same claimant facts against the new technical date snapshot.
+    only in the same transaction that successfully persists the replacement diagnosis.
     """
     if case.status != "DIAGNOSED" or not case.current_action_id:
         raise ValueError("This case is not waiting on a resumable temporal milestone")
@@ -99,10 +99,16 @@ def resume_wait_action(db: Session, case: Case):
             "analysis_date": str(_as_date(_raw(facts, "system.analysis_date")) or spain_today()),
         },
     )
-    db.commit()
-    db.refresh(case)
 
-    result, decision, action = svc.diagnose(db, case)
+    try:
+        # diagnose() owns the successful transaction commit. Keeping the old wait
+        # transition pending until then prevents a failed reanalysis from leaving
+        # the case stranded in INTAKE with no current decision/action.
+        result, decision, action = svc.diagnose(db, case)
+    except Exception:
+        db.rollback()
+        raise
+
     svc.audit(
         db,
         case.id,
