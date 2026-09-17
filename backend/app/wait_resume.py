@@ -12,6 +12,7 @@ from .models import Action, Case
 _REGISTERED_WAIT_ACTIONS = frozenset({
     "WAIT_UNTIL_DELIVERY_DUE",
     "WAIT_ADDITIONAL_DELIVERY_PERIOD",
+    "WAIT_WITHDRAWAL_REFUND_PERIOD",
 })
 
 
@@ -46,6 +47,11 @@ def _wait_milestone_elapsed(action_type: str, facts) -> bool:
     if action_type == "WAIT_ADDITIONAL_DELIVERY_PERIOD":
         deadline = _as_date(_raw(facts, "purchase.additional_delivery_period_deadline"))
         return deadline is not None and analysis_date > deadline
+
+    if action_type == "WAIT_WITHDRAWAL_REFUND_PERIOD":
+        sent_date = _as_date(_raw(facts, "purchase.withdrawal_sent_date"))
+        refund_due_date = sent_date + timedelta(days=14) if sent_date else None
+        return refund_due_date is not None and analysis_date > refund_due_date
 
     return False
 
