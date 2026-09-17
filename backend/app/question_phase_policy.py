@@ -25,7 +25,9 @@ def install_question_phase_policy() -> None:
     Guided questions are an intake/re-entry mechanism, not a way to mutate a case while a
     protected review, submitted claim, response analysis or terminal outcome owns the next
     transition. DIAGNOSED deliberately remains unlocked because registered MONITOR/CHECK
-    follow-ups use the same question engine to resume the Motor safely.
+    follow-ups use the same question engine to resume the Motor safely. A DIAGNOSED case
+    with no current action is different: the Motor has completed an informational conclusion,
+    so no stale intake question should be exposed until a new fact explicitly reopens it.
     """
     global _INSTALLED
     if _INSTALLED:
@@ -35,6 +37,8 @@ def install_question_phase_policy() -> None:
 
     def get_next_question_for_active_phase(db: Session, case: Case):
         if case.status in _LOCKED_QUESTION_STATUSES:
+            return dict(_NO_QUESTION)
+        if case.status == "DIAGNOSED" and not case.current_action_id:
             return dict(_NO_QUESTION)
         return previous_get_next_question(db, case)
 
