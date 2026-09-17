@@ -38,13 +38,15 @@ from .routers.readiness import router as readiness_router
 from .routers.seo import router as seo_router
 from .routers.sources import router as sources_router
 from .routers.wait_resume import router as wait_resume_router
+from .atomic_case_creation_policy import install_atomic_case_creation_policy
 from .evidenced_recovery_policy import install_evidenced_recovery_policy
 from .services_v2 import seed_legal
 from .storage import StorageConfigurationError, get_document_storage, storage_status
 
-# The evidence-recovery wrapper must install only after routers.quality has captured the
-# fully installed Motor workflow. Installing it earlier would make cases_v2 capture stale
+# Runtime consistency wrappers install only after their router modules have captured the
+# fully installed Motor workflow. Installing them earlier would make cases_v2 capture stale
 # service wrappers during startup.
+install_atomic_case_creation_policy()
 install_evidenced_recovery_policy()
 
 logger = logging.getLogger("uvicorn.error")
