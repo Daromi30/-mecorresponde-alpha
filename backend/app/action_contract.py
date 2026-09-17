@@ -44,7 +44,10 @@ _PREFIX_KINDS: tuple[tuple[str, ActionKind], ...] = (
     ("REDIRECT_", "assisted_redirect"),
     ("EXPLAIN_", "informational"),
     ("NO_", "informational"),
-    ("MONITOR_", "informational"),
+    # Monitoring is only useful if a later real-world change can be fed back into the
+    # Motor. Treat every MONITOR_* action as an external step so CI requires an explicit
+    # follow-up contract instead of allowing a passive dead-end card.
+    ("MONITOR_", "external_step"),
     ("CHECK_", "informational"),
 )
 
