@@ -94,6 +94,20 @@ def _block_legacy_untraced_resolution_routes(request: Request) -> None:
         )
 
 
+def _block_terminal_document_upload(request: Request, case: Case) -> None:
+    """Keep terminal dossiers immutable while still allowing evidence during active phases."""
+    if request.method.upper() != "POST":
+        return
+    path = request.url.path.rstrip("/")
+    if not path.endswith("/documents"):
+        return
+    if case.status in {"RESOLVED", "CLOSED_UNSUPPORTED"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Closed cases cannot accept new document uploads",
+        )
+
+
 def _require_prepared_claim_before_submission(request: Request, db: Session, case: Case) -> None:
     if request.method.upper() != "POST" or not request.url.path.rstrip("/").endswith("/submission"):
         return
@@ -206,6 +220,7 @@ def _block_locked_initial_mutation(request: Request, db: Session, case: Case) ->
 def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Case) -> None:
     _block_case_user_review_completion(request)
     _block_legacy_untraced_resolution_routes(request)
+    _block_terminal_document_upload(request, case)
     _require_prepared_claim_before_submission(request, db, case)
     _require_preparable_action_before_claim_package(request, db, case)
     _require_new_snapshot_before_claimant_diagnosis_replay(request, case)
