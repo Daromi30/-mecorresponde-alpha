@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.models import Action, AuditEvent, Case
+from app.models import Action, AuditEvent, Case, Decision
 
 
 def _fact(client, case_id: str, key: str, value):
@@ -96,7 +96,7 @@ def test_e06_matching_bill_closes_check_without_new_claim(client, db):
     assert events[-1].payload_json["route"] == "E06_CLOSED"
 
 
-def test_e06_mismatching_bill_reclassifies_to_e02a(client, db):
+def test_e06_mismatching_bill_reclassifies_to_e02a_without_rewriting_source_decision(client, db):
     case_id = _remote_failure_with_real_reading(client)
     first = client.post(f"/api/cases/{case_id}/diagnose")
     assert first.status_code == 200, first.text
@@ -127,5 +127,25 @@ def test_e06_mismatching_bill_reclassifies_to_e02a(client, db):
     event_types = [event.event_type for event in events]
     assert "EXTERNAL_FOLLOWUP_ROUTED" in event_types
     assert "CASE_RECLASSIFIED_BY_ENGINE" in event_types
+
     routed = [event for event in events if event.event_type == "EXTERNAL_FOLLOWUP_ROUTED"][-1]
     assert routed.payload_json["route"] == "E02-A"
+    assert routed.payload_json["decision_viability"] == "LOW"
+
+    source_decision = db.get(Decision, routed.payload_json["decision_id"])
+    source_action = db.get(Action, routed.payload_json["action_id"])
+    assert source_decision is not None
+    assert source_decision.viability == "LOW"
+    assert source_decision.scope_status == "SUPPORTED"
+    assert source_action is not None
+    assert source_action.type == "RECLASSIFY_E02_A"
+    assert source_action.status == "COMPLETED"
+
+    source_diagnosis_event = next(
+        event
+        for event in events
+        if event.event_type == "DIAGNOSIS_GENERATED"
+        and event.payload_json.get("decision_id") == source_decision.id
+    )
+    assert source_diagnosis_event.payload_json["viability"] == source_decision.viability
+    assert source_diagnosis_event.payload_json["family"] == "E06"

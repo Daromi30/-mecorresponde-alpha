@@ -45,13 +45,14 @@ def known_external_followup_actions() -> tuple[str, ...]:
 
 
 def _apply_e06_bill_comparison_followup(db: Session, case: Case, result, decision, action) -> None:
-    """Convert the factual E06 comparison into the already registered billing route.
+    """Route the factual E06 comparison without rewriting the persisted diagnosis.
 
     The E06 evaluator deliberately stops at ``CHECK_BILL_AGAINST_REAL_READING`` once a real
-    reading exists. The comparison itself is not a new legal rule: if the final bill matches
-    that reading, the E06 hypothesis ends; if it does not, the existing deterministic
-    E06 -> E02-A transition owns the monetary billing analysis. This hook runs inside the
-    diagnosis chain before the reclassification policy sees the result.
+    reading exists. The resulting Decision and DIAGNOSIS_GENERATED event are historical
+    snapshots and must stay immutable. A later user-confirmed comparison therefore changes
+    only the executable action: a mismatch uses the already registered E06 -> E02-A routing
+    edge, while a match turns the check into a terminal explanation. Reclassification policy
+    intentionally recognizes RECLASSIFY_* action contracts even when source viability is LOW.
     """
     if case.family != "E06" or result.next_action != "CHECK_BILL_AGAINST_REAL_READING":
         return
@@ -62,54 +63,14 @@ def _apply_e06_bill_comparison_followup(db: Session, case: Case, result, decisio
         return
 
     if comparison.value is False:
-        result.viability = "RECLASSIFY"
-        result.scope_status = "REDIRECT_E02_A"
-        result.claimable_amount = None
-        result.worth_pursuing = "NEEDS_REANALYSIS"
-        result.reasoning_summary = (
-            "Existe una lectura real, pero el usuario confirma que la factura no coincide con ella. "
-            "E06 no inventa una diferencia monetaria: el expediente pasa a E02-A para comparar "
-            "el importe facturado con el importe correcto a partir de datos verificables."
-        )
         result.next_action = "RECLASSIFY_E02_A"
-        case.status = "REANALYZING"
+        action.type = "RECLASSIFY_E02_A"
         route = "E02-A"
     else:
-        result.viability = "LOW"
-        result.scope_status = "SUPPORTED"
-        result.claimable_amount = 0.0
-        result.worth_pursuing = "NO_PAID_MANAGEMENT"
-        result.reasoning_summary = (
-            "Existe una lectura real dentro del ciclo revisado y el usuario confirma que la factura "
-            "coincide con esa lectura. Con esos hechos no queda identificada una diferencia de "
-            "facturación que E06 deba escalar."
-        )
         result.next_action = "EXPLAIN_BILL_MATCHES_REAL_READING"
-        case.status = "DIAGNOSED"
+        action.type = "EXPLAIN_BILL_MATCHES_REAL_READING"
         route = "E06_CLOSED"
 
-    economic_value = getattr(result, "economic_value", None)
-    if economic_value is None:
-        economic_value = result.claimable_amount
-    remedies = list(getattr(result, "remedies", []) or [])
-    burden = list(getattr(result, "burden_of_proof", []) or [])
-
-    decision.viability = result.viability
-    decision.scope_status = result.scope_status
-    decision.claimable_amount = result.claimable_amount
-    decision.economic_value = economic_value
-    decision.worth_pursuing = result.worth_pursuing
-    decision.professional_review_required = False
-    decision.reasoning_summary = result.reasoning_summary
-    decision.counterarguments_snapshot = list(result.counterarguments)
-
-    action.type = result.next_action
-    action.payload_json = {
-        "claimable_amount": result.claimable_amount,
-        "economic_value": economic_value,
-        "remedies": remedies,
-        "burden_of_proof": burden,
-    }
     svc.audit(
         db,
         case.id,
@@ -120,6 +81,7 @@ def _apply_e06_bill_comparison_followup(db: Session, case: Case, result, decisio
             "value": bool(comparison.value),
             "route": route,
             "decision_id": decision.id,
+            "decision_viability": decision.viability,
             "action_id": action.id,
         },
     )
