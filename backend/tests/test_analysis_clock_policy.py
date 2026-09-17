@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 
@@ -38,17 +38,21 @@ def test_analysis_date_uses_spain_clock_without_persisting_a_fact(client, db, mo
     ) is None
 
 
-def test_c04_due_date_uses_spain_analysis_date_not_server_local_date(client, monkeypatch):
-    # The contractual default due date is 30 calendar days after this order: 2026-09-17.
-    # By forcing the jurisdiction clock to 2026-09-18 we prove that diagnosis reads the
-    # injected system.analysis_date instead of services_v2's server-local date fallback.
-    monkeypatch.setattr(analysis_clock_policy, "spain_today", lambda: date(2026, 9, 18))
+def test_c04_diagnosis_and_guided_question_share_spain_analysis_date(client, monkeypatch):
+    # Model the midnight edge explicitly: Madrid is already tomorrow while a UTC server
+    # can still be on today. The default 30-day delivery period ends on server_today, so
+    # only the Spain civil date says that the period has actually expired.
+    server_today = date.today()
+    madrid_today = server_today + timedelta(days=1)
+    order_date = server_today - timedelta(days=30)
+    monkeypatch.setattr(analysis_clock_policy, "spain_today", lambda: madrid_today)
+
     case_id = _c04_case(client)
     for key, value in {
         "purchase.buyer_is_consumer": True,
         "purchase.seller_is_business": True,
         "purchase.product_name": "Cafetera",
-        "purchase.order_date": "2026-08-18",
+        "purchase.order_date": order_date.isoformat(),
         "purchase.amount_paid": 149.90,
         "purchase.delivered": False,
         "purchase.delivery_date_was_agreed": False,
@@ -56,6 +60,11 @@ def test_c04_due_date_uses_spain_analysis_date_not_server_local_date(client, mon
         "purchase.delivery_date_essential": False,
     }.items():
         _fact(client, case_id, key, value)
+
+    question = client.get(f"/api/cases/{case_id}/next-question")
+    assert question.status_code == 200, question.text
+    assert question.json()["field"] == "purchase.additional_delivery_period_requested"
+    assert question.json()["input_type"] == "boolean"
 
     diagnosis = client.post(f"/api/cases/{case_id}/diagnose")
     assert diagnosis.status_code == 200, diagnosis.text
