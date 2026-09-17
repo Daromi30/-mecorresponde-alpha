@@ -14,12 +14,29 @@
     READY_TO_SUBMIT: 2,
     WAITING_RESPONSE: 3,
     RESPONSE_RECEIVED: 3,
-    HUMAN_REVIEW: 3,
-    REANALYZING: 3,
     RESOLVED_PENDING_EXECUTION: 4,
     RESOLVED: 4,
     CLOSED_UNSUPPORTED: 0,
   };
+
+  function hasAction(type) {
+    return Array.isArray(caseData?.actions) && caseData.actions.some(action => action?.type === type);
+  }
+
+  function reviewStage() {
+    // A review may happen before any legal diagnosis (unsupported intake), after diagnosis
+    // but before a claim is sent, or after a company response. Never move the progress bar
+    // forward merely because the status string says HUMAN_REVIEW/REANALYZING.
+    if (hasAction('WAIT_FOR_RESPONSE') || hasAction('VERIFY_EXECUTION')) return 3;
+    if (Array.isArray(caseData?.decisions) && caseData.decisions.length) return 1;
+    if (caseData?.family) return 1;
+    return 0;
+  }
+
+  function stageForStatus(status) {
+    if (status === 'HUMAN_REVIEW' || status === 'REANALYZING') return reviewStage();
+    return stageByStatus[status] ?? 0;
+  }
 
   function ensureProgress() {
     let panel = document.getElementById('caseProgress');
@@ -56,7 +73,7 @@
     const panel = ensureProgress();
     if (!panel) return;
     const status = caseData.status || 'INTAKE';
-    const current = stageByStatus[status] ?? 0;
+    const current = stageForStatus(status);
     const resolved = status === 'RESOLVED';
     panel.classList.remove('hidden');
     panel.innerHTML = `
