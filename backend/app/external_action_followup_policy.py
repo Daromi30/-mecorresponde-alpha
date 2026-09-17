@@ -11,15 +11,22 @@ from .models import Action, Case
 _INSTALLED = False
 
 # External actions are only safe when the product declares how the claimant can return to
-# the Motor after performing the real-world step. The registry is intentionally explicit:
-# adding an ``external_step`` action to an evaluator without adding its follow-up contract
-# fails CI.
+# the Motor after performing or observing the real-world step. The registry is intentionally
+# explicit: adding an ``external_step`` action to an evaluator without adding its follow-up
+# contract fails CI.
 _REGISTERED_EXTERNAL_FOLLOWUPS: dict[str, dict[str, Any]] = {
     "RETURN_GOODS_WITH_PROOF": {
         "family": "C05",
         "field": "purchase.return_sent",
         "previous_value": False,
         "question": "¿Ya has devuelto o enviado de vuelta el producto?",
+        "input_type": "boolean",
+    },
+    "MONITOR_CONFORMITY": {
+        "family": "C02",
+        "field": "purchase.lack_after_conformity_attempt",
+        "previous_value": False,
+        "question": "¿Ha vuelto a aparecer una falta o problema después de la reparación o sustitución?",
         "input_type": "boolean",
     },
 }
@@ -33,12 +40,12 @@ def known_external_followup_actions() -> tuple[str, ...]:
 def install_external_action_followup_policy() -> None:
     """Turn real-world external steps into resumable guided case transitions.
 
-    C05 can correctly require the claimant to return goods before the refund can progress.
-    The ordinary question engine treats a previously answered ``return_sent=false`` as a
-    completed field, so after the claimant later performs the return there would otherwise
-    be no UI path to update that fact. While a registered external action is current, expose
-    its factual follow-up again. Writing the new fact uses the normal fact-ingress policy,
-    supersedes the stale diagnosis and resumes the ordinary family question flow.
+    A claimant may need to do something outside MECORRESPONDE (for example return goods) or
+    wait to observe whether a repaired product fails again. If the relevant fact was already
+    answered negatively, the ordinary question engine would otherwise treat it as complete
+    forever. While a registered external action is current, expose that factual follow-up
+    again. Writing the changed fact uses the normal fact-ingress policy, supersedes the stale
+    diagnosis and resumes the ordinary family question flow.
     """
     global _INSTALLED
     if _INSTALLED:
