@@ -12,7 +12,7 @@ Fuentes oficiales revisadas:
 - Render — PostgreSQL backups and recovery: https://render.com/docs/postgresql-backups
 - Render — Pricing: https://render.com/pricing
 
-Según la documentación oficial vigente, las bases Render Postgres en plan Free:
+Según la documentación oficial revisada para esta configuración, las bases Render Postgres en plan Free:
 
 - expiran 30 días después de su creación;
 - quedan inaccesibles al expirar salvo actualización a un plan de pago durante el periodo de gracia;
@@ -20,21 +20,32 @@ Según la documentación oficial vigente, las bases Render Postgres en plan Free
 - no incluyen copias de seguridad gestionadas ni recuperación point-in-time;
 - no están recomendadas por Render para aplicaciones de producción.
 
-## Implicación para MECORRESPONDE
+## Estado de recuperación probado por MECORRESPONDE
 
-Que el backend use PostgreSQL y que los datos sobrevivan a un despliegue no significa que la infraestructura sea suficientemente durable para una beta con datos reales.
+El repositorio ya dispone de tooling propio para crear un `pg_dump` en formato custom, verificar integridad y catálogo, y restaurar el archivo. La integración CI ejecuta además un ensayo real contra PostgreSQL: crea un dump, levanta una base aislada desechable, restaura el backup y comprueba un dato centinela.
 
-Mientras el datastore tenga una caducidad no resuelta y no exista una ruta de recuperación probada, el cockpit de readiness debe mantener en `False` estas dos capacidades:
+Por tanto, el cockpit puede mantener:
 
-- `DATABASE_LIFECYCLE_MANAGED`
-- `DATABASE_RECOVERY_AVAILABLE`
+- `DATABASE_RECOVERY_AVAILABLE = True`
 
-No se activará ningún plan de pago ni servicio adicional sin aprobación expresa. Antes de una beta con datos reales habrá que elegir una solución que cubra ambas capacidades y comprobar su coste total.
+Esto significa que la **ruta técnica de copia y restauración está probada**. No significa que exista todavía una política operativa de backups de producción, una programación automática, retención definida o recuperación point-in-time.
+
+## Bloqueo que continúa antes de usar datos reales
+
+Que el backend use PostgreSQL, que los datos sobrevivan a despliegues y que el procedimiento de restore esté probado no hace que la infraestructura actual sea suficientemente durable para una beta con datos reales.
+
+La base gratuita sigue teniendo una caducidad conocida y no existe todavía un ciclo de vida operativo resuelto. Por eso debe continuar:
+
+- `DATABASE_LIFECYCLE_MANAGED = False`
+
+Antes de una beta con datos reales habrá que resolver la continuidad del datastore y definir cómo se ejecutarán, almacenarán, protegerán y comprobarán las copias operativas. El readiness mantiene este punto como `BETA_BLOCKER`.
+
+No se activará ningún plan de pago ni servicio adicional sin aprobación expresa.
 
 ## Alternativas a evaluar cuando toque desbloquearlo
 
-1. Mantener Render y pasar la base a un plan que no caduque y tenga recuperación adecuada.
-2. Mantener temporalmente un datastore económico pero añadir un proceso externo, cifrado y probado de copias y restauración, si jurídicamente y operativamente resulta aceptable.
-3. Migrar a otro proveedor de PostgreSQL si ofrece mejor relación coste/durabilidad para la fase beta.
+1. Mantener Render y pasar la base a una modalidad que no caduque y cuya recuperación cubra las necesidades de la beta.
+2. Mantener temporalmente un datastore económico y operar un proceso externo, cifrado y probado de copias y restauración, si resulta adecuado jurídica y operativamente.
+3. Migrar a otro proveedor de PostgreSQL si ofrece mejor relación coste/durabilidad para esa fase.
 
-La decisión debe hacerse con precios y condiciones vigentes en ese momento. No se debe elegir proveedor solo para quitar un indicador rojo del cockpit.
+La decisión se tomará con precios y condiciones vigentes en ese momento. No se debe elegir proveedor solo para quitar un indicador rojo del cockpit.

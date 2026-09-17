@@ -6,6 +6,7 @@ import tempfile
 
 ADMIN = {"Authorization": "Bearer test-admin-token"}
 ADMIN_STATIC = Path(__file__).parents[1] / "app" / "admin_static"
+DOCS = Path(__file__).parents[2] / "docs"
 
 
 def test_readiness_requires_admin(client):
@@ -74,6 +75,15 @@ def test_readiness_separates_internal_real_data_public_beta_and_launch_blockers(
     assert checks["email_verification"]["ok"] is False
     assert "password_recovery" in body["public_beta_blockers"]
     assert "email_verification" in body["public_beta_blockers"]
+
+
+def test_database_readiness_document_matches_recovery_and_lifecycle_contract():
+    document = (DOCS / "database-beta-readiness.md").read_text(encoding="utf-8")
+    assert "DATABASE_RECOVERY_AVAILABLE = True" in document
+    assert "DATABASE_LIFECYCLE_MANAGED = False" in document
+    assert "ruta técnica de copia y restauración está probada" in document
+    assert "programación automática" in document
+    assert "DATABASE_RECOVERY_AVAILABLE`\n" not in document
 
 
 def test_readiness_response_contains_no_case_or_user_data(client):
