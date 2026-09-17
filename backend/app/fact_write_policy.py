@@ -28,15 +28,17 @@ def install_fact_write_policy() -> None:
 
     # Install workflow-wide invariants before family_bootstrap captures diagnosis for its
     # post-response wrapper. Reclassification stays inside the anti-loop guard; terminal
-    # resolution sees the final routed diagnosis; lifecycle timestamps are enforced at the
-    # persistence boundary.
+    # resolution sees the final routed diagnosis; unsupported automated scope is handed to
+    # protected review; lifecycle timestamps are enforced at the persistence boundary.
     from .case_state_policy import install_case_state_policy
     from .reclassification_policy import install_reclassification_policy
     from .terminal_resolution_policy import install_terminal_resolution_policy
+    from .unsupported_scope_policy import install_unsupported_scope_policy
 
     install_case_state_policy()
     install_reclassification_policy()
     install_terminal_resolution_policy()
+    install_unsupported_scope_policy()
 
     previous_upsert_fact = svc.upsert_fact
     previous_confirm_document_fact = svc.confirm_document_fact
