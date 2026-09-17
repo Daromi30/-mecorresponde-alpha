@@ -37,6 +37,7 @@ from .routers.quality import router as quality_router
 from .routers.readiness import router as readiness_router
 from .routers.seo import router as seo_router
 from .routers.sources import router as sources_router
+from .routers.wait_resume import router as wait_resume_router
 from .services_v2 import seed_legal
 from .storage import StorageConfigurationError, get_document_storage, storage_status
 
@@ -287,6 +288,7 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
 
 
 app.include_router(cases_router)
+app.include_router(wait_resume_router)
 app.include_router(handoff_router)
 app.include_router(case_deletion_router)
 app.include_router(quality_router)
