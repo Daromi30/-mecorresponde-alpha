@@ -39,6 +39,25 @@
     return ['ASK_', 'REQUEST_', 'CONFIRM_', 'CORRECT_', 'CHOOSE_'].some(prefix => type.startsWith(prefix));
   }
 
+  async function resumeWaitAction() {
+    if (!caseId) return;
+    const response = await fetch(`/api/cases/${caseId}/resume-wait`, {
+      method: 'POST',
+      headers: {'Accept': 'application/json'},
+    });
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch (_) {
+      payload = {};
+    }
+    if (!response.ok) {
+      window.alert(payload.detail || 'El hito temporal todavía no permite continuar.');
+      return;
+    }
+    await refresh();
+  }
+
   function diagnosedActionGuidance(currentDecision, current) {
     const type = current?.type || '';
 
@@ -54,9 +73,9 @@
     if (type.startsWith('WAIT_')) {
       return {
         title: 'Todavía no toca enviar una nueva acción',
-        body: 'El Motor ha determinado que esta fase consiste en esperar a que se cumpla el hito indicado en el diagnóstico. No se enviará una reclamación antes de tiempo.',
-        button: 'Ver el motivo y el hito',
-        action: () => document.getElementById('diagnosisCard')?.scrollIntoView({behavior: 'smooth', block: 'start'}),
+        body: 'El Motor ha determinado que esta fase consiste en esperar a que se cumpla el hito indicado. Puedes comprobar de nuevo el expediente; si el hito todavía no ha vencido, no se modificará nada.',
+        button: 'Comprobar de nuevo',
+        action: () => resumeWaitAction(),
       };
     }
 
