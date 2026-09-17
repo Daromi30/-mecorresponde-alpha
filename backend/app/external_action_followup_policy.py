@@ -29,6 +29,13 @@ _REGISTERED_EXTERNAL_FOLLOWUPS: dict[str, dict[str, Any]] = {
         "question": "¿Ha vuelto a aparecer una falta o problema después de la reparación o sustitución?",
         "input_type": "boolean",
     },
+    "CHECK_BILL_AGAINST_REAL_READING": {
+        "family": "E06",
+        "field": "electricity.bill_matches_real_reading",
+        "ask_when_missing": True,
+        "question": "Al comparar la factura con la lectura real, ¿el consumo facturado coincide con esa lectura?",
+        "input_type": "boolean",
+    },
 }
 
 
@@ -40,12 +47,12 @@ def known_external_followup_actions() -> tuple[str, ...]:
 def install_external_action_followup_policy() -> None:
     """Turn real-world external steps into resumable guided case transitions.
 
-    A claimant may need to do something outside MECORRESPONDE (for example return goods) or
-    wait to observe whether a repaired product fails again. If the relevant fact was already
-    answered negatively, the ordinary question engine would otherwise treat it as complete
-    forever. While a registered external action is current, expose that factual follow-up
-    again. Writing the changed fact uses the normal fact-ingress policy, supersedes the stale
-    diagnosis and resumes the ordinary family question flow.
+    A claimant may need to do something outside MECORRESPONDE (for example return goods),
+    observe whether a repaired product fails again, or perform a factual comparison against
+    a document/reading. The ordinary question engine would otherwise treat the diagnosis as
+    complete forever. While a registered external action is current, expose its factual
+    follow-up again. Writing the answer uses the normal fact-ingress policy, supersedes the
+    stale diagnosis and resumes the ordinary family flow.
     """
     global _INSTALLED
     if _INSTALLED:
@@ -64,11 +71,15 @@ def install_external_action_followup_policy() -> None:
             if spec is not None and case.family == spec["family"]:
                 facts = svc.latest_facts(db, case.id)
                 previous = facts.get(spec["field"])
-                if (
-                    previous is not None
-                    and previous.user_confirmed
-                    and previous.value == spec["previous_value"]
-                ):
+                if spec.get("ask_when_missing") is True:
+                    should_ask = previous is None
+                else:
+                    should_ask = (
+                        previous is not None
+                        and previous.user_confirmed
+                        and previous.value == spec["previous_value"]
+                    )
+                if should_ask:
                     return {
                         "done": False,
                         "question": spec["question"],
