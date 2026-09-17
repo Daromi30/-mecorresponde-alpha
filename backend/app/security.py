@@ -185,6 +185,7 @@ def _block_locked_initial_mutation(request: Request, db: Session, case: Case) ->
         "RESPONSE_RECEIVED",
         "RESOLVED_PENDING_EXECUTION",
         "RESOLVED",
+        "CLOSED_UNSUPPORTED",
     }
     allow_existing_prepare_gate = (
         not submitted
