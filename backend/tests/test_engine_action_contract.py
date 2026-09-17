@@ -5,6 +5,7 @@ import re
 
 from app import services_v2 as svc
 from app.action_contract import action_kind, known_workflow_actions
+from app.external_action_followup_policy import known_external_followup_actions
 
 
 _ACTION_LITERAL = re.compile(r"next_action\s*=\s*[\"']([A-Z0-9_]+)[\"']")
@@ -56,6 +57,23 @@ def test_evaluator_actions_only_use_diagnosed_product_behaviors():
             if kind not in _DIAGNOSED_KINDS:
                 unexpected.setdefault(family, {})[action] = kind
     assert not unexpected, f"Evaluator actions escaped diagnosed-action behaviors: {unexpected}"
+
+
+def test_every_external_step_has_a_resumable_followup_contract():
+    evaluator_external_steps = {
+        action
+        for evaluator in svc.EVALUATORS.values()
+        for action in _literal_actions(evaluator)
+        if action_kind(action) == "external_step"
+    }
+    registered = set(known_external_followup_actions())
+
+    assert evaluator_external_steps == registered, (
+        "Every external Motor step must declare exactly how the claimant returns to the "
+        "guided flow after doing it. Missing or stale follow-up registrations: "
+        f"evaluator={sorted(evaluator_external_steps)}, registered={sorted(registered)}"
+    )
+    assert all(action_kind(action) == "external_step" for action in registered)
 
 
 def test_workflow_actions_have_explicit_non_diagnostic_contracts():
