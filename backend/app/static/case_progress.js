@@ -75,13 +75,14 @@
     const status = caseData.status || 'INTAKE';
     const current = stageForStatus(status);
     const resolved = status === 'RESOLVED';
+    const diagnosedWithoutPendingAction = status === 'DIAGNOSED' && !caseData.current_action_id;
     panel.classList.remove('hidden');
     panel.innerHTML = `
       <div class="label">Dónde estás</div>
       <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin:10px 0 12px" aria-label="Progreso del expediente">
         ${stages.map((stage, index) => {
-          const done = index < current || (resolved && index <= current);
-          const active = index === current && !resolved;
+          const done = index < current || (resolved && index <= current) || (diagnosedWithoutPendingAction && index <= current);
+          const active = index === current && !resolved && !diagnosedWithoutPendingAction;
           const background = done ? '#e9f5ed' : active ? '#dfeae2' : '#f5f6f2';
           const border = done || active ? '#aac8b4' : '#e2e4dd';
           const marker = done ? '✓' : String(index + 1);

@@ -61,6 +61,15 @@
   function diagnosedActionGuidance(currentDecision, current) {
     const type = current?.type || '';
 
+    if (!current) {
+      return {
+        title: 'Análisis concluido · no hay una acción adicional',
+        body: 'Con los hechos actuales, el Motor ha terminado el análisis sin dejar una reclamación, espera o revisión pendiente. Si aparece un hecho nuevo verificable, el expediente puede volver a analizarse.',
+        button: 'Ver diagnóstico',
+        action: () => document.getElementById('diagnosisCard')?.scrollIntoView({behavior: 'smooth', block: 'start'}),
+      };
+    }
+
     if (isPreparableAction(type) && ['HIGH', 'MEDIUM'].includes(currentDecision?.viability)) {
       return {
         title: 'Prepara la acción con este diagnóstico',
