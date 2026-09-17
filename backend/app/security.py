@@ -208,8 +208,8 @@ def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Cas
     _block_legacy_untraced_resolution_routes(request)
     _require_prepared_claim_before_submission(request, db, case)
     _require_preparable_action_before_claim_package(request, db, case)
-    _block_locked_initial_mutation(request, db, case)
     _require_new_snapshot_before_claimant_diagnosis_replay(request, case)
+    _block_locked_initial_mutation(request, db, case)
 
 
 def require_case_access(request: Request, db: Session = Depends(get_db)) -> None:
