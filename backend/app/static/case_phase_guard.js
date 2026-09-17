@@ -20,6 +20,10 @@
       title: 'Expediente resuelto',
       detail: 'El resultado ya está registrado como cumplido. Los hechos iniciales quedan cerrados para conservar la trazabilidad.'
     },
+    CLOSED_UNSUPPORTED: {
+      title: 'Expediente cerrado fuera del alcance automatizado',
+      detail: 'Este expediente quedó cerrado sin una resolución automatizada aplicable. Los hechos iniciales permanecen bloqueados para conservar la trazabilidad del cierre.'
+    },
   };
 
   function currentAction() {
