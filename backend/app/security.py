@@ -9,6 +9,7 @@ from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy import DateTime, ForeignKey, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from .action_contract import action_kind
 from .auth import get_user_from_request
 from .config import settings
 from .db import Base, get_db
@@ -110,6 +111,41 @@ def _require_prepared_claim_before_submission(request: Request, db: Session, cas
         )
 
 
+def _require_preparable_action_before_claim_package(request: Request, db: Session, case: Case) -> None:
+    """Make the HTTP boundary enforce the same action contract as the claimant UI.
+
+    Claim packaging is not a generic operation for every HIGH/MEDIUM diagnosis. The current
+    Motor action must explicitly require outbound preparation. The one exception is an
+    already prepared READY package, where repeating the request is intentionally idempotent
+    and returns the persisted package rather than creating a second action.
+    """
+    if request.method.upper() != "POST" or not request.url.path.rstrip("/").endswith("/prepare-claim"):
+        return
+
+    current = db.get(Action, case.current_action_id) if case.current_action_id else None
+    already_ready = (
+        case.status == "READY_TO_SUBMIT"
+        and current is not None
+        and current.case_id == case.id
+        and current.type == "SUBMIT_INITIAL_CLAIM"
+        and current.status == "READY"
+    )
+    if already_ready:
+        return
+
+    if (
+        case.status != "DIAGNOSED"
+        or current is None
+        or current.case_id != case.id
+        or current.status != "OPEN"
+        or action_kind(current.type) != "prepare_outbound"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The current Motor action does not permit preparing an outbound claim",
+        )
+
+
 def _require_new_snapshot_before_claimant_diagnosis_replay(request: Request, case: Case) -> None:
     """Keep claimant-triggered diagnosis from replaying protected/incomplete snapshots."""
     if request.method.upper() != "POST" or not request.url.path.rstrip("/").endswith("/diagnose"):
@@ -169,6 +205,7 @@ def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Cas
     _block_case_user_review_completion(request)
     _block_legacy_untraced_resolution_routes(request)
     _require_prepared_claim_before_submission(request, db, case)
+    _require_preparable_action_before_claim_package(request, db, case)
     _block_locked_initial_mutation(request, db, case)
     _require_new_snapshot_before_claimant_diagnosis_replay(request, case)
 
