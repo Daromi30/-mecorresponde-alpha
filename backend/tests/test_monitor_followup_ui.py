@@ -24,6 +24,15 @@ def test_monitor_followup_card_routes_back_to_guided_question_area():
     assert "const baseRefresh = refresh" in script
 
 
+def test_e06_bill_check_card_routes_to_the_same_guided_followup_area():
+    script = (STATIC / "monitor_followup.js").read_text(encoding="utf-8")
+    assert "CHECK_BILL_AGAINST_REAL_READING" in script
+    assert "Compara la factura con la lectura real" in script
+    assert "Registrar comparación" in script
+    assert "facturación" in script
+    assert "questionArea" in script
+
+
 def test_monitor_followup_javascript_parses_when_node_is_available():
     node = shutil.which("node")
     if not node:
