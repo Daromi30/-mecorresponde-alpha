@@ -25,10 +25,10 @@ def _calendar_date(value) -> date | None:
 def install_communication_date_policy() -> None:
     """Persist user-supplied calendar dates without inventing communication times.
 
-    The evidenced routes already emit allowlisted audit events containing the real
-    submitted/received calendar date. This policy keeps the normalized Communication
-    record in sync with those events while leaving sent_at/received_at available for
-    technical timestamps only.
+    Evidenced routes emit allowlisted audit events containing the real submitted/received
+    calendar date. Those events may backfill a normalized Communication when its calendar
+    date is still missing, but they must never overwrite an already structured date. This
+    keeps Communication as the canonical record while preserving migration compatibility.
     """
     global _INSTALLED
     if _INSTALLED:
@@ -69,6 +69,7 @@ def install_communication_date_policy() -> None:
                 communication is not None
                 and communication.case_id == audit.case_id
                 and communication.direction == "INBOUND"
+                and communication.occurred_on is None
             ):
                 communication.occurred_on = occurred_on
 

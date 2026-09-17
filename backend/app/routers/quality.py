@@ -402,9 +402,13 @@ def evidenced_outcome(
     }
 
 
+def _iso_date(value: date | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
 @router.get("/{case_id}/communications")
 def case_communications(case_id: str, db: Session = Depends(get_db)):
-    """Return user-facing communication history without exposing internal audit payloads."""
+    """Return user-facing history from normalized communications with audit fallback."""
     case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -419,16 +423,37 @@ def case_communications(case_id: str, db: Session = Depends(get_db)):
         )
         .order_by(AuditEvent.created_at.asc())
     ).all()
+    outbound_rows = db.scalars(
+        select(Communication).where(
+            Communication.case_id == case.id,
+            Communication.direction == "OUTBOUND",
+        )
+    ).all()
     for event in submissions:
         payload = event.payload_json or {}
+        matches = [
+            row
+            for row in outbound_rows
+            if row.channel == payload.get("channel")
+            and row.reference_number == payload.get("reference")
+        ]
+        communication = matches[0] if len(matches) == 1 else (
+            outbound_rows[0] if len(outbound_rows) == 1 and len(submissions) == 1 else None
+        )
         items.append(
             {
                 "direction": "OUTBOUND",
                 "kind": "CLAIM_SUBMISSION",
-                "channel": payload.get("channel"),
-                "reference_number": payload.get("reference"),
-                "body": None,
-                "occurred_on": payload.get("submitted_on"),
+                "channel": communication.channel if communication is not None else payload.get("channel"),
+                "reference_number": (
+                    communication.reference_number if communication is not None else payload.get("reference")
+                ),
+                "body": communication.body if communication is not None else None,
+                "occurred_on": (
+                    _iso_date(communication.occurred_on)
+                    if communication is not None and communication.occurred_on is not None
+                    else payload.get("submitted_on")
+                ),
                 "recorded_at": event.created_at,
             }
         )
@@ -462,10 +487,14 @@ def case_communications(case_id: str, db: Session = Depends(get_db)):
             {
                 "direction": "INBOUND",
                 "kind": "COMPANY_RESPONSE",
-                "channel": metadata.get("channel") if metadata_event else None,
-                "reference_number": metadata.get("reference") if metadata_event else None,
+                "channel": communication.channel or metadata.get("channel"),
+                "reference_number": communication.reference_number or metadata.get("reference"),
                 "body": communication.body,
-                "occurred_on": metadata.get("received_on") if metadata_event else None,
+                "occurred_on": (
+                    _iso_date(communication.occurred_on)
+                    if communication.occurred_on is not None
+                    else metadata.get("received_on")
+                ),
                 "recorded_at": metadata_event.created_at if metadata_event else communication.received_at,
             }
         )
