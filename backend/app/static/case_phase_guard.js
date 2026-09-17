@@ -12,6 +12,10 @@
       title: 'Expediente en revisión',
       detail: 'No se puede reabrir la fase inicial mientras exista una revisión humana pendiente.'
     },
+    REANALYZING: {
+      title: 'Reanalizando el expediente',
+      detail: 'Se han incorporado hechos revisados y el Motor está recalculando el siguiente paso. No edites la fase inicial mientras termina esta transición.'
+    },
     RESOLVED_PENDING_EXECUTION: {
       title: 'Pendiente de comprobar el cumplimiento',
       detail: 'La empresa ha aceptado, pero el expediente no se cierra hasta verificar qué se ha cumplido realmente.'

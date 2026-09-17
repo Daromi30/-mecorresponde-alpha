@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app import services_v2 as svc
-from app.models import Action, Case, Decision
+from app.models import Action, Case, Decision, Fact
 
 
 def _counts(db, case_id: str) -> tuple[int, int]:
@@ -13,6 +13,10 @@ def _counts(db, case_id: str) -> tuple[int, int]:
         db.scalar(select(func.count()).select_from(Action).where(Action.case_id == case_id)) or 0
     )
     return decisions, actions
+
+
+def _fact_count(db, case_id: str) -> int:
+    return int(db.scalar(select(func.count()).select_from(Fact).where(Fact.case_id == case_id)) or 0)
 
 
 def test_core_reanalysis_rejects_pending_current_action_without_mutation(db):
@@ -114,3 +118,46 @@ def test_claimant_cannot_trigger_diagnosis_while_protected_reanalysis_is_pending
     assert refreshed.status == "REANALYZING"
     assert refreshed.current_action_id == pending.id
     assert _counts(db, case_id) == before
+
+
+def test_claimant_cannot_mutate_facts_while_protected_reanalysis_is_pending(client, db):
+    created = client.post(
+        "/api/cases",
+        json={"message": "Me cambié de compañía de luz y me siguen cobrando un mantenimiento"},
+    )
+    assert created.status_code == 200, created.text
+    case_id = created.json()["id"]
+    case = db.get(Case, case_id)
+    assert case is not None
+
+    previous = Action(
+        case_id=case.id,
+        type="HUMAN_REVIEW_TECHNICAL",
+        status="COMPLETED",
+        payload_json={"phase": "REVIEW_DONE"},
+    )
+    db.add(previous)
+    db.flush()
+    case.current_action_id = previous.id
+    case.status = "REANALYZING"
+    db.commit()
+
+    before_facts = _fact_count(db, case_id)
+    attempted = client.post(
+        f"/api/cases/{case_id}/facts",
+        json={
+            "key": "electricity.addon.keep_requested",
+            "value": True,
+            "state": "confirmed",
+            "user_confirmed": True,
+        },
+    )
+    assert attempted.status_code == 409, attempted.text
+    assert "locked in the current phase" in attempted.json()["detail"]
+
+    db.expire_all()
+    refreshed = db.get(Case, case_id)
+    assert refreshed is not None
+    assert refreshed.status == "REANALYZING"
+    assert refreshed.current_action_id == previous.id
+    assert _fact_count(db, case_id) == before_facts
