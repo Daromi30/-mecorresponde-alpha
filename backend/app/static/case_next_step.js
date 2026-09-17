@@ -72,9 +72,9 @@
     if (type === 'RETURN_GOODS_WITH_PROOF') {
       return {
         title: 'Devuelve el producto y conserva la prueba',
-        body: 'El desistimiento ya está ejercitado. El siguiente hito depende de la devolución real del producto; conserva el justificante antes de actualizar el expediente.',
-        button: 'Ver el diagnóstico',
-        action: () => document.getElementById('diagnosisCard')?.scrollIntoView({behavior: 'smooth', block: 'start'}),
+        body: 'El desistimiento ya está ejercitado. Cuando hayas devuelto o enviado el producto, actualiza este expediente y conserva el justificante para poder acreditarlo.',
+        button: 'Actualizar devolución',
+        action: () => document.getElementById('questionArea')?.scrollIntoView({behavior: 'smooth', block: 'center'}),
       };
     }
 
