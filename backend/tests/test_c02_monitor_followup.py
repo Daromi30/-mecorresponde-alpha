@@ -53,7 +53,9 @@ def test_monitor_conformity_reopens_the_changed_fact_and_resumes_c02(client, db)
     }
 
     changed = _fact(client, case_id, "purchase.lack_after_conformity_attempt", True)
-    assert changed["next_question"]["field"] == "purchase.same_origin_after_repair"
+    # The extended C02 questionnaire first asks what the renewed defect is, then continues
+    # through the ordinary origin/remedy questions. Re-entry must preserve that real order.
+    assert changed["next_question"]["field"] == "purchase.defect_description"
 
     db.expire_all()
     case = db.get(Case, case_id)
@@ -66,6 +68,13 @@ def test_monitor_conformity_reopens_the_changed_fact_and_resumes_c02(client, db)
     assert old_action.status == "SUPERSEDED"
     assert old_action.completed_at is not None
 
+    described = _fact(
+        client,
+        case_id,
+        "purchase.defect_description",
+        "Después de la reparación vuelve a detenerse durante el lavado",
+    )
+    assert described["next_question"]["field"] == "purchase.same_origin_after_repair"
     _fact(client, case_id, "purchase.same_origin_after_repair", False)
     choice = _fact(client, case_id, "purchase.preferred_secondary_remedy", "price_reduction")
     assert choice["next_question"]["done"] is True
