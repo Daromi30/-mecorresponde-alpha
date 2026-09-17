@@ -30,6 +30,7 @@ def install_fact_write_policy() -> None:
 
     # Install workflow-wide invariants before family_bootstrap captures diagnosis for its
     # post-response wrapper. The shared fact snapshot receives Spain's civil analysis date;
+    # claimant questions are suppressed while protected phases own the next transition;
     # external real-world steps get an explicit guided follow-up; reclassification stays
     # inside the anti-loop guard; terminal resolution sees the final routed diagnosis;
     # unsupported automated scope is handed to protected review; lifecycle timestamps are
@@ -37,11 +38,13 @@ def install_fact_write_policy() -> None:
     from .analysis_clock_policy import install_analysis_clock_policy
     from .case_state_policy import install_case_state_policy
     from .external_action_followup_policy import install_external_action_followup_policy
+    from .question_phase_policy import install_question_phase_policy
     from .reclassification_policy import install_reclassification_policy
     from .terminal_resolution_policy import install_terminal_resolution_policy
     from .unsupported_scope_policy import install_unsupported_scope_policy
 
     install_analysis_clock_policy()
+    install_question_phase_policy()
     install_external_action_followup_policy()
     install_case_state_policy()
     install_reclassification_policy()
