@@ -11,7 +11,7 @@ def test_created_case_survives_account_claim_failure_in_browser_flow():
     assert "catch(e){accountClaimError=e}" in html
     assert "$('workspace').classList.remove('hidden')" in html
     assert "await refresh()" in html
-    assert "if(accountClaimError){message(`El expediente se ha creado y sigue disponible en este navegador" in html
+    assert "if(accountClaimError){if(currentUser){message(`El expediente se ha creado y sigue disponible en este navegador" in html
     assert "pero no se ha podido guardar en tu cuenta" in html
     assert "async function retryClaimCurrentCase()" in html
     assert "id=\"retryCaseClaimBtn\"" in html
@@ -22,7 +22,7 @@ def test_created_case_survives_account_claim_failure_in_browser_flow():
     claim_failure = html.index("catch(e){accountClaimError=e}")
     workspace_open = html.index("$('workspace').classList.remove('hidden')", claim_failure)
     refresh = html.index("await refresh()", workspace_open)
-    warning = html.index("if(accountClaimError){message(", refresh)
+    warning = html.index("if(accountClaimError){if(currentUser){message(", refresh)
     assert claim_failure < workspace_open < refresh < warning
 
 
