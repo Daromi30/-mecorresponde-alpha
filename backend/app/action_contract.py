@@ -6,6 +6,7 @@ from typing import Literal
 ActionKind = Literal[
     "prepare_outbound",
     "guided_input",
+    "evidence_input",
     "wait",
     "human_review",
     "reclassify",
@@ -21,6 +22,10 @@ ActionKind = Literal[
 
 
 _EXACT_KINDS: dict[str, ActionKind] = {
+    "REQUEST_CONTRACT_OR_OFFER_EVIDENCE": "evidence_input",
+    "REQUEST_DUPLICATE_CHARGE_EVIDENCE": "evidence_input",
+    "REQUEST_CONSENT_EVIDENCE": "evidence_input",
+    "REQUEST_CHARGE_EVIDENCE": "evidence_input",
     "GIVE_ADDITIONAL_DELIVERY_PERIOD": "prepare_outbound",
     "SEND_WITHDRAWAL_NOTICE": "prepare_outbound",
     "RETURN_GOODS_WITH_PROOF": "external_step",

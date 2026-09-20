@@ -12,6 +12,7 @@ _ACTION_LITERAL = re.compile(r"next_action\s*=\s*[\"']([A-Z0-9_]+)[\"']")
 _DIAGNOSED_KINDS = {
     "prepare_outbound",
     "guided_input",
+    "evidence_input",
     "wait",
     "human_review",
     "reclassify",
