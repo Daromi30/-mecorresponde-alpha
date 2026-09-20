@@ -135,7 +135,58 @@ function renderAccountState(){const signedIn=!!currentUser;$('signedOutAccount')
 async function loadAccountState(){try{const data=await req('/api/auth/me');currentUser=data.user}catch(e){if(e.status!==401)console.warn('Account state unavailable');currentUser=null}renderAccountState();if(currentUser)await loadMyCases()}
 function openAccount(mode){if(mode)setAccountMode(mode);else setAccountMode(currentUser?'login':accountMode);renderAccountState();$('accountDialog').showModal();if(!currentUser)setTimeout(()=>$('accountEmail').focus(),0);else loadMyCases()}
 function closeAccount(){$('accountDialog').close()}
-async function submitAccount(event){event.preventDefault();const email=$('accountEmail').value.trim(),password=$('accountPassword').value;const btn=$('accountSubmit');setBusy(btn,true,accountMode==='register'?'Creando…':'Entrando…');$('accountError').innerHTML='';try{const data=await req(`/api/auth/${accountMode}`,{method:'POST',body:JSON.stringify({email,password})});currentUser=data.user;if(caseId){await req(`/api/cases/${caseId}/claim`,{method:'POST'}).catch(e=>{if(e.status!==409)throw e})}renderAccountState();await loadMyCases();closeAccount();if(caseId){await refresh();message('Expediente guardado en tu cuenta. Podrás abrirlo al iniciar sesión desde otro dispositivo.','success')}}catch(e){$('accountError').innerHTML=`<div class="errorBox">${escapeHtml(e.message)}</div>`}finally{setBusy(btn,false)}}
+async function submitAccount(event){
+  event.preventDefault();
+  const email=$('accountEmail').value.trim(),password=$('accountPassword').value;
+  const btn=$('accountSubmit');
+  setBusy(btn,true,accountMode==='register'?'Creando…':'Entrando…');
+  $('accountError').innerHTML='';
+  try{
+    let data;
+    try{
+      data=await req(`/api/auth/${accountMode}`,{method:'POST',body:JSON.stringify({email,password})});
+    }catch(e){
+      $('accountError').innerHTML=`<div class="errorBox">${escapeHtml(e.message)}</div>`;
+      return;
+    }
+
+    // Authentication and saving the currently open case are separate operations.
+    // A failed optional claim must never make a successful login look unsuccessful.
+    currentUser=data.user;
+    renderAccountState();
+
+    let accountClaimError=null;
+    if(caseId){
+      try{
+        await req(`/api/cases/${caseId}/claim`,{method:'POST'});
+      }catch(e){
+        accountClaimError=e;
+      }
+    }
+
+    await loadMyCases();
+    closeAccount();
+
+    if(caseId){
+      let refreshError=null;
+      try{
+        await refresh();
+      }catch(e){
+        refreshError=e;
+      }
+
+      if(accountClaimError){
+        message(`Sesión iniciada. El expediente sigue disponible en este navegador, pero no se ha podido guardar en tu cuenta: ${escapeHtml(accountClaimError.message)}<div class="actions"><button id="retryCaseClaimBtn" onclick="retryClaimCurrentCase()">Reintentar guardar</button></div>`,'notice');
+      }else if(refreshError){
+        message(`Sesión iniciada y expediente guardado, pero no he podido refrescarlo ahora: ${escapeHtml(refreshError.message)}`,'notice');
+      }else{
+        message('Expediente guardado en tu cuenta. Podrás abrirlo al iniciar sesión desde otro dispositivo.','success');
+      }
+    }
+  }finally{
+    setBusy(btn,false);
+  }
+}
 async function logoutAccount(){try{await req('/api/auth/logout',{method:'POST'})}catch{}currentUser=null;renderAccountState();closeAccount();newCase()}
 async function loadMyCases(){if(!currentUser)return;try{const data=await req('/api/auth/cases');const rows=data.cases||[];$('myCases').innerHTML=rows.length?rows.map(c=>`<button class="caseLink" onclick="openOwnedCase('${escapeHtml(c.id)}')"><b>${escapeHtml(c.title||'Expediente')}</b><span>${escapeHtml(humanStatus(c.status))}</span></button>`).join(''):'<p class="muted">Todavía no has guardado expedientes.</p>'}catch(e){$('myCases').innerHTML='<p class="muted">No he podido cargar tus expedientes.</p>'}}
 async function openOwnedCase(id){const previousCaseId=caseId;caseId=id;$('landing').classList.add('hidden');$('workspace').classList.remove('hidden');closeAccount();try{await refresh();window.scrollTo({top:0,behavior:'smooth'});return true}catch(e){caseId=previousCaseId||null;if(!previousCaseId){$('workspace').classList.add('hidden');$('landing').classList.remove('hidden')}message(escapeHtml(e.message),'error');return false}}
