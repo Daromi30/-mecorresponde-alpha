@@ -162,12 +162,16 @@ async def lifespan(app: FastAPI):
         )
         seed_legal(db)
         db.commit()
-        readiness = compute_beta_readiness(db)
-        logger.info(
-            "MECORRESPONDE internal_beta_readiness: synthetic_internal_beta_ready=%s internal_beta_blockers=%s",
-            readiness["synthetic_internal_beta_ready"],
-            ",".join(readiness["internal_beta_blockers"]) or "none",
-        )
+        try:
+            readiness = compute_beta_readiness(db)
+        except Exception:
+            logger.exception("MECORRESPONDE internal_beta_readiness: unavailable")
+        else:
+            logger.info(
+                "MECORRESPONDE internal_beta_readiness: synthetic_internal_beta_ready=%s internal_beta_blockers=%s",
+                readiness["synthetic_internal_beta_ready"],
+                ",".join(readiness["internal_beta_blockers"]) or "none",
+            )
     try:
         storage = storage_status()
         logger.info(
