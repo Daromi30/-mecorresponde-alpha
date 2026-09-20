@@ -60,10 +60,10 @@
           reference_number: reference || null,
         }),
       });
-      const deadline = submission.deadline
-        ? ` Fecha orientativa calculada: <b>${escapeHtml(submission.deadline)}</b>.`
-        : '';
-      message(`He registrado el envío con los datos que has indicado.${deadline}`, 'success');
+      const guidance = typeof mcrSubmissionGuidance === 'function'
+        ? mcrSubmissionGuidance(submission)
+        : 'He registrado el envío con los datos que has indicado.';
+      message(guidance, 'success');
       await refresh();
       const responseCard = document.getElementById('responseCard');
       responseCard?.classList.remove('hidden');

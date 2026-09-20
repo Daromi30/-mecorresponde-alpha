@@ -20,10 +20,16 @@ def test_evidence_forms_share_spain_civil_calendar_clock():
     assert "formatToParts" in clock
     assert "window.mcrSpainDateIso" in clock
 
-    for filename in ["deadline_guidance.js", "submission_evidence.js", "response_evidence.js", "outcome_evidence.js"]:
+    # Only date-entry forms need to call the civil clock directly. deadline_guidance.js
+    # is now a pure formatter consumed after submission and must not own another date field.
+    for filename in ["submission_evidence.js", "response_evidence.js", "outcome_evidence.js"]:
         source = (STATIC / filename).read_text(encoding="utf-8")
         assert "mcrSpainDateIso()" in source
         assert "localTodayIso" not in source
+
+    guidance = (STATIC / "deadline_guidance.js").read_text(encoding="utf-8")
+    assert "localTodayIso" not in guidance
+    assert "submissionDate" not in guidance
 
 
 def test_spain_browser_clock_handles_midnight_boundaries_when_node_is_available():
