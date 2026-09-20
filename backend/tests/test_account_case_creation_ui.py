@@ -79,3 +79,15 @@ def test_created_case_session_expiry_does_not_offer_dead_retry_button():
     assert load_cases < claim_error < signed_in_retry < expired_copy
     assert "retryCaseClaimBtn" in block[signed_in_retry:expired_copy]
     assert "retryCaseClaimBtn" not in block[expired_copy:]
+
+
+def test_retry_case_claim_prompts_login_when_session_has_expired():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    start = html.index("async function retryClaimCurrentCase(){")
+    end = html.index("async function createCase(){", start)
+    block = html[start:end]
+
+    assert "if(!caseId)return;" in block
+    assert "if(!currentUser){openAccount('login');" in block
+    assert "Tu sesión ha caducado. Vuelve a entrar para guardar este expediente." in block
+    assert "if(!currentUser||!caseId)return;" not in block
