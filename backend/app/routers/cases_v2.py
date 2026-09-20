@@ -120,16 +120,27 @@ def serialize_case(db: Session, case: Case):
 @router.post("")
 def create(payload: CaseCreate, response: Response, db: Session = Depends(get_db)):
     token = generate_case_token()
-    case = create_case(db, payload.message)
-    db.add(CaseAccess(case_id=case.id, token_hash=hash_case_token(token)))
-    audit(db, case.id, "CASE_ACCESS_ISSUED", {"method": "anonymous_case_token"})
-    db.commit()
+    try:
+        case = create_case(db, payload.message)
+        db.add(CaseAccess(case_id=case.id, token_hash=hash_case_token(token)))
+        audit(db, case.id, "CASE_ACCESS_ISSUED", {"method": "anonymous_case_token"})
+        db.flush()
+
+        # Build everything the claimant must receive before making the case durable. If
+        # serialization or the first guided question fails, no inaccessible case/token pair
+        # is committed and the request can be retried safely.
+        response_payload = {
+            **serialize_case(db, case),
+            "next_question": get_next_question(db, case),
+            "access_token": token,
+        }
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
     set_case_access_cookie(response, case.id, token)
-    return {
-        **serialize_case(db, case),
-        "next_question": get_next_question(db, case),
-        "access_token": token,
-    }
+    return response_payload
 
 
 @router.get("/{case_id}")
