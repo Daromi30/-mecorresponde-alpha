@@ -8,6 +8,7 @@ ADMIN = {"Authorization": "Bearer test-admin-token"}
 ADMIN_STATIC = Path(__file__).parents[1] / "app" / "admin_static"
 DOCS = Path(__file__).parents[2] / "docs"
 MAIN = Path(__file__).parents[1] / "app" / "main.py"
+ALEMBIC_ENV = Path(__file__).parents[1] / "alembic" / "env.py"
 
 
 def test_readiness_requires_admin(client):
@@ -124,3 +125,8 @@ def test_startup_logs_same_internal_readiness_used_by_admin_route():
     assert "readiness = compute_beta_readiness(db)" in source
     assert "internal_beta_readiness: unavailable" in source
     assert "synthetic_internal_beta_ready=%s internal_beta_blockers=%s" in source
+
+
+def test_alembic_preserves_application_loggers_for_runtime_readiness_evidence():
+    source = ALEMBIC_ENV.read_text(encoding="utf-8")
+    assert "fileConfig(config.config_file_name, disable_existing_loggers=False)" in source
