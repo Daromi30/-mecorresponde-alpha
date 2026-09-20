@@ -41,7 +41,7 @@ def test_successful_login_survives_optional_current_case_claim_failure():
 
     signed_in = block.index("currentUser=data.user;")
     render = block.index("renderAccountState();", signed_in)
-    claim = block.index("await req(\`/api/cases/\${caseId}/claim\`", render)
+    claim = block.index("await req(`/api/cases/${caseId}/claim`", render)
     capture_claim_error = block.index("accountClaimError=e;", claim)
     warning = block.index("if(accountClaimError)", capture_claim_error)
     assert signed_in < render < claim < capture_claim_error < warning
