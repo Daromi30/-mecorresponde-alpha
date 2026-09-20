@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..calendar_clock import spain_today
 from ..case_quality import build_dossier_quality
+from ..case_locking import lock_case_for_update
 from ..db import get_db
 from ..evidence_context import atomic_workflow_transaction, company_response_evidence_context, outcome_evidence_context
 from ..models import Action, AuditEvent, Case, Communication, Decision, Document, Evidence, Fact, Outcome
@@ -299,7 +300,7 @@ def evidenced_company_response(
     db: Session = Depends(get_db),
 ):
     """Analyze a response with its user-confirmed communication metadata in one transaction."""
-    case = db.get(Case, case_id)
+    case = lock_case_for_update(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     _require_waiting_for_company_response(db, case)
@@ -326,7 +327,7 @@ def evidenced_outcome(
     db: Session = Depends(get_db),
 ):
     """Persist outcome state and user-confirmed execution evidence in one transaction."""
-    case = db.get(Case, case_id)
+    case = lock_case_for_update(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     _require_pending_execution_verification(db, case)
