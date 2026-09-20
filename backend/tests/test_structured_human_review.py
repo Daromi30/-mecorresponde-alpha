@@ -1,6 +1,8 @@
+import pytest
 from sqlalchemy import func, select
 
-from app.models import AuditEvent, Case, Evidence, Fact
+from app.models import Action, AuditEvent, Case, Decision, Evidence, Fact
+from app.routers import admin_review_resolution as review_routes
 from app.reviews import HumanReview
 from app.services_v2 import create_case, create_human_review
 
@@ -97,6 +99,55 @@ def test_structured_review_records_human_facts_then_reanalyzes(client, db):
     assert event is not None
     assert event.payload_json["reanalyze_requested"] is True
 
+
+
+def test_structured_review_failure_after_real_diagnosis_rolls_back_entire_resolution(client, db, monkeypatch):
+    case, review = make_review(db)
+    before = {
+        "facts": int(db.scalar(select(func.count()).select_from(Fact).where(Fact.case_id == case.id)) or 0),
+        "evidence": int(db.scalar(select(func.count()).select_from(Evidence).where(Evidence.case_id == case.id)) or 0),
+        "decisions": int(db.scalar(select(func.count()).select_from(Decision).where(Decision.case_id == case.id)) or 0),
+        "actions": int(db.scalar(select(func.count()).select_from(Action).where(Action.case_id == case.id)) or 0),
+        "audits": int(db.scalar(select(func.count()).select_from(AuditEvent).where(AuditEvent.case_id == case.id)) or 0),
+    }
+
+    real_diagnose = review_routes.diagnose
+
+    def fail_after_real_diagnosis(db_session, case_row):
+        real_diagnose(db_session, case_row)
+        raise RuntimeError("synthetic post-diagnosis review failure")
+
+    monkeypatch.setattr(review_routes, "diagnose", fail_after_real_diagnosis)
+
+    with pytest.raises(RuntimeError, match="synthetic post-diagnosis review failure"):
+        client.post(
+            f"/api/admin/reviews/{review.id}/resolve-structured",
+            headers=ADMIN,
+            json={
+                "reviewer_decision": "Importes contrastados antes del fallo sintético.",
+                "fact_updates": [
+                    {"key": "electricity.billing.invoice_date", "value": "2026-07-01"},
+                    {"key": "electricity.billing.billed_amount", "value": 120.0},
+                    {"key": "electricity.billing.correct_amount", "value": 80.0},
+                ],
+            },
+        )
+
+    db.rollback()
+    db.expire_all()
+    restored_review = db.get(HumanReview, review.id)
+    restored_case = db.get(Case, case.id)
+    assert restored_review is not None
+    assert restored_review.status == "OPEN"
+    assert restored_review.completed_at is None
+    assert restored_review.reviewer_decision is None
+    assert restored_case is not None
+    assert restored_case.status == "HUMAN_REVIEW"
+    assert int(db.scalar(select(func.count()).select_from(Fact).where(Fact.case_id == case.id)) or 0) == before["facts"]
+    assert int(db.scalar(select(func.count()).select_from(Evidence).where(Evidence.case_id == case.id)) or 0) == before["evidence"]
+    assert int(db.scalar(select(func.count()).select_from(Decision).where(Decision.case_id == case.id)) or 0) == before["decisions"]
+    assert int(db.scalar(select(func.count()).select_from(Action).where(Action.case_id == case.id)) or 0) == before["actions"]
+    assert int(db.scalar(select(func.count()).select_from(AuditEvent).where(AuditEvent.case_id == case.id)) or 0) == before["audits"]
 
 def test_structured_review_rejects_reserved_or_manual_legal_fields(client, db):
     _, review = make_review(db)
