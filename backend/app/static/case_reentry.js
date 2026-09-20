@@ -33,9 +33,9 @@
 
   const baseOpenOwnedCase = openOwnedCase;
   openOwnedCase = async function (id, ...args) {
-    const result = await baseOpenOwnedCase(id, ...args);
-    if (caseId) rememberActiveCase(caseId);
-    return result;
+    const opened = await baseOpenOwnedCase(id, ...args);
+    if (opened === true && caseId === id) rememberActiveCase(caseId);
+    return opened;
   };
 
   const baseNewCase = newCase;
