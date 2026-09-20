@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import require_current_user
 from ..auth_models import User
+from ..case_locking import lock_case_for_update
 from ..config import settings
 from ..db import get_db
 from ..models import Case
@@ -32,7 +33,7 @@ def claim_case(
     ):
         raise HTTPException(status_code=403, detail="Verify your email before saving cases to this account")
 
-    case = db.get(Case, case_id)
+    case = lock_case_for_update(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     if case.user_id and case.user_id != user.id:
