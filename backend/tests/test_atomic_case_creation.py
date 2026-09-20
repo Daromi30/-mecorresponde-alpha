@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 
 from app.models import AuditEvent, Case
 from app.reviews import HumanReview
+from app.routers import cases_v2 as case_routes
 from app.security import CaseAccess
 
 
@@ -88,3 +89,39 @@ def test_failed_outer_case_creation_commit_does_not_leave_an_inaccessible_orphan
     db.rollback()
     assert _count(db, Case) == cases_before
     assert _count(db, CaseAccess) == access_before
+
+
+def test_failed_first_question_does_not_commit_orphan_case_access_or_audit(client, db, monkeypatch):
+    cases_before = _count(db, Case)
+    access_before = _count(db, CaseAccess)
+    access_audits_before = int(
+        db.scalar(
+            select(func.count()).select_from(AuditEvent).where(
+                AuditEvent.event_type == "CASE_ACCESS_ISSUED"
+            )
+        )
+        or 0
+    )
+
+    def fail_first_question(*_args, **_kwargs):
+        raise RuntimeError("forced initial question failure")
+
+    monkeypatch.setattr(case_routes, "get_next_question", fail_first_question)
+
+    with pytest.raises(RuntimeError, match="forced initial question failure"):
+        client.post(
+            "/api/cases",
+            json={"message": "Me han cambiado de compañía de luz sin mi consentimiento"},
+        )
+
+    db.rollback()
+    assert _count(db, Case) == cases_before
+    assert _count(db, CaseAccess) == access_before
+    assert int(
+        db.scalar(
+            select(func.count()).select_from(AuditEvent).where(
+                AuditEvent.event_type == "CASE_ACCESS_ISSUED"
+            )
+        )
+        or 0
+    ) == access_audits_before
