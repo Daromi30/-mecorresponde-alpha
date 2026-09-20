@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from ..case_lifecycle import CaseDeletionStorageError, delete_case_and_data
+from ..case_locking import lock_case_for_update
 from ..db import get_db
 from ..models import Case
 from ..schemas_v2 import CaseDeleteRequest
@@ -24,7 +25,7 @@ def delete_case(
     response: Response,
     db: Session = Depends(get_db),
 ):
-    case = db.get(Case, case_id)
+    case = lock_case_for_update(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     try:
