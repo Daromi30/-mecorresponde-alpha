@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..admin_auth import require_admin
 from ..case_lifecycle import complete_current_action, set_current_action
+from ..case_locking import lock_case_for_update
 from ..db import get_db
 from ..evidence_context import atomic_workflow_transaction
 from ..family_manifest import FAMILY_MANIFEST
@@ -144,7 +145,7 @@ def reclassify_unsupported_review(
     if review.reason != "UNSUPPORTED_CLASSIFICATION":
         raise HTTPException(status_code=409, detail="This review is not an unsupported-intake routing review")
 
-    case = db.get(Case, review.case_id)
+    case = lock_case_for_update(db, review.case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     if case.family is not None:
@@ -210,7 +211,7 @@ def escalate_post_response_review_to_professional(
             detail="Only a post-response escalation review can be sent to professional handoff",
         )
 
-    case = db.get(Case, review.case_id)
+    case = lock_case_for_update(db, review.case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     if case.status != "HUMAN_REVIEW":
@@ -284,7 +285,7 @@ def resolve_structured_review(
             detail="Unsupported-intake routing reviews must be reclassified before structured fact resolution",
         )
 
-    case = db.get(Case, review.case_id)
+    case = lock_case_for_update(db, review.case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     if (case.family or "") not in EVALUATORS:
