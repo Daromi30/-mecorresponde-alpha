@@ -13,6 +13,12 @@ def test_created_case_survives_account_claim_failure_in_browser_flow():
     assert "await refresh()" in html
     assert "if(accountClaimError){message(`El expediente se ha creado y sigue disponible en este navegador" in html
     assert "pero no se ha podido guardar en tu cuenta" in html
+    assert "async function retryClaimCurrentCase()" in html
+    assert "id=\"retryCaseClaimBtn\"" in html
+    assert "onclick=\"retryClaimCurrentCase()\" " not in html
+    assert 'onclick="retryClaimCurrentCase()"' in html
+    assert "await req(\`/api/cases/\${caseId}/claim\`,{method:'POST'})" in html
+    assert "setBusy(btn,true,'Guardando…')" in html
 
     claim_failure = html.index("catch(e){accountClaimError=e}")
     workspace_open = html.index("$('workspace').classList.remove('hidden')", claim_failure)
