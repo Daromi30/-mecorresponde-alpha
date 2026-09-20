@@ -11,6 +11,8 @@ def test_product_enhancement_loads_verified_deadline_guidance():
     quality = (STATIC / "dossier_quality.js").read_text(encoding="utf-8")
     assert "/demo/deadline_guidance.js" in quality
     assert "mcr-deadline-guidance" in quality
+    assert "/demo/browser_clock.js" in quality
+    assert quality.index("/demo/browser_clock.js") < quality.index("/demo/deadline_guidance.js")
 
 
 def test_submission_registration_requires_real_date_channel_and_optional_reference():
@@ -23,7 +25,8 @@ def test_submission_registration_requires_real_date_channel_and_optional_referen
     assert "submitted_on: date" in script
     assert "channel," in script
     assert "reference_number: reference || null" in script
-    assert "dateInput.max = localTodayIso()" in script
+    assert "dateInput.max = mcrSpainDateIso()" in script
+    assert "localTodayIso" not in script
     assert "channel: 'user_confirmed'" not in script
     assert "reference_number: null" not in script
 
