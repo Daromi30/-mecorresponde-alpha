@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 
 from app import services_v2 as svc
 from app.models import Action, AuditEvent, Case, Decision
+from app.routers import wait_resume as wait_resume_router
 from app.wait_resume import resume_wait_action
 
 
@@ -83,6 +84,72 @@ def test_failed_wait_resume_rolls_back_original_wait_snapshot(client, db, monkey
     assert old_action.status == "OPEN"
     assert old_action.completed_at is None
 
+    assert _count(db, Decision, case_id) == before["decisions"]
+    assert _count(db, Action, case_id) == before["actions"]
+    assert _count(db, AuditEvent, case_id) == before["events"]
+
+
+def test_http_wait_resume_failure_after_real_reanalysis_rolls_back_wait_and_new_diagnosis(client, db, monkeypatch):
+    monkeypatch.setattr("app.analysis_clock_policy.spain_today", lambda: date(2026, 9, 17))
+    monkeypatch.setattr("app.wait_resume.spain_today", lambda: date(2026, 9, 17))
+
+    created = client.post(
+        "/api/cases",
+        json={"message": "Compré una cafetera online y no me ha llegado el pedido"},
+    )
+    assert created.status_code == 200, created.text
+    case_id = created.json()["id"]
+
+    for key, value in {
+        "purchase.buyer_is_consumer": True,
+        "purchase.seller_is_business": True,
+        "purchase.product_name": "Cafetera",
+        "purchase.order_date": "2026-08-18",
+        "purchase.amount_paid": 149.90,
+        "purchase.delivered": False,
+        "purchase.delivery_date_was_agreed": False,
+        "purchase.seller_refused_delivery": False,
+        "purchase.delivery_date_essential": False,
+    }.items():
+        _fact(client, case_id, key, value)
+
+    diagnosis = client.post(f"/api/cases/{case_id}/diagnose")
+    assert diagnosis.status_code == 200, diagnosis.text
+    assert diagnosis.json()["next_action"] == "WAIT_UNTIL_DELIVERY_DUE"
+    old_action_id = diagnosis.json()["action_id"]
+    old_decision_id = diagnosis.json()["decision_id"]
+
+    monkeypatch.setattr("app.analysis_clock_policy.spain_today", lambda: date(2026, 9, 18))
+    monkeypatch.setattr("app.wait_resume.spain_today", lambda: date(2026, 9, 18))
+
+    before = {
+        "decisions": _count(db, Decision, case_id),
+        "actions": _count(db, Action, case_id),
+        "events": _count(db, AuditEvent, case_id),
+    }
+
+    real_resume = wait_resume_router.resume_wait_action
+
+    def fail_after_real_resume(db_session, case):
+        real_resume(db_session, case)
+        raise RuntimeError("synthetic post-resume failure")
+
+    monkeypatch.setattr(wait_resume_router, "resume_wait_action", fail_after_real_resume)
+
+    with pytest.raises(RuntimeError, match="synthetic post-resume failure"):
+        client.post(f"/api/cases/{case_id}/resume-wait")
+
+    db.rollback()
+    db.expire_all()
+    restored = db.get(Case, case_id)
+    assert restored is not None
+    assert restored.status == "DIAGNOSED"
+    assert restored.current_action_id == old_action_id
+    assert restored.current_decision_id == old_decision_id
+    old_action = db.get(Action, old_action_id)
+    assert old_action is not None
+    assert old_action.status == "OPEN"
+    assert old_action.completed_at is None
     assert _count(db, Decision, case_id) == before["decisions"]
     assert _count(db, Action, case_id) == before["actions"]
     assert _count(db, AuditEvent, case_id) == before["events"]
