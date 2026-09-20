@@ -88,3 +88,14 @@ def test_next_step_action_contract_javascript_parses_when_node_is_available():
         path = handle.name
     result = subprocess.run([node, "--check", path], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_legacy_diagnosis_card_does_not_offer_prepare_from_viability_alone():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    assert "if(['HIGH','MEDIUM'].includes(d.viability)){actions.innerHTML='<button onclick=\"prepareClaim()\">" not in html
+    assert "Preparar mi siguiente acción</button>" not in html
+    # The status-aware current-action contract remains the only place that offers
+    # outbound preparation from a DIAGNOSED case.
+    next_step = (STATIC / "case_next_step.js").read_text(encoding="utf-8")
+    assert "isPreparableAction(type)" in next_step
+    assert "action: () => prepareClaim()" in next_step
