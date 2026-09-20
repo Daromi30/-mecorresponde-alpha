@@ -109,3 +109,14 @@ def test_diagnosed_case_does_not_offer_claimant_diagnosis_replay_when_questions_
     assert "Diagnóstico calculado con los hechos actuales." in html
     assert "Solo volveremos a diagnosticar si cambia un hecho relevante." in html
     assert html.index(diagnosed_guard) < html.index(diagnose_button)
+
+
+def test_state_mutating_next_step_buttons_are_busy_guarded():
+    script = (STATIC / "case_next_step.js").read_text(encoding="utf-8")
+    assert "async function runNextStepMutation(task, busyLabel)" in script
+    assert "if (button?.disabled) return;" in script
+    assert "setBusy(button, true, busyLabel)" in script
+    assert "if (button?.isConnected) setBusy(button, false)" in script
+    assert "runNextStepMutation(() => prepareClaim(), 'Preparando…')" in script
+    assert "runNextStepMutation(() => resumeWaitAction(), 'Comprobando…')" in script
+
