@@ -2,7 +2,11 @@
 
   function ensureOutcomeEvidenceFields() {
     let fields = document.getElementById('outcomeEvidenceFields');
-    if (fields) return fields;
+    if (fields) {
+      const dateInput = fields.querySelector('#outcomeResolvedOn');
+      if (dateInput) dateInput.max = mcrSpainDateIso();
+      return fields;
+    }
     const card = document.getElementById('outcomeCard');
     const amount = document.getElementById('recoveredAmount');
     if (!card || !amount) return null;
