@@ -24,3 +24,28 @@ def test_created_case_survives_account_claim_failure_in_browser_flow():
     refresh = html.index("await refresh()", workspace_open)
     warning = html.index("if(accountClaimError){message(", refresh)
     assert claim_failure < workspace_open < refresh < warning
+
+
+def test_successful_login_survives_optional_current_case_claim_failure():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    block = html[html.index("async function submitAccount(event){"):html.index("async function logoutAccount()")]
+
+    assert "Authentication and saving the currently open case are separate operations." in block
+    assert "currentUser=data.user;" in block
+    assert "renderAccountState();" in block
+    assert "let accountClaimError=null;" in block
+    assert "accountClaimError=e;" in block
+    assert "Sesión iniciada. El expediente sigue disponible en este navegador" in block
+    assert 'id="retryCaseClaimBtn"' in block
+    assert 'onclick="retryClaimCurrentCase()"' in block
+
+    signed_in = block.index("currentUser=data.user;")
+    render = block.index("renderAccountState();", signed_in)
+    claim = block.index("await req(\`/api/cases/\${caseId}/claim\`", render)
+    capture_claim_error = block.index("accountClaimError=e;", claim)
+    warning = block.index("if(accountClaimError)", capture_claim_error)
+    assert signed_in < render < claim < capture_claim_error < warning
+
+    # A downstream case-save/refresh error must not be rendered as a login failure.
+    auth_error = block.index("$('accountError').innerHTML")
+    assert auth_error < signed_in
