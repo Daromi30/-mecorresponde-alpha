@@ -94,3 +94,27 @@ def test_phase_ui_javascript_parses_when_node_is_available():
         path = handle.name
     result = subprocess.run([node, "--check", path], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_owned_case_locator_is_persisted_only_after_verified_open():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    reentry = (STATIC / "case_reentry.js").read_text(encoding="utf-8")
+
+    assert "const previousCaseId=caseId" in html
+    assert "caseId=previousCaseId||null" in html
+    assert "return true}catch(e)" in html
+    assert "return false}}" in html
+    assert "const opened = await baseOpenOwnedCase(id, ...args);" in reentry
+    assert "if (opened === true && caseId === id) rememberActiveCase(caseId);" in reentry
+
+
+def test_case_reentry_javascript_parses_when_node_is_available():
+    node = shutil.which("node")
+    if not node:
+        return
+    source = (STATIC / "case_reentry.js").read_text(encoding="utf-8")
+    with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
+        handle.write(source)
+        path = handle.name
+    result = subprocess.run([node, "--check", path], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
