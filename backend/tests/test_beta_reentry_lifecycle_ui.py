@@ -127,3 +127,19 @@ def test_saved_case_hash_is_retried_after_successful_login_only():
     assert "const wasLogin = accountMode === 'login';" in reentry
     assert "if (wasLogin && currentUser && !caseId && activeCaseFromHash())" in reentry
     assert "await restoreActiveCase();" in reentry
+
+
+def test_logged_out_404_keeps_saved_case_locator_for_login_retry():
+    reentry = (STATIC / "case_reentry.js").read_text(encoding="utf-8")
+
+    assert "if (error?.status === 404)" in reentry
+    assert "if (currentUser)" in reentry
+    assert "clearActiveCase();" in reentry
+    assert "Este enlace puede corresponder a un expediente guardado en una cuenta." in reentry
+    assert "Inicia sesión para intentar reabrirlo." in reentry
+
+    status_guard = reentry.index("if (error?.status === 404)")
+    auth_guard = reentry.index("if (currentUser)", status_guard)
+    clear_hash = reentry.index("clearActiveCase();", auth_guard)
+    login_notice = reentry.index("Inicia sesión para intentar reabrirlo.", clear_hash)
+    assert status_guard < auth_guard < clear_hash < login_notice
