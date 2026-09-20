@@ -50,6 +50,17 @@
     return ['ASK_', 'REQUEST_', 'CONFIRM_', 'CORRECT_', 'CHOOSE_'].some(prefix => type.startsWith(prefix));
   }
 
+  async function runNextStepMutation(task, busyLabel) {
+    const button = document.getElementById('caseNextStepAction');
+    if (button?.disabled) return;
+    if (button) setBusy(button, true, busyLabel);
+    try {
+      return await task();
+    } finally {
+      if (button?.isConnected) setBusy(button, false);
+    }
+  }
+
   async function resumeWaitAction() {
     if (!caseId) return;
     const response = await fetch(`/api/cases/${caseId}/resume-wait`, {
@@ -86,7 +97,7 @@
         title: 'Prepara la acción con este diagnóstico',
         body: 'Revisa primero el razonamiento, el importe y las fuentes. Después puedes abrir la acción que corresponde a esta fase.',
         button: 'Preparar mi siguiente acción',
-        action: () => prepareClaim(),
+        action: () => runNextStepMutation(() => prepareClaim(), 'Preparando…'),
       };
     }
 
@@ -95,7 +106,7 @@
         title: 'Todavía no toca enviar una nueva acción',
         body: 'El Motor ha determinado que esta fase consiste en esperar a que se cumpla el hito indicado. Puedes comprobar de nuevo el expediente; si el hito todavía no ha vencido, no se modificará nada.',
         button: 'Comprobar de nuevo',
-        action: () => resumeWaitAction(),
+        action: () => runNextStepMutation(() => resumeWaitAction(), 'Comprobando…'),
       };
     }
 
@@ -162,7 +173,7 @@
         title: 'Revisa y envía la acción preparada',
         body: 'No marques el envío hasta haberlo hecho realmente. Después registra la fecha, el canal y, si existe, la referencia real.',
         button: 'Abrir acción preparada',
-        action: () => prepareClaim(),
+        action: () => runNextStepMutation(() => prepareClaim(), 'Preparando…'),
       };
     }
     if (status === 'WAITING_RESPONSE') {
