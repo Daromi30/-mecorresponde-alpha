@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..case_lifecycle import complete_current_action, set_current_action
+from ..case_locking import lock_case_for_update
 from ..config import settings
 from ..db import get_db
 from ..documents import save_upload
@@ -35,6 +36,13 @@ router = APIRouter(
 
 def case_or_404(db: Session, case_id: str) -> Case:
     case = db.get(Case, case_id)
+    if not case:
+        raise HTTPException(404, "Case not found")
+    return case
+
+
+def case_for_update_or_404(db: Session, case_id: str) -> Case:
+    case = lock_case_for_update(db, case_id)
     if not case:
         raise HTTPException(404, "Case not found")
     return case
@@ -155,7 +163,7 @@ def question(case_id: str, db: Session = Depends(get_db)):
 
 @router.post("/{case_id}/facts")
 def fact(case_id: str, payload: FactUpsert, db: Session = Depends(get_db)):
-    case = case_or_404(db, case_id)
+    case = case_for_update_or_404(db, case_id)
     value = payload.value
     if payload.key.endswith("_date") and isinstance(value, str):
         try:
@@ -181,7 +189,7 @@ def fact(case_id: str, payload: FactUpsert, db: Session = Depends(get_db)):
 
 @router.post("/{case_id}/charges")
 def charges(case_id: str, payload: ChargesInput, db: Session = Depends(get_db)):
-    case = case_or_404(db, case_id)
+    case = case_for_update_or_404(db, case_id)
     key_by_family = {
         "E04-A": "electricity.addon.charges",
         "E04-B": "electricity.addon.charges",
@@ -234,7 +242,7 @@ def document_fact(
     payload: DocumentFactConfirm,
     db: Session = Depends(get_db),
 ):
-    case = case_or_404(db, case_id)
+    case = case_for_update_or_404(db, case_id)
     document = db.get(Document, document_id)
     if not document or document.case_id != case.id:
         raise HTTPException(404, "Document not found in case")
@@ -260,7 +268,7 @@ def document_fact(
 
 @router.post("/{case_id}/diagnose")
 def run_diagnosis(case_id: str, db: Session = Depends(get_db)):
-    case = case_or_404(db, case_id)
+    case = case_for_update_or_404(db, case_id)
     with atomic_workflow_transaction(db) as commit:
         try:
             result, decision, action = diagnose(db, case)
@@ -278,7 +286,7 @@ def run_diagnosis(case_id: str, db: Session = Depends(get_db)):
 
 @router.post("/{case_id}/prepare-claim")
 def prepare_claim(case_id: str, db: Session = Depends(get_db)):
-    case = case_or_404(db, case_id)
+    case = case_for_update_or_404(db, case_id)
     with atomic_workflow_transaction(db) as commit:
         try:
             package = prepare_claim_package(db, case)
@@ -318,7 +326,7 @@ def _build_submission_response(case: Case) -> dict:
 
 @router.post("/{case_id}/submission")
 def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get_db)):
-    case = case_or_404(db, case_id)
+    case = case_for_update_or_404(db, case_id)
     already_submitted = db.scalar(
         select(AuditEvent.id).where(
             AuditEvent.case_id == case.id,
@@ -383,7 +391,7 @@ def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get
 
 @router.post("/{case_id}/responses")
 def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)):
-    case = case_or_404(db, case_id)
+    case = case_for_update_or_404(db, case_id)
     result = analyze_company_response(db, case, payload.text)
     complete_current_action(db, case, only_types={"WAIT_FOR_RESPONSE"})
     db.commit()
@@ -440,7 +448,7 @@ def reviews(case_id: str, db: Session = Depends(get_db)):
 
 @router.post("/{case_id}/reviews/{review_id}/complete")
 def complete_review(case_id: str, review_id: str, payload: HumanReviewComplete, db: Session = Depends(get_db)):
-    case = case_or_404(db, case_id)
+    case = case_for_update_or_404(db, case_id)
     review = db.get(HumanReview, review_id)
     if not review or review.case_id != case.id:
         raise HTTPException(404, "Review not found")
@@ -456,7 +464,7 @@ def complete_review(case_id: str, review_id: str, payload: HumanReviewComplete, 
 
 @router.post("/{case_id}/outcome")
 def outcome(case_id: str, payload: OutcomeInput, db: Session = Depends(get_db)):
-    case = case_or_404(db, case_id)
+    case = case_for_update_or_404(db, case_id)
     existing = db.scalars(select(Outcome).where(Outcome.case_id == case.id)).first()
     outcome_row = existing if existing else Outcome(case_id=case.id, result_type=payload.result_type)
     if not existing:
