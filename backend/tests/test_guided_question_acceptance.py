@@ -133,3 +133,11 @@ def test_guided_question_ui_contract_is_loaded_and_javascript_parses():
             path = handle.name
         result = subprocess.run([node, "--check", path], capture_output=True, text=True)
         assert result.returncode == 0, f"{filename}: {result.stderr}"
+
+
+def test_guided_question_mutations_disable_actions_until_request_finishes():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    assert "function setQuestionActionsDisabled(disabled)" in html
+    assert html.count("setQuestionActionsDisabled(true)") >= 3
+    assert html.count("finally{setQuestionActionsDisabled(false)}") >= 3
+
