@@ -213,7 +213,7 @@ def charges(case_id: str, payload: ChargesInput, db: Session = Depends(get_db)):
 
 @router.post("/{case_id}/documents")
 async def documents(case_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    case = case_or_404(db, case_id)
+    case = case_for_update_or_404(db, case_id)
     data = await file.read(settings.max_upload_bytes + 1)
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(413, f"Max {settings.max_upload_bytes // (1024 * 1024)} MB in internal alpha")
