@@ -9,6 +9,7 @@ from ..case_lifecycle import complete_current_action, set_current_action
 from ..config import settings
 from ..db import get_db
 from ..documents import save_upload
+from ..evidence_context import current_outcome_evidence
 from ..models import Action, AuditEvent, Case, Communication, Deadline, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
 from ..schemas_v2 import (
@@ -418,6 +419,13 @@ def outcome(case_id: str, payload: OutcomeInput, db: Session = Depends(get_db)):
     outcome_row.result_type = payload.result_type
     outcome_row.amount_recovered = payload.amount_recovered
     outcome_row.verified_by_user = payload.verified_by_user
+
+    evidence = current_outcome_evidence()
+    if evidence is not None:
+        outcome_row.non_monetary_result = evidence.non_monetary_result
+        outcome_row.resolution_channel = evidence.resolution_channel
+        outcome_row.resolved_on = evidence.resolved_on
+
     if payload.verified_by_user:
         completed = complete_current_action(db, case, only_types={"VERIFY_EXECUTION"})
         if completed is not None:
@@ -429,6 +437,22 @@ def outcome(case_id: str, payload: OutcomeInput, db: Session = Depends(get_db)):
         if not current or current.case_id != case.id or current.type != "VERIFY_EXECUTION" or current.status == "COMPLETED":
             set_current_action(db, case, "VERIFY_EXECUTION")
         case.status = "RESOLVED_PENDING_EXECUTION"
+
     audit(db, case.id, "OUTCOME_RECORDED", {"result": payload.result_type, "verified": payload.verified_by_user})
+    if evidence is not None:
+        db.flush()
+        audit(
+            db,
+            case.id,
+            "OUTCOME_EVIDENCE_RECORDED",
+            {
+                "outcome_id": outcome_row.id,
+                "verified": payload.verified_by_user,
+                "resolved_on": evidence.resolved_on.isoformat() if evidence.resolved_on else None,
+                "resolution_channel": evidence.resolution_channel,
+                "amount_recovered": payload.amount_recovered,
+                "has_non_monetary_result": bool(evidence.non_monetary_result),
+            },
+        )
     db.commit()
     return {"case_status": case.status, "verified": outcome_row.verified_by_user}
