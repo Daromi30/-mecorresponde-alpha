@@ -152,39 +152,41 @@ def reclassify_unsupported_review(
     if case.status != "HUMAN_REVIEW":
         raise HTTPException(status_code=409, detail="Case is no longer waiting for assisted classification")
 
-    entry = FAMILY_MANIFEST[payload.target_family]
-    previous_vertical = case.vertical
-    case.family = entry.code
-    case.vertical = entry.vertical
-    case.title = entry.title
-    case.status = "INTAKE"
+    with atomic_workflow_transaction(db) as commit:
+        entry = FAMILY_MANIFEST[payload.target_family]
+        previous_vertical = case.vertical
+        case.family = entry.code
+        case.vertical = entry.vertical
+        case.title = entry.title
+        case.status = "INTAKE"
 
-    _complete_review_row(review, payload.reviewer_decision)
-    audit(
-        db,
-        case.id,
-        "HUMAN_REVIEW_RECLASSIFIED_INTAKE",
-        {
+        _complete_review_row(review, payload.reviewer_decision)
+        audit(
+            db,
+            case.id,
+            "HUMAN_REVIEW_RECLASSIFIED_INTAKE",
+            {
+                "review_id": review.id,
+                "from_family": None,
+                "from_vertical": previous_vertical,
+                "target_family": entry.code,
+                "target_vertical": entry.vertical,
+            },
+        )
+        db.flush()
+        next_question = get_next_question(db, case)
+        response = {
             "review_id": review.id,
-            "from_family": None,
-            "from_vertical": previous_vertical,
-            "target_family": entry.code,
-            "target_vertical": entry.vertical,
-        },
-    )
-    db.commit()
-    db.refresh(case)
-
-    return {
-        "review_id": review.id,
-        "review_status": review.status,
-        "case_id": case.id,
-        "case_status": case.status,
-        "family": case.family,
-        "vertical": case.vertical,
-        "title": case.title,
-        "next_question": get_next_question(db, case),
-    }
+            "review_status": review.status,
+            "case_id": case.id,
+            "case_status": case.status,
+            "family": case.family,
+            "vertical": case.vertical,
+            "title": case.title,
+            "next_question": next_question,
+        }
+        commit()
+        return response
 
 
 @router.post("/reviews/{review_id}/escalate-professional")

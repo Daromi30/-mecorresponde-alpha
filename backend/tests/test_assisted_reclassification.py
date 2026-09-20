@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 import shutil
 import subprocess
@@ -8,6 +9,7 @@ from sqlalchemy import select
 from app.family_manifest import FAMILY_MANIFEST
 from app.models import AuditEvent, Case
 from app.reviews import HumanReview
+from app.routers import admin_review_resolution as review_routes
 from app.services_v2 import create_human_review
 
 
@@ -133,6 +135,43 @@ def test_assisted_reclassification_routes_to_registered_family_without_manual_le
     )
     assert repeated.status_code == 409
 
+
+
+def test_assisted_reclassification_question_failure_rolls_back_review_and_case(client, db, monkeypatch):
+    case_id, review_id = _unsupported_case(client)
+
+    def fail_next_question(*_args, **_kwargs):
+        raise RuntimeError("synthetic next-question failure")
+
+    monkeypatch.setattr(review_routes, "get_next_question", fail_next_question)
+
+    with pytest.raises(RuntimeError, match="synthetic next-question failure"):
+        client.post(
+            f"/api/admin/reviews/{review_id}/reclassify",
+            headers=ADMIN,
+            json={
+                "target_family": "C01",
+                "reviewer_decision": "Clasificación sintética que debe hacer rollback completo.",
+            },
+        )
+
+    db.rollback()
+    db.expire_all()
+    case = db.get(Case, case_id)
+    review = db.get(HumanReview, review_id)
+    assert case is not None
+    assert review is not None
+    assert case.family is None
+    assert case.status == "HUMAN_REVIEW"
+    assert review.status == "OPEN"
+    assert review.completed_at is None
+    assert review.reviewer_decision is None
+    assert db.scalars(
+        select(AuditEvent).where(
+            AuditEvent.case_id == case_id,
+            AuditEvent.event_type == "HUMAN_REVIEW_RECLASSIFIED_INTAKE",
+        )
+    ).all() == []
 
 def test_reclassification_endpoint_rejects_non_routing_human_review(client, db):
     created = client.post(
