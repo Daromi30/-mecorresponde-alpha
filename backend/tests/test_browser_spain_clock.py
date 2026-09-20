@@ -10,6 +10,7 @@ STATIC = Path(__file__).parents[1] / "app" / "static"
 def test_evidence_forms_share_spain_civil_calendar_clock():
     loader = (STATIC / "dossier_quality.js").read_text(encoding="utf-8")
     assert "/demo/browser_clock.js" in loader
+    assert loader.index("/demo/browser_clock.js") < loader.index("/demo/deadline_guidance.js")
     assert loader.index("/demo/browser_clock.js") < loader.index("/demo/submission_evidence.js")
     assert loader.index("/demo/browser_clock.js") < loader.index("/demo/response_evidence.js")
     assert loader.index("/demo/browser_clock.js") < loader.index("/demo/outcome_evidence.js")
@@ -19,7 +20,7 @@ def test_evidence_forms_share_spain_civil_calendar_clock():
     assert "formatToParts" in clock
     assert "window.mcrSpainDateIso" in clock
 
-    for filename in ["submission_evidence.js", "response_evidence.js", "outcome_evidence.js"]:
+    for filename in ["deadline_guidance.js", "submission_evidence.js", "response_evidence.js", "outcome_evidence.js"]:
         source = (STATIC / filename).read_text(encoding="utf-8")
         assert "mcrSpainDateIso()" in source
         assert "localTodayIso" not in source
