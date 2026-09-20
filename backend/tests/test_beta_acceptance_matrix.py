@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from app.calendar_clock import spain_today
 from app.family_manifest import FAMILY_MANIFEST
 
 
@@ -13,6 +16,8 @@ def _fact(client, case_id, key, value):
     )
     assert response.status_code == 200, response.text
 
+
+RECENT_C05_RECEIVED_DATE = (spain_today() - timedelta(days=7)).isoformat()
 
 SCENARIOS = {
     "E01": {
@@ -185,7 +190,7 @@ SCENARIOS = {
             "purchase.seller_is_business": True,
             "purchase.distance_contract": True,
             "purchase.product_name": "Auriculares",
-            "purchase.received_date": "2026-09-05",
+            "purchase.received_date": RECENT_C05_RECEIVED_DATE,
             "purchase.amount_paid": 120.0,
             "purchase.premium_delivery_extra": 0.0,
             "purchase.withdrawal_exception_possible": False,
