@@ -118,3 +118,12 @@ def test_case_reentry_javascript_parses_when_node_is_available():
         path = handle.name
     result = subprocess.run([node, "--check", path], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_saved_case_hash_is_retried_after_successful_login_only():
+    reentry = (STATIC / "case_reentry.js").read_text(encoding="utf-8")
+
+    assert "const baseSubmitAccount = submitAccount;" in reentry
+    assert "const wasLogin = accountMode === 'login';" in reentry
+    assert "if (wasLogin && currentUser && !caseId && activeCaseFromHash())" in reentry
+    assert "await restoreActiveCase();" in reentry

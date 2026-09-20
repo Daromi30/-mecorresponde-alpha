@@ -44,6 +44,16 @@
     return baseNewCase(...args);
   };
 
+  const baseSubmitAccount = submitAccount;
+  submitAccount = async function (...args) {
+    const wasLogin = accountMode === 'login';
+    const result = await baseSubmitAccount(...args);
+    if (wasLogin && currentUser && !caseId && activeCaseFromHash()) {
+      await restoreActiveCase();
+    }
+    return result;
+  };
+
   async function restoreActiveCase() {
     if (caseId) return;
     const id = activeCaseFromHash();
