@@ -26,8 +26,14 @@ def test_consumer_ui_supports_generic_multifamily_intake():
     assert "/api/cases/${caseId}/next-question" in html
     assert "/api/cases/${caseId}/diagnose" in html
     assert "/api/cases/${caseId}/prepare-claim" in html
-    assert "/api/cases/${caseId}/responses" in html
-    assert "/api/cases/${caseId}/outcome" in html
+
+    static = Path(__file__).parents[1] / "app" / "static"
+    response = (static / "response_evidence.js").read_text(encoding="utf-8")
+    outcome = (static / "outcome_evidence.js").read_text(encoding="utf-8")
+    assert "/api/cases/${caseId}/responses/evidenced" in response
+    assert "/api/cases/${caseId}/outcome/evidenced" in outcome
+    assert "`/api/cases/${caseId}/responses`" not in html
+    assert "`/api/cases/${caseId}/outcome`" not in html
 
 
 def test_consumer_ui_keeps_accounts_optional_and_can_recover_cases():
