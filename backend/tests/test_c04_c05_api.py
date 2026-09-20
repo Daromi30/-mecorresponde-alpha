@@ -1,4 +1,10 @@
+from datetime import timedelta
+
+from app.calendar_clock import spain_today
 from app.services_v2 import EVALUATORS
+
+
+RECENT_C05_RECEIVED_DATE = (spain_today() - timedelta(days=7)).isoformat()
 
 
 def post_fact(client, cid, key, value, state="confirmed", user_confirmed=True):
@@ -135,7 +141,7 @@ def build_c05_notice_case(client):
         "purchase.seller_is_business": True,
         "purchase.distance_contract": True,
         "purchase.product_name": "Auriculares",
-        "purchase.received_date": "2026-09-05",
+        "purchase.received_date": RECENT_C05_RECEIVED_DATE,
         "purchase.amount_paid": 120.0,
         "purchase.premium_delivery_extra": 0.0,
         "purchase.withdrawal_exception_possible": False,

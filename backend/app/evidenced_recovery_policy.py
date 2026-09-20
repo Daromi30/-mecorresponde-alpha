@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .evidence_context import current_company_response_evidence, current_outcome_evidence
 from .models import AIRun, AuditEvent, Case, Communication, Outcome
 from .routers import quality as quality_router
 
@@ -127,20 +128,36 @@ def install_evidenced_recovery_policy() -> None:
         # The evidenced route captured the orphan's id before calling this function and links
         # metadata only to a newly observed id. Replace the unlinked row rather than replaying
         # analysis. No evidence audit references the orphan, so the id is not externally bound.
+        evidence = current_company_response_evidence()
         replacement = Communication(
             case_id=orphan.case_id,
             direction=orphan.direction,
-            channel=orphan.channel,
+            channel=evidence.channel if evidence is not None else orphan.channel,
             body=orphan.body,
-            occurred_on=orphan.occurred_on,
+            occurred_on=evidence.received_on if evidence is not None else orphan.occurred_on,
             sent_at=orphan.sent_at,
             received_at=orphan.received_at,
-            reference_number=orphan.reference_number,
+            reference_number=(
+                evidence.reference_number if evidence is not None else orphan.reference_number
+            ),
             document_id=orphan.document_id,
         )
         db.add(replacement)
         db.delete(orphan)
         db.flush()
+        if evidence is not None:
+            db.add(
+                AuditEvent(
+                    case_id=case.id,
+                    event_type="COMPANY_RESPONSE_RECORDED",
+                    payload_json={
+                        "communication_id": replacement.id,
+                        "received_on": evidence.received_on.isoformat() if evidence.received_on else None,
+                        "channel": evidence.channel,
+                        "reference": evidence.reference_number,
+                    },
+                )
+            )
         return {
             "analysis": analysis_run.structured_output,
             "case_status": case.status,
@@ -176,6 +193,25 @@ def install_evidenced_recovery_policy() -> None:
             raise HTTPException(
                 status_code=409,
                 detail="The pending outcome evidence does not match the already verified outcome",
+            )
+        evidence = current_outcome_evidence()
+        if evidence is not None:
+            outcome.resolved_on = evidence.resolved_on
+            outcome.resolution_channel = evidence.resolution_channel
+            outcome.non_monetary_result = evidence.non_monetary_result
+            db.add(
+                AuditEvent(
+                    case_id=case.id,
+                    event_type="OUTCOME_EVIDENCE_RECORDED",
+                    payload_json={
+                        "outcome_id": outcome.id,
+                        "verified": True,
+                        "resolved_on": evidence.resolved_on.isoformat() if evidence.resolved_on else None,
+                        "resolution_channel": evidence.resolution_channel,
+                        "amount_recovered": outcome.amount_recovered,
+                        "has_non_monetary_result": bool(evidence.non_monetary_result),
+                    },
+                )
             )
         return {"case_status": case.status, "verified": True}
 

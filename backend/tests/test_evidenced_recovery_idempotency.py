@@ -1,3 +1,4 @@
+import pytest
 from sqlalchemy import func, select
 
 from app.models import AIRun, Action, AuditEvent, Case, Communication, Outcome
@@ -75,6 +76,61 @@ def _event_count(db, case_id: str, event_type: str) -> int:
         or 0
     )
 
+
+
+def test_evidenced_response_failure_after_analysis_rolls_back_entire_workflow(client, db, monkeypatch):
+    case_id = _submitted_e04b(client)
+    db.expire_all()
+    case_before = db.get(Case, case_id)
+    assert case_before is not None
+    assert case_before.status == "WAITING_RESPONSE"
+    wait_action_id = case_before.current_action_id
+    assert wait_action_id is not None
+
+    before = {
+        "communications": int(db.scalar(select(func.count()).select_from(Communication).where(Communication.case_id == case_id)) or 0),
+        "analysis_runs": int(db.scalar(select(func.count()).select_from(AIRun).where(
+            AIRun.case_id == case_id, AIRun.task == "analyze_response"
+        )) or 0),
+        "actions": int(db.scalar(select(func.count()).select_from(Action).where(Action.case_id == case_id)) or 0),
+        "audits": int(db.scalar(select(func.count()).select_from(AuditEvent).where(AuditEvent.case_id == case_id)) or 0),
+    }
+
+    real_set_current_action = base_routes.set_current_action
+
+    def fail_verify_execution(db_session, case, action_type, *args, **kwargs):
+        if action_type == "VERIFY_EXECUTION":
+            raise RuntimeError("synthetic post-analysis transition failure")
+        return real_set_current_action(db_session, case, action_type, *args, **kwargs)
+
+    monkeypatch.setattr(base_routes, "set_current_action", fail_verify_execution)
+
+    with pytest.raises(RuntimeError, match="synthetic post-analysis transition failure"):
+        client.post(
+            f"/api/cases/{case_id}/responses/evidenced",
+            json={
+                "text": "Aceptamos su reclamación y procederemos a devolver el importe.",
+                "received_on": "2026-09-12",
+                "channel": "email",
+                "reference_number": "RESP-ROLLBACK",
+            },
+        )
+
+    db.rollback()
+    db.expire_all()
+    restored = db.get(Case, case_id)
+    assert restored is not None
+    assert restored.status == "WAITING_RESPONSE"
+    assert restored.current_action_id == wait_action_id
+    wait_action = db.get(Action, wait_action_id)
+    assert wait_action is not None and wait_action.status == "OPEN"
+    assert int(db.scalar(select(func.count()).select_from(Communication).where(Communication.case_id == case_id)) or 0) == before["communications"]
+    assert int(db.scalar(select(func.count()).select_from(AIRun).where(
+        AIRun.case_id == case_id, AIRun.task == "analyze_response"
+    )) or 0) == before["analysis_runs"]
+    assert int(db.scalar(select(func.count()).select_from(Action).where(Action.case_id == case_id)) or 0) == before["actions"]
+    assert int(db.scalar(select(func.count()).select_from(AuditEvent).where(AuditEvent.case_id == case_id)) or 0) == before["audits"]
+    assert _event_count(db, case_id, "COMPANY_RESPONSE_RECORDED") == 0
 
 def test_response_evidence_retry_recovers_committed_analysis_without_replaying_workflow(client, db):
     case_id = _submitted_e04b(client)
