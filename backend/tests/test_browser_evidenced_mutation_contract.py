@@ -4,14 +4,23 @@ from pathlib import Path
 STATIC = Path(__file__).parents[1] / "app" / "static"
 
 
-def test_base_html_has_no_legacy_case_mutation_fallbacks():
-    html = (STATIC / "index.html").read_text(encoding="utf-8")
+def test_frontend_has_no_legacy_case_mutation_fallbacks():
+    sources = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in [STATIC / "index.html", *sorted(STATIC.glob("*.js"))]
+    }
 
-    assert "`/api/cases/${caseId}/responses`" not in html
-    assert "`/api/cases/${caseId}/outcome`" not in html
-    assert "submitted_on:new Date().toISOString().slice(0,10)" not in html
-    assert "channel:'user_confirmed'" not in html
+    forbidden = [
+        "`/api/cases/${caseId}/responses`",
+        "`/api/cases/${caseId}/outcome`",
+        "submitted_on:new Date().toISOString().slice(0,10)",
+        "channel:'user_confirmed'",
+    ]
+    for filename, source in sources.items():
+        for token in forbidden:
+            assert token not in source, f"{filename} reintroduced unsafe browser fallback: {token}"
 
+    html = sources["index.html"]
     assert "evidenceModuleUnavailable" in html
     assert "no se ha registrado ningún cambio" in html
 
