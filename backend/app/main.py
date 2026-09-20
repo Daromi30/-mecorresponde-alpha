@@ -34,7 +34,7 @@ from .routers.case_deletion import router as case_deletion_router
 from .routers.cases_v2 import router as cases_router
 from .routers.handoff import router as handoff_router
 from .routers.quality import router as quality_router
-from .routers.readiness import router as readiness_router
+from .routers.readiness import beta_readiness as compute_beta_readiness, router as readiness_router
 from .routers.seo import router as seo_router
 from .routers.sources import router as sources_router
 from .routers.wait_resume import router as wait_resume_router
@@ -162,6 +162,16 @@ async def lifespan(app: FastAPI):
         )
         seed_legal(db)
         db.commit()
+        try:
+            readiness = compute_beta_readiness(db)
+        except Exception:
+            logger.exception("MECORRESPONDE internal_beta_readiness: unavailable")
+        else:
+            logger.info(
+                "MECORRESPONDE internal_beta_readiness: synthetic_internal_beta_ready=%s internal_beta_blockers=%s",
+                readiness["synthetic_internal_beta_ready"],
+                ",".join(readiness["internal_beta_blockers"]) or "none",
+            )
     try:
         storage = storage_status()
         logger.info(

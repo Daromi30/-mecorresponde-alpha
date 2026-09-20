@@ -7,6 +7,7 @@ import tempfile
 ADMIN = {"Authorization": "Bearer test-admin-token"}
 ADMIN_STATIC = Path(__file__).parents[1] / "app" / "admin_static"
 DOCS = Path(__file__).parents[2] / "docs"
+MAIN = Path(__file__).parents[1] / "app" / "main.py"
 
 
 def test_readiness_requires_admin(client):
@@ -115,3 +116,11 @@ def test_readiness_javascript_parses_when_node_is_available():
             path = handle.name
         result = subprocess.run([node, "--check", path], capture_output=True, text=True)
         assert result.returncode == 0, f"{filename}: {result.stderr}"
+
+
+def test_startup_logs_same_internal_readiness_used_by_admin_route():
+    source = MAIN.read_text(encoding="utf-8")
+    assert "beta_readiness as compute_beta_readiness" in source
+    assert "readiness = compute_beta_readiness(db)" in source
+    assert "internal_beta_readiness: unavailable" in source
+    assert "synthetic_internal_beta_ready=%s internal_beta_blockers=%s" in source
