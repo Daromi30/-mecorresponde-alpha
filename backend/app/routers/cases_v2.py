@@ -226,21 +226,25 @@ def document_fact(
     document = db.get(Document, document_id)
     if not document or document.case_id != case.id:
         raise HTTPException(404, "Document not found in case")
-    created = confirm_document_fact(
-        db,
-        case,
-        document,
-        key=payload.key,
-        value=payload.value,
-        locator=payload.locator,
-        excerpt=payload.excerpt,
-        materiality=payload.materiality,
-    )
-    return {
-        "fact_id": created.id,
-        "evidence_linked": True,
-        "next_question": get_next_question(db, case),
-    }
+
+    with atomic_workflow_transaction(db) as commit:
+        created = confirm_document_fact(
+            db,
+            case,
+            document,
+            key=payload.key,
+            value=payload.value,
+            locator=payload.locator,
+            excerpt=payload.excerpt,
+            materiality=payload.materiality,
+        )
+        response = {
+            "fact_id": created.id,
+            "evidence_linked": True,
+            "next_question": get_next_question(db, case),
+        }
+        commit()
+        return response
 
 
 @router.post("/{case_id}/diagnose")
