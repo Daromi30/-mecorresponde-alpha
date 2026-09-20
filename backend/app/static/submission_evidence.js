@@ -2,7 +2,11 @@
 
   function ensureSubmissionEvidenceFields() {
     let fields = document.getElementById('submissionEvidenceFields');
-    if (fields) return fields;
+    if (fields) {
+      const dateInput = fields.querySelector('#submissionSentOn');
+      if (dateInput) dateInput.max = mcrSpainDateIso();
+      return fields;
+    }
 
     const card = document.getElementById('claimCard');
     const claim = document.getElementById('claim');
