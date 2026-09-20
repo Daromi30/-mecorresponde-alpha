@@ -165,6 +165,10 @@ async function submitAccount(event){
     }
 
     await loadMyCases();
+    if(!currentUser){
+      $('accountError').innerHTML='<div class="errorBox">La sesión ha caducado justo después de iniciar sesión. Vuelve a entrar para continuar con tus expedientes.</div>';
+      return;
+    }
     closeAccount();
 
     if(caseId){

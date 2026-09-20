@@ -49,3 +49,17 @@ def test_successful_login_survives_optional_current_case_claim_failure():
     # A downstream case-save/refresh error must not be rendered as a login failure.
     auth_error = block.index("$('accountError').innerHTML")
     assert auth_error < signed_in
+
+
+def test_post_login_session_loss_cannot_fall_through_to_saved_case_success():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    block = html[html.index("async function submitAccount(event){"):html.index("async function logoutAccount()")]
+
+    load_cases = block.index("await loadMyCases();")
+    session_guard = block.index("if(!currentUser){", load_cases)
+    expired_copy = block.index("La sesión ha caducado justo después de iniciar sesión", session_guard)
+    early_return = block.index("return;", expired_copy)
+    close_account = block.index("closeAccount();", early_return)
+    success_copy = block.index("Expediente guardado en tu cuenta.", close_account)
+
+    assert load_cases < session_guard < expired_copy < early_return < close_account < success_copy
