@@ -13,7 +13,7 @@ def test_wait_next_step_uses_protected_resume_endpoint():
     assert "/resume-wait" in script
     assert "Comprobar de nuevo" in script
     assert "if (type.startsWith('WAIT_'))" in script
-    assert "action: () => resumeWaitAction()" in script
+    assert "runNextStepMutation(() => resumeWaitAction(), 'Comprobando…')" in script
 
 
 def test_wait_resume_ui_javascript_parses_when_node_is_available():
