@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..case_locking import lock_case_for_update
 from ..db import get_db
 from ..evidence_context import atomic_workflow_transaction
 from ..models import Case
@@ -17,7 +18,7 @@ router = APIRouter(
 
 @router.post("/{case_id}/resume-wait")
 def resume_wait(case_id: str, db: Session = Depends(get_db)):
-    case = db.get(Case, case_id)
+    case = lock_case_for_update(db, case_id)
     if case is None:
         raise HTTPException(404, "Case not found")
 
