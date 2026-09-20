@@ -2,7 +2,11 @@
 
   function ensureResponseEvidenceFields() {
     let fields = document.getElementById('responseEvidenceFields');
-    if (fields) return fields;
+    if (fields) {
+      const dateInput = fields.querySelector('#responseReceivedOn');
+      if (dateInput) dateInput.max = mcrSpainDateIso();
+      return fields;
+    }
     const card = document.getElementById('responseCard');
     const textarea = document.getElementById('responseText');
     if (!card || !textarea) return null;
