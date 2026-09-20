@@ -11,7 +11,7 @@ def test_created_case_survives_account_claim_failure_in_browser_flow():
     assert "catch(e){accountClaimError=e}" in html
     assert "$('workspace').classList.remove('hidden')" in html
     assert "await refresh()" in html
-    assert "if(accountClaimError){message(`El expediente se ha creado y sigue disponible en este navegador" in html
+    assert "if(accountClaimError){if(currentUser){message(`El expediente se ha creado y sigue disponible en este navegador" in html
     assert "pero no se ha podido guardar en tu cuenta" in html
     assert "async function retryClaimCurrentCase()" in html
     assert "id=\"retryCaseClaimBtn\"" in html
@@ -22,7 +22,7 @@ def test_created_case_survives_account_claim_failure_in_browser_flow():
     claim_failure = html.index("catch(e){accountClaimError=e}")
     workspace_open = html.index("$('workspace').classList.remove('hidden')", claim_failure)
     refresh = html.index("await refresh()", workspace_open)
-    warning = html.index("if(accountClaimError){message(", refresh)
+    warning = html.index("if(accountClaimError){if(currentUser){message(", refresh)
     assert claim_failure < workspace_open < refresh < warning
 
 
@@ -63,3 +63,19 @@ def test_post_login_session_loss_cannot_fall_through_to_saved_case_success():
     success_copy = block.index("Expediente guardado en tu cuenta.", close_account)
 
     assert load_cases < session_guard < expired_copy < early_return < close_account < success_copy
+
+
+def test_created_case_session_expiry_does_not_offer_dead_retry_button():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    start = html.index("async function createCase(){")
+    end = html.index("async function refresh(){", start)
+    block = html[start:end]
+
+    load_cases = block.index("if(currentUser)await loadMyCases();")
+    claim_error = block.index("if(accountClaimError)", load_cases)
+    signed_in_retry = block.index("if(currentUser){message(", claim_error)
+    expired_copy = block.index("tu sesión ha caducado. Vuelve a iniciar sesión", signed_in_retry)
+
+    assert load_cases < claim_error < signed_in_retry < expired_copy
+    assert "retryCaseClaimBtn" in block[signed_in_retry:expired_copy]
+    assert "retryCaseClaimBtn" not in block[expired_copy:]
