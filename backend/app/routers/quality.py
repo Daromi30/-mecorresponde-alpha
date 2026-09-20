@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from ..calendar_clock import spain_today
 from ..case_quality import build_dossier_quality
 from ..db import get_db
-from ..evidence_context import company_response_evidence_context, outcome_evidence_context
+from ..evidence_context import atomic_workflow_transaction, company_response_evidence_context, outcome_evidence_context
 from ..models import Action, AuditEvent, Case, Communication, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
 from ..schemas_v2 import OutcomeInput, ResponseInput
@@ -309,12 +309,14 @@ def evidenced_company_response(
         received_on=payload.received_on,
         channel=payload.channel,
         reference_number=payload.reference_number,
-    ):
-        return process_company_response(
+    ), atomic_workflow_transaction(db) as commit:
+        result = process_company_response(
             case_id,
             ResponseInput(text=payload.text),
             db,
         )
+        commit()
+    return result
 
 
 @router.post("/{case_id}/outcome/evidenced")
@@ -334,7 +336,7 @@ def evidenced_outcome(
         resolved_on=payload.resolved_on,
         non_monetary_result=payload.non_monetary_result,
         resolution_channel=payload.resolution_channel,
-    ):
+    ), atomic_workflow_transaction(db) as commit:
         result = process_outcome(
             case_id,
             OutcomeInput(
@@ -344,6 +346,7 @@ def evidenced_outcome(
             ),
             db,
         )
+        commit()
 
     return {
         **result,
