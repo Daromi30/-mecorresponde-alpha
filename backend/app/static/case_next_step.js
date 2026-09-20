@@ -34,8 +34,19 @@
     ].includes(type);
   }
 
+  const documentEvidenceActions = new Set([
+    'REQUEST_CONTRACT_OR_OFFER_EVIDENCE',
+    'REQUEST_DUPLICATE_CHARGE_EVIDENCE',
+    'REQUEST_CONSENT_EVIDENCE',
+    'REQUEST_CHARGE_EVIDENCE',
+  ]);
+
+  function needsDocumentEvidence(type) {
+    return documentEvidenceActions.has(type || '');
+  }
+
   function needsGuidedInput(type) {
-    if (!type) return false;
+    if (!type || needsDocumentEvidence(type)) return false;
     return ['ASK_', 'REQUEST_', 'CONFIRM_', 'CORRECT_', 'CHOOSE_'].some(prefix => type.startsWith(prefix));
   }
 
@@ -85,6 +96,15 @@
         body: 'El Motor ha determinado que esta fase consiste en esperar a que se cumpla el hito indicado. Puedes comprobar de nuevo el expediente; si el hito todavía no ha vencido, no se modificará nada.',
         button: 'Comprobar de nuevo',
         action: () => resumeWaitAction(),
+      };
+    }
+
+    if (needsDocumentEvidence(type)) {
+      return {
+        title: 'Aporta la evidencia que falta',
+        body: 'El siguiente paso depende de un documento o justificante verificable, no de repetir una respuesta. Abre la documentación del expediente para comprobar si la subida está disponible.',
+        button: 'Ir a documentación',
+        action: () => document.getElementById('documentPanel')?.scrollIntoView({behavior: 'smooth', block: 'center'}),
       };
     }
 
