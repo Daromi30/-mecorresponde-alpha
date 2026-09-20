@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import date
 import pytest
 from sqlalchemy import func, select
 
 from app import services_v2 as svc
+from app.evidence_context import company_response_evidence_context
 from app.models import AIRun, AuditEvent, Case, Communication, Evidence, Fact
 
 
@@ -33,7 +35,12 @@ def test_company_response_persists_all_derived_arguments_together(client, db, mo
     case = _case(client, db)
     monkeypatch.setattr(svc.gateway, "analyze_response", _two_argument_response)
 
-    result = svc.analyze_company_response(db, case, "La empresa invoca consentimiento y deudas distintas")
+    with company_response_evidence_context(
+        received_on=date(2026, 9, 12),
+        channel="email",
+        reference_number="RESP-ATOMIC",
+    ):
+        result = svc.analyze_company_response(db, case, "La empresa invoca consentimiento y deudas distintas")
     assert result["type"] == "DENIAL"
 
     db.expire_all()
@@ -47,6 +54,25 @@ def test_company_response_persists_all_derived_arguments_together(client, db, mo
     assert all(fact.state == "asserted" for fact in facts)
     assert all(fact.user_confirmed is False for fact in facts)
     assert _count(db, Communication, case.id) == 1
+    communication = db.scalars(
+        select(Communication).where(
+            Communication.case_id == case.id,
+            Communication.direction == "INBOUND",
+        )
+    ).one()
+    assert communication.occurred_on == date(2026, 9, 12)
+    assert communication.channel == "email"
+    assert communication.reference_number == "RESP-ATOMIC"
+    recorded = db.scalars(
+        select(AuditEvent).where(
+            AuditEvent.case_id == case.id,
+            AuditEvent.event_type == "COMPANY_RESPONSE_RECORDED",
+        )
+    ).one()
+    assert recorded.payload_json["communication_id"] == communication.id
+    assert recorded.payload_json["received_on"] == "2026-09-12"
+    assert recorded.payload_json["channel"] == "email"
+    assert recorded.payload_json["reference"] == "RESP-ATOMIC"
     assert _count(db, AIRun, case.id) >= 2  # classification + response analysis
 
 
@@ -75,7 +101,12 @@ def test_company_response_failure_rolls_back_entire_response_snapshot(client, db
     monkeypatch.setattr(svc, "upsert_fact", fail_second_company_fact)
 
     with pytest.raises(RuntimeError, match="synthetic second company fact failure"):
-        svc.analyze_company_response(db, case, "La empresa invoca consentimiento y deudas distintas")
+        with company_response_evidence_context(
+            received_on=date(2026, 9, 12),
+            channel="email",
+            reference_number="RESP-ROLLBACK",
+        ):
+            svc.analyze_company_response(db, case, "La empresa invoca consentimiento y deudas distintas")
 
     db.expire_all()
     restored = db.get(Case, case.id)
