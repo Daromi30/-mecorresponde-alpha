@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ..admin_auth import require_admin
 from ..case_lifecycle import complete_current_action, set_current_action
 from ..db import get_db
+from ..evidence_context import atomic_workflow_transaction
 from ..family_manifest import FAMILY_MANIFEST
 from ..models import Case, Evidence, Fact
 from ..reviews import HumanReview
@@ -290,82 +291,81 @@ def resolve_structured_review(
             detail="Structured facts cannot close this review until the case is routed to an automated family",
         )
 
-    created_fact_ids: list[str] = []
-    update_audit: list[dict[str, str]] = []
-    for item in payload.fact_updates:
-        previous = db.scalars(
-            select(Fact)
-            .where(Fact.case_id == case.id, Fact.key == item.key)
-            .order_by(Fact.created_at.desc())
-        ).first()
-        fact = Fact(
-            case_id=case.id,
-            key=item.key,
-            value_json={"value": item.value},
-            state=item.state,
-            materiality=item.materiality,
-            confidence=None,
-            user_confirmed=False,
-            created_by="human",
-            supersedes_fact_id=previous.id if previous else None,
-        )
-        db.add(fact)
-        db.flush()
-        created_fact_ids.append(fact.id)
-        update_audit.append(
-            {
-                "fact_id": fact.id,
-                "key": fact.key,
-                "state": fact.state,
-                "materiality": fact.materiality,
-            }
-        )
-        if item.state == "confirmed":
-            db.add(
-                Evidence(
-                    case_id=case.id,
-                    fact_id=fact.id,
-                    source_type="human",
-                    excerpt=item.note.strip() if item.note else None,
-                    strength="strong",
-                )
+    with atomic_workflow_transaction(db) as commit:
+        created_fact_ids: list[str] = []
+        update_audit: list[dict[str, str]] = []
+        for item in payload.fact_updates:
+            previous = db.scalars(
+                select(Fact)
+                .where(Fact.case_id == case.id, Fact.key == item.key)
+                .order_by(Fact.created_at.desc())
+            ).first()
+            fact = Fact(
+                case_id=case.id,
+                key=item.key,
+                value_json={"value": item.value},
+                state=item.state,
+                materiality=item.materiality,
+                confidence=None,
+                user_confirmed=False,
+                created_by="human",
+                supersedes_fact_id=previous.id if previous else None,
             )
+            db.add(fact)
+            db.flush()
+            created_fact_ids.append(fact.id)
+            update_audit.append(
+                {
+                    "fact_id": fact.id,
+                    "key": fact.key,
+                    "state": fact.state,
+                    "materiality": fact.materiality,
+                }
+            )
+            if item.state == "confirmed":
+                db.add(
+                    Evidence(
+                        case_id=case.id,
+                        fact_id=fact.id,
+                        source_type="human",
+                        excerpt=item.note.strip() if item.note else None,
+                        strength="strong",
+                    )
+                )
 
-    _complete_review_row(review, payload.reviewer_decision)
-    complete_current_action(db, case, only_types={"HUMAN_REVIEW"})
-    case.status = "REANALYZING"
-    audit(
-        db,
-        case.id,
-        "HUMAN_REVIEW_STRUCTURED_RESOLUTION",
-        {
-            "review_id": review.id,
-            "assigned_to": review.assigned_to,
-            "fact_updates": update_audit,
-            "reanalyze_requested": True,
-            "review_reason": review.reason,
-        },
-    )
-    db.flush()
+        _complete_review_row(review, payload.reviewer_decision)
+        complete_current_action(db, case, only_types={"HUMAN_REVIEW"})
+        case.status = "REANALYZING"
+        audit(
+            db,
+            case.id,
+            "HUMAN_REVIEW_STRUCTURED_RESOLUTION",
+            {
+                "review_id": review.id,
+                "assigned_to": review.assigned_to,
+                "fact_updates": update_audit,
+                "reanalyze_requested": True,
+                "review_reason": review.reason,
+            },
+        )
+        db.flush()
 
-    # Reviews created after a company response remain in the response phase even if a
-    # person adds verified facts. This keeps the anti-loop guard active across both
-    # the first escalation review and the later professional-review handoff.
-    if review.reason in _POST_RESPONSE_REVIEW_REASONS:
-        case.status = "RESPONSE_RECEIVED"
-    try:
+        # Reviews created after a company response remain in the response phase even if a
+        # person adds verified facts. This keeps the anti-loop guard active across both
+        # the first escalation review and the later professional-review handoff.
+        if review.reason in _POST_RESPONSE_REVIEW_REASONS:
+            case.status = "RESPONSE_RECEIVED"
+
         result, decision, action = diagnose(db, case)
-    except Exception:
-        db.rollback()
-        raise
-
-    return {
-        "review_id": review.id,
-        "review_status": "COMPLETED",
-        "case_id": case.id,
-        "case_status": case.status,
-        "fact_ids": created_fact_ids,
-        "updated_diagnosis": result.to_dict(),
-        "decision_id": decision.id,
-        "action_id": action.id,
-    }
+        response = {
+            "review_id": review.id,
+            "review_status": "COMPLETED",
+            "case_id": case.id,
+            "case_status": case.status,
+            "fact_ids": created_fact_ids,
+            "updated_diagnosis": result.to_dict(),
+            "decision_id": decision.id,
+            "action_id": action.id,
+        }
+        commit()
+        return response
