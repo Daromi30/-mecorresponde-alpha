@@ -18,6 +18,12 @@ def test_saved_case_list_uses_user_facing_area_labels_not_family_codes():
     assert "c.family" not in script
     assert "humanStatus(caseItem.status)" in script
 
+    # The base HTML must also fail closed: the enhancement may load a moment later or fail.
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    load_cases = html[html.index("async function loadMyCases"):html.index("async function openOwnedCase")]
+    assert "c.family" not in load_cases
+    assert "family" not in load_cases
+
 
 def test_saved_case_label_javascript_parses_when_node_is_available():
     node = shutil.which("node")
