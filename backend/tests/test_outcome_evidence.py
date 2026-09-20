@@ -216,3 +216,11 @@ def test_outcome_evidence_javascript_parses_when_node_is_available():
         path = handle.name
     result = subprocess.run([node, "--check", path], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_pending_execution_ui_does_not_offer_a_noop_pending_mutation():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    assert 'onclick="closeCase(true)"' in html
+    assert 'onclick="closeCase(false)"' not in html
+    assert "Aceptado, pero sigue pendiente</button>" not in html
+
