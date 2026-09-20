@@ -39,5 +39,5 @@ def test_create_case_keeps_unclassified_fallback_title(db, monkeypatch):
 
     case = services_v2.create_case(db, "unsupported synthetic intake")
 
-    assert case.title == "Caso por clasificar"
-    assert case.status == "CLOSED_UNSUPPORTED"
+    assert case.title == "Caso para revisión asistida"
+    assert case.status == "HUMAN_REVIEW"
