@@ -264,10 +264,13 @@ def run_diagnosis(case_id: str, db: Session = Depends(get_db)):
 @router.post("/{case_id}/prepare-claim")
 def prepare_claim(case_id: str, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
-    try:
-        return prepare_claim_package(db, case)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc))
+    with atomic_workflow_transaction(db) as commit:
+        try:
+            package = prepare_claim_package(db, case)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        commit()
+        return package
 
 
 @router.post("/{case_id}/submission")
