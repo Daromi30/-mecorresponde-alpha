@@ -288,50 +288,8 @@ def prepare_claim(case_id: str, db: Session = Depends(get_db)):
         return package
 
 
-@router.post("/{case_id}/submission")
-def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get_db)):
-    case = case_or_404(db, case_id)
-    already_submitted = db.scalar(
-        select(AuditEvent.id).where(
-            AuditEvent.case_id == case.id,
-            AuditEvent.event_type == "CLAIM_SUBMITTED",
-        )
-    )
-    if already_submitted:
-        raise HTTPException(status_code=409, detail="Initial claim submission is already recorded")
-
-    complete_current_action(db, case, only_types={"SUBMIT_INITIAL_CLAIM"})
-    wait_action = set_current_action(
-        db,
-        case,
-        "WAIT_FOR_RESPONSE",
-        payload={
-            "submitted_on": str(payload.submitted_on),
-            "channel": payload.channel,
-            "reference_number": payload.reference_number,
-        },
-    )
-    case.status = "WAITING_RESPONSE"
-
-    # The user supplies a calendar date, not a time of day. Store the outbound
-    # communication without inventing an exact timestamp; the verified submitted_on
-    # date remains in the audit/deadline records.
-    db.add(
-        Communication(
-            case_id=case.id,
-            direction="OUTBOUND",
-            channel=payload.channel,
-            reference_number=payload.reference_number,
-        )
-    )
-    audit(db, case.id, "CLAIM_SUBMITTED", {
-        "submitted_on": str(payload.submitted_on),
-        "reference": payload.reference_number,
-        "channel": payload.channel,
-        "wait_action_id": wait_action.id,
-    })
+def _build_submission_response(case: Case) -> dict:
     if case.vertical != "electricity":
-        db.commit()
         return {
             "status": case.status,
             "deadline": None,
@@ -341,21 +299,6 @@ def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get
             "warning": "No se aplica un plazo sectorial no verificado a esta familia.",
         }
 
-    # Article 55.3 of RD 88/2026 establishes a maximum response period of
-    # fifteen business days. The legal period is verified; an exact calendar
-    # date is not emitted until MECORRESPONDE can prove the applicable business-
-    # day calendar for the individual case. A configured list of holidays alone
-    # is not enough to justify a legal due date across jurisdictions.
-    db.add(Deadline(
-        case_id=case.id,
-        deadline_type="ELECTRICITY_COMPLAINT_RESPONSE",
-        trigger_event="VERIFIED_INITIAL_CLAIM_SUBMISSION",
-        trigger_date=payload.submitted_on,
-        calendar_type="BUSINESS_DAYS_UNCOMPUTED",
-        computed_date=None,
-        status="LEGAL_PERIOD_ONLY",
-    ))
-    db.commit()
     return {
         "status": case.status,
         "deadline": None,
@@ -371,6 +314,71 @@ def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get
             "MECORRESPONDE no calcula una fecha exacta de vencimiento sin un calendario aplicable verificado."
         ),
     }
+
+
+@router.post("/{case_id}/submission")
+def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get_db)):
+    case = case_or_404(db, case_id)
+    already_submitted = db.scalar(
+        select(AuditEvent.id).where(
+            AuditEvent.case_id == case.id,
+            AuditEvent.event_type == "CLAIM_SUBMITTED",
+        )
+    )
+    if already_submitted:
+        raise HTTPException(status_code=409, detail="Initial claim submission is already recorded")
+
+    with atomic_workflow_transaction(db) as commit:
+        complete_current_action(db, case, only_types={"SUBMIT_INITIAL_CLAIM"})
+        wait_action = set_current_action(
+            db,
+            case,
+            "WAIT_FOR_RESPONSE",
+            payload={
+                "submitted_on": str(payload.submitted_on),
+                "channel": payload.channel,
+                "reference_number": payload.reference_number,
+            },
+        )
+        case.status = "WAITING_RESPONSE"
+
+        # The user supplies a calendar date, not a time of day. Store the outbound
+        # communication without inventing an exact timestamp; the verified submitted_on
+        # date remains in the audit/deadline records.
+        db.add(
+            Communication(
+                case_id=case.id,
+                direction="OUTBOUND",
+                channel=payload.channel,
+                reference_number=payload.reference_number,
+            )
+        )
+        audit(db, case.id, "CLAIM_SUBMITTED", {
+            "submitted_on": str(payload.submitted_on),
+            "reference": payload.reference_number,
+            "channel": payload.channel,
+            "wait_action_id": wait_action.id,
+        })
+
+        if case.vertical == "electricity":
+            # Article 55.3 of RD 88/2026 establishes a maximum response period of
+            # fifteen business days. The legal period is verified; an exact calendar
+            # date is not emitted until MECORRESPONDE can prove the applicable business-
+            # day calendar for the individual case. A configured list of holidays alone
+            # is not enough to justify a legal due date across jurisdictions.
+            db.add(Deadline(
+                case_id=case.id,
+                deadline_type="ELECTRICITY_COMPLAINT_RESPONSE",
+                trigger_event="VERIFIED_INITIAL_CLAIM_SUBMISSION",
+                trigger_date=payload.submitted_on,
+                calendar_type="BUSINESS_DAYS_UNCOMPUTED",
+                computed_date=None,
+                status="LEGAL_PERIOD_ONLY",
+            ))
+
+        response_payload = _build_submission_response(case)
+        commit()
+        return response_payload
 
 
 @router.post("/{case_id}/responses")
