@@ -29,3 +29,18 @@ def test_saved_case_label_javascript_parses_when_node_is_available():
         path = handle.name
     result = subprocess.run([node, "--check", path], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_account_case_list_clears_stale_signed_in_state_on_401():
+    script = (STATIC / "account_case_labels.js").read_text(encoding="utf-8")
+
+    assert "if (error?.status === 401)" in script
+    assert "currentUser = null;" in script
+    assert "setAccountMode('login');" in script
+    assert "renderAccountState();" in script
+    assert "Tu sesión ha caducado. Vuelve a entrar para ver tus expedientes." in script
+
+    status = script.index("if (error?.status === 401)")
+    clear_user = script.index("currentUser = null;", status)
+    render = script.index("renderAccountState();", clear_user)
+    assert status < clear_user < render

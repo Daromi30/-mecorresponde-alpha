@@ -17,6 +17,13 @@
           }).join('')
         : '<p class="muted">Todavía no has guardado expedientes.</p>';
     } catch (error) {
+      if (error?.status === 401) {
+        currentUser = null;
+        setAccountMode('login');
+        renderAccountState();
+        $('myCases').innerHTML = '<p class="muted">Tu sesión ha caducado. Vuelve a entrar para ver tus expedientes.</p>';
+        return;
+      }
       $('myCases').innerHTML = '<p class="muted">No he podido cargar tus expedientes.</p>';
     }
   };
