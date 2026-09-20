@@ -99,3 +99,13 @@ def test_legacy_diagnosis_card_does_not_offer_prepare_from_viability_alone():
     next_step = (STATIC / "case_next_step.js").read_text(encoding="utf-8")
     assert "isPreparableAction(type)" in next_step
     assert "action: () => prepareClaim()" in next_step
+
+
+def test_diagnosed_case_does_not_offer_claimant_diagnosis_replay_when_questions_are_done():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    diagnosed_guard = "if(caseData?.status==='DIAGNOSED')"
+    diagnose_button = 'id="diagnoseBtn" onclick="diagnose()"'
+    assert diagnosed_guard in html
+    assert "Diagnóstico calculado con los hechos actuales." in html
+    assert "Solo volveremos a diagnosticar si cambia un hecho relevante." in html
+    assert html.index(diagnosed_guard) < html.index(diagnose_button)
