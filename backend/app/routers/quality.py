@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ..calendar_clock import spain_today
 from ..case_quality import build_dossier_quality
 from ..db import get_db
+from ..evidence_context import company_response_evidence_context, outcome_evidence_context
 from ..models import Action, AuditEvent, Case, Communication, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
 from ..schemas_v2 import OutcomeInput, ResponseInput
@@ -297,56 +298,23 @@ def evidenced_company_response(
     payload: CompanyResponseEvidenceInput,
     db: Session = Depends(get_db),
 ):
-    """Analyze a response and attach user-confirmed communication metadata."""
+    """Analyze a response with its user-confirmed communication metadata in one transaction."""
     case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     _require_waiting_for_company_response(db, case)
     _validate_response_chronology(db, case, payload.received_on)
 
-    existing_ids = set(
-        db.scalars(
-            select(Communication.id).where(
-                Communication.case_id == case.id,
-                Communication.direction == "INBOUND",
-            )
-        ).all()
-    )
-
-    result = process_company_response(
-        case_id,
-        ResponseInput(text=payload.text),
-        db,
-    )
-
-    inbound = db.scalars(
-        select(Communication)
-        .where(
-            Communication.case_id == case.id,
-            Communication.direction == "INBOUND",
+    with company_response_evidence_context(
+        received_on=payload.received_on,
+        channel=payload.channel,
+        reference_number=payload.reference_number,
+    ):
+        return process_company_response(
+            case_id,
+            ResponseInput(text=payload.text),
+            db,
         )
-        .order_by(Communication.received_at.desc())
-    ).all()
-    communication = next((row for row in inbound if row.id not in existing_ids), None)
-    if communication is None:
-        raise HTTPException(status_code=500, detail="Analyzed response communication could not be linked")
-
-    communication.channel = payload.channel
-    communication.reference_number = payload.reference_number
-    db.add(
-        AuditEvent(
-            case_id=case.id,
-            event_type="COMPANY_RESPONSE_RECORDED",
-            payload_json={
-                "communication_id": communication.id,
-                "received_on": payload.received_on.isoformat() if payload.received_on else None,
-                "channel": payload.channel,
-                "reference": payload.reference_number,
-            },
-        )
-    )
-    db.commit()
-    return result
 
 
 @router.post("/{case_id}/outcome/evidenced")
@@ -355,45 +323,28 @@ def evidenced_outcome(
     payload: OutcomeEvidenceInput,
     db: Session = Depends(get_db),
 ):
-    """Persist user-confirmed execution details separately from confirmation time."""
+    """Persist outcome state and user-confirmed execution evidence in one transaction."""
     case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     _require_pending_execution_verification(db, case)
     _validate_outcome_evidence(db, case, payload)
 
-    result = process_outcome(
-        case_id,
-        OutcomeInput(
-            result_type="FAVORABLE",
-            amount_recovered=payload.amount_recovered,
-            verified_by_user=payload.verified_by_user,
-        ),
-        db,
-    )
-
-    outcome_row = db.scalar(select(Outcome).where(Outcome.case_id == case.id))
-    if outcome_row is None:
-        raise HTTPException(status_code=500, detail="Outcome could not be linked")
-
-    outcome_row.non_monetary_result = payload.non_monetary_result
-    outcome_row.resolution_channel = payload.resolution_channel
-    outcome_row.resolved_on = payload.resolved_on
-    db.add(
-        AuditEvent(
-            case_id=case.id,
-            event_type="OUTCOME_EVIDENCE_RECORDED",
-            payload_json={
-                "outcome_id": outcome_row.id,
-                "verified": payload.verified_by_user,
-                "resolved_on": payload.resolved_on.isoformat() if payload.resolved_on else None,
-                "resolution_channel": payload.resolution_channel,
-                "amount_recovered": payload.amount_recovered,
-                "has_non_monetary_result": bool(payload.non_monetary_result),
-            },
+    with outcome_evidence_context(
+        resolved_on=payload.resolved_on,
+        non_monetary_result=payload.non_monetary_result,
+        resolution_channel=payload.resolution_channel,
+    ):
+        result = process_outcome(
+            case_id,
+            OutcomeInput(
+                result_type="FAVORABLE",
+                amount_recovered=payload.amount_recovered,
+                verified_by_user=payload.verified_by_user,
+            ),
+            db,
         )
-    )
-    db.commit()
+
     return {
         **result,
         "resolved_on": payload.resolved_on.isoformat() if payload.resolved_on else None,
