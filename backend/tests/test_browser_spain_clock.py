@@ -25,6 +25,7 @@ def test_evidence_forms_share_spain_civil_calendar_clock():
     for filename in ["submission_evidence.js", "response_evidence.js", "outcome_evidence.js"]:
         source = (STATIC / filename).read_text(encoding="utf-8")
         assert "mcrSpainDateIso()" in source
+        assert source.count("dateInput.max = mcrSpainDateIso();") >= 2
         assert "localTodayIso" not in source
 
     guidance = (STATIC / "deadline_guidance.js").read_text(encoding="utf-8")
