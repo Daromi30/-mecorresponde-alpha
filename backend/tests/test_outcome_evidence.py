@@ -1,12 +1,14 @@
 from datetime import date
 from pathlib import Path
+import pytest
 import shutil
 import subprocess
 import tempfile
 
 from sqlalchemy import select
 
-from app.models import AuditEvent, Outcome
+from app.models import Action, AuditEvent, Case, Outcome
+from app.routers import cases_v2 as cases_router_module
 
 
 STATIC = Path(__file__).parents[1] / "app" / "static"
@@ -137,6 +139,58 @@ def test_unknown_execution_date_remains_unknown(client, db):
     ).one()
     assert evidence.payload_json["resolved_on"] is None
 
+
+
+def test_outcome_evidence_failure_rolls_back_case_action_outcome_and_audit(client, db, monkeypatch):
+    case_id = create_case_awaiting_execution(client)
+    before_case = db.get(Case, case_id)
+    assert before_case is not None
+    assert before_case.status == "RESOLVED_PENDING_EXECUTION"
+    action_id = before_case.current_action_id
+    assert action_id is not None
+    before_action = db.get(Action, action_id)
+    assert before_action is not None
+    assert before_action.type == "VERIFY_EXECUTION"
+    assert before_action.status == "OPEN"
+
+    real_audit = cases_router_module.audit
+
+    def fail_evidence_audit(db_session, audited_case_id, event_type, payload=None):
+        if event_type == "OUTCOME_EVIDENCE_RECORDED":
+            raise RuntimeError("synthetic outcome evidence failure")
+        return real_audit(db_session, audited_case_id, event_type, payload)
+
+    monkeypatch.setattr(cases_router_module, "audit", fail_evidence_audit)
+
+    with pytest.raises(RuntimeError, match="synthetic outcome evidence failure"):
+        client.post(
+            f"/api/cases/{case_id}/outcome/evidenced",
+            json={
+                "result_type": "FAVORABLE",
+                "amount_recovered": 35.5,
+                "verified_by_user": True,
+                "resolved_on": "2026-09-15",
+                "resolution_channel": "bank_or_card_refund",
+                "non_monetary_result": None,
+            },
+        )
+
+    db.rollback()
+    db.expire_all()
+    restored_case = db.get(Case, case_id)
+    assert restored_case is not None
+    assert restored_case.status == "RESOLVED_PENDING_EXECUTION"
+    assert restored_case.current_action_id == action_id
+    restored_action = db.get(Action, action_id)
+    assert restored_action is not None
+    assert restored_action.status == "OPEN"
+    assert db.scalar(select(Outcome).where(Outcome.case_id == case_id)) is None
+    assert db.scalars(
+        select(AuditEvent).where(
+            AuditEvent.case_id == case_id,
+            AuditEvent.event_type == "OUTCOME_EVIDENCE_RECORDED",
+        )
+    ).all() == []
 
 def test_outcome_evidence_ui_is_loaded_and_requires_detail_for_zero_cash_resolution():
     loader = (STATIC / "dossier_quality.js").read_text(encoding="utf-8")
