@@ -98,7 +98,7 @@ def test_legacy_diagnosis_card_does_not_offer_prepare_from_viability_alone():
     # outbound preparation from a DIAGNOSED case.
     next_step = (STATIC / "case_next_step.js").read_text(encoding="utf-8")
     assert "isPreparableAction(type)" in next_step
-    assert "action: () => prepareClaim()" in next_step
+    assert "runNextStepMutation(() => prepareClaim(), 'Preparando…')" in next_step
 
 
 def test_diagnosed_case_does_not_offer_claimant_diagnosis_replay_when_questions_are_done():
