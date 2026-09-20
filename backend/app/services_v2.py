@@ -15,6 +15,7 @@ from .engine.e04a import evaluate_e04a
 from .engine.e04b import evaluate_e04b
 from .engine.gateway import DeterministicAlphaGateway
 from .engine.questions import next_question
+from .evidence_context import current_company_response_evidence
 from .models import (
     AIRun,
     Action,
@@ -568,16 +569,32 @@ def confirm_document_fact(
 
 def analyze_company_response(db: Session, case: Case, text: str):
     result = gateway.analyze_response(text)
+    evidence = current_company_response_evidence()
     db.add(AIRun(case_id=case.id, task="analyze_response", structured_output=result))
-    db.add(
-        Communication(
-            case_id=case.id,
-            direction="INBOUND",
-            channel="user_paste",
-            body=text,
-            received_at=datetime.now(timezone.utc),
-        )
+    communication = Communication(
+        case_id=case.id,
+        direction="INBOUND",
+        channel=evidence.channel if evidence is not None else "user_paste",
+        body=text,
+        occurred_on=evidence.received_on if evidence is not None else None,
+        received_at=datetime.now(timezone.utc),
+        reference_number=evidence.reference_number if evidence is not None else None,
     )
+    db.add(communication)
+    if evidence is not None:
+        # Flush only to materialize the communication id; the transaction is still uncommitted.
+        db.flush()
+        audit(
+            db,
+            case.id,
+            "COMPANY_RESPONSE_RECORDED",
+            {
+                "communication_id": communication.id,
+                "received_on": evidence.received_on.isoformat() if evidence.received_on else None,
+                "channel": evidence.channel,
+                "reference": evidence.reference_number,
+            },
+        )
     argument_fact_map = {
         "INDEPENDENT_ADDON_CONTRACT": "company.asserts_independent_addon_contract",
         "EXPRESS_KEEP_REQUEST": "company.asserts_keep_request",
