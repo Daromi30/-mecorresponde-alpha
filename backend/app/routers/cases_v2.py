@@ -9,7 +9,7 @@ from ..case_lifecycle import complete_current_action, set_current_action
 from ..config import settings
 from ..db import get_db
 from ..documents import save_upload
-from ..evidence_context import current_outcome_evidence
+from ..evidence_context import atomic_workflow_transaction, current_outcome_evidence
 from ..models import Action, AuditEvent, Case, Communication, Deadline, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
 from ..schemas_v2 import (
@@ -246,11 +246,19 @@ def document_fact(
 @router.post("/{case_id}/diagnose")
 def run_diagnosis(case_id: str, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
-    try:
-        result, decision, action = diagnose(db, case)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc))
-    return {**result.to_dict(), "decision_id": decision.id, "action_id": action.id}
+    with atomic_workflow_transaction(db) as commit:
+        try:
+            result, decision, action = diagnose(db, case)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+        response = {
+            **result.to_dict(),
+            "decision_id": decision.id,
+            "action_id": action.id,
+        }
+        commit()
+        return response
 
 
 @router.post("/{case_id}/prepare-claim")
