@@ -122,4 +122,5 @@ def test_startup_logs_same_internal_readiness_used_by_admin_route():
     source = MAIN.read_text(encoding="utf-8")
     assert "beta_readiness as compute_beta_readiness" in source
     assert "readiness = compute_beta_readiness(db)" in source
+    assert "internal_beta_readiness: unavailable" in source
     assert "synthetic_internal_beta_ready=%s internal_beta_blockers=%s" in source
