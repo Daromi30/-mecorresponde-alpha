@@ -1,9 +1,4 @@
 (() => {
-  function localTodayIso() {
-    const now = new Date();
-    const offset = now.getTimezoneOffset() * 60000;
-    return new Date(now.getTime() - offset).toISOString().slice(0, 10);
-  }
 
   function ensureSubmissionEvidenceFields() {
     let fields = document.getElementById('submissionEvidenceFields');
@@ -37,7 +32,7 @@
       <div style="margin-top:10px"><label for="submissionReference">Referencia o justificante <span class="muted">(opcional)</span></label><input id="submissionReference" type="text" maxlength="100" autocomplete="off" placeholder="Ej.: RECL-2026-12345"></div>`;
 
     const dateInput = fields.querySelector('#submissionSentOn');
-    dateInput.max = localTodayIso();
+    dateInput.max = mcrSpainDateIso();
     if (actions?.parentNode === card) card.insertBefore(fields, actions);
     else claim.insertAdjacentElement('afterend', fields);
     return fields;
@@ -51,7 +46,7 @@
     const reference = (fields?.querySelector('#submissionReference')?.value || '').trim();
 
     if (!sentOn) return message('Indica la fecha real en la que enviaste la acción.', 'error');
-    if (sentOn > localTodayIso()) return message('La fecha de envío no puede estar en el futuro.', 'error');
+    if (sentOn > mcrSpainDateIso()) return message('La fecha de envío no puede estar en el futuro.', 'error');
     if (!channel) return message('Selecciona el canal de envío, o indica que no lo sabes.', 'error');
 
     const button = document.querySelector('#claimCard .actions button');

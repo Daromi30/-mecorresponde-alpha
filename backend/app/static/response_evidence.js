@@ -1,9 +1,4 @@
 (() => {
-  function localTodayIso() {
-    const now = new Date();
-    const offset = now.getTimezoneOffset() * 60000;
-    return new Date(now.getTime() - offset).toISOString().slice(0, 10);
-  }
 
   function ensureResponseEvidenceFields() {
     let fields = document.getElementById('responseEvidenceFields');
@@ -35,7 +30,7 @@
       <div style="margin-top:10px"><label for="responseReference">Referencia de la respuesta <span class="muted">(opcional)</span></label><input id="responseReference" type="text" maxlength="100" autocomplete="off" placeholder="Ej.: RES-2026-9876"></div>`;
 
     const dateInput = fields.querySelector('#responseReceivedOn');
-    dateInput.max = localTodayIso();
+    dateInput.max = mcrSpainDateIso();
     if (actions?.parentNode === card) card.insertBefore(fields, actions);
     else textarea.insertAdjacentElement('afterend', fields);
     return fields;
@@ -65,7 +60,7 @@
     const receivedOn = fields?.querySelector('#responseReceivedOn')?.value || '';
     const channel = fields?.querySelector('#responseChannel')?.value || '';
     const reference = (fields?.querySelector('#responseReference')?.value || '').trim();
-    if (receivedOn && receivedOn > localTodayIso()) {
+    if (receivedOn && receivedOn > mcrSpainDateIso()) {
       return message('La fecha de recepción no puede estar en el futuro.', 'error');
     }
     if (!channel) {

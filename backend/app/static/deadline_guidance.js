@@ -1,9 +1,4 @@
 (() => {
-  function localTodayIso() {
-    const now = new Date();
-    const offset = now.getTimezoneOffset() * 60000;
-    return new Date(now.getTime() - offset).toISOString().slice(0, 10);
-  }
 
   function ensureSubmissionPanel() {
     let panel = document.getElementById('submissionEvidencePanel');
@@ -35,7 +30,7 @@
     claim.appendChild(panel);
 
     const dateInput = document.getElementById('submissionDate');
-    dateInput.max = localTodayIso();
+    dateInput.max = mcrSpainDateIso();
     document.getElementById('confirmSubmissionBtn').addEventListener('click', submitRecordedSubmission);
     document.getElementById('cancelSubmissionBtn').addEventListener('click', () => panel.classList.add('hidden'));
     return panel;
@@ -65,7 +60,7 @@
     const channel = document.getElementById('submissionChannel')?.value || '';
     const reference = (document.getElementById('submissionReference')?.value || '').trim();
     if (!date) return message('Indica la fecha real en la que enviaste la reclamación.', 'error');
-    if (date > localTodayIso()) return message('La fecha de envío no puede estar en el futuro.', 'error');
+    if (date > mcrSpainDateIso()) return message('La fecha de envío no puede estar en el futuro.', 'error');
     if (!channel) return message('Selecciona el canal por el que enviaste la reclamación.', 'error');
 
     const button = document.getElementById('confirmSubmissionBtn');
@@ -98,7 +93,7 @@
     panel.classList.remove('hidden');
     const dateInput = document.getElementById('submissionDate');
     if (dateInput) {
-      dateInput.max = localTodayIso();
+      dateInput.max = mcrSpainDateIso();
       dateInput.focus();
     }
     panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});

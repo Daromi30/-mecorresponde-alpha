@@ -1,9 +1,4 @@
 (() => {
-  function localTodayIso() {
-    const now = new Date();
-    const offset = now.getTimezoneOffset() * 60000;
-    return new Date(now.getTime() - offset).toISOString().slice(0, 10);
-  }
 
   function ensureOutcomeEvidenceFields() {
     let fields = document.getElementById('outcomeEvidenceFields');
@@ -37,7 +32,7 @@
       <div style="margin-top:10px"><label for="outcomeDetail">Qué ocurrió <span class="muted">(especialmente si no hubo devolución de dinero)</span></label><textarea id="outcomeDetail" rows="3" maxlength="2000" placeholder="Ej.: cancelaron el servicio y dejaron de cobrarlo; repararon el producto; corrigieron el contrato…"></textarea></div>`;
 
     const dateInput = fields.querySelector('#outcomeResolvedOn');
-    dateInput.max = localTodayIso();
+    dateInput.max = mcrSpainDateIso();
     if (actions?.parentNode === card) card.insertBefore(fields, actions);
     else amount.insertAdjacentElement('afterend', fields);
     return fields;
@@ -51,7 +46,7 @@
     const channel = fields?.querySelector('#outcomeChannel')?.value || '';
     const detail = (fields?.querySelector('#outcomeDetail')?.value || '').trim();
 
-    if (resolvedOn && resolvedOn > localTodayIso()) {
+    if (resolvedOn && resolvedOn > mcrSpainDateIso()) {
       return message('La fecha de cumplimiento no puede estar en el futuro.', 'error');
     }
     if (verified && !channel) {

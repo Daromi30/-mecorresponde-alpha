@@ -97,6 +97,7 @@
   loadEnhancement('/demo/case_handoff.js', 'mcr-case-handoff');
   loadEnhancement('/demo/resolved_case_summary.js', 'mcr-resolved-case-summary');
   loadEnhancement('/demo/communication_history.js', 'mcr-communication-history');
+  loadEnhancement('/demo/browser_clock.js', 'mcr-browser-clock');
   loadEnhancement('/demo/deadline_guidance.js', 'mcr-deadline-guidance');
   loadEnhancement('/demo/documentation.js', 'mcr-documentation');
   loadEnhancement('/demo/submission_evidence.js', 'mcr-submission-evidence');
