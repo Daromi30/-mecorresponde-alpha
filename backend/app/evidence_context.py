@@ -4,7 +4,9 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date
-from typing import Iterator
+from typing import Callable, Iterator
+
+from sqlalchemy.orm import Session
 
 
 @dataclass(frozen=True)
@@ -77,3 +79,28 @@ def outcome_evidence_context(
         yield
     finally:
         _OUTCOME_EVIDENCE.reset(token)
+
+
+@contextmanager
+def atomic_workflow_transaction(db: Session) -> Iterator[Callable[[], None]]:
+    """Defer workflow-internal commits until one outer evidenced-operation commit.
+
+    The resolution engine contains mature service functions that commit at intermediate
+    lifecycle boundaries. Evidenced endpoints need stronger atomicity because the state
+    transition and the user's real-world evidence are one logical operation. For the duration
+    of this context, internal commits become flushes; callers receive the original commit
+    method and invoke it exactly once after the workflow finishes successfully.
+    """
+    real_commit = db.commit
+
+    def flush_instead_of_commit() -> None:
+        db.flush()
+
+    db.commit = flush_instead_of_commit  # type: ignore[method-assign]
+    try:
+        yield real_commit
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.commit = real_commit  # type: ignore[method-assign]
