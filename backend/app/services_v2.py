@@ -16,6 +16,7 @@ from .engine.e04b import evaluate_e04b
 from .engine.gateway import DeterministicAlphaGateway
 from .engine.questions import next_question
 from .evidence_context import current_company_response_evidence
+from .family_manifest import family_title
 from .models import (
     AIRun,
     Action,
@@ -72,20 +73,11 @@ def create_human_review(
 
 def create_case(db: Session, message: str) -> Case:
     classification = gateway.classify(message)
-    titles = {
-        "E04-B": "Mantenimiento tras cambio de comercializadora",
-        "E04-A": "Servicio adicional no contratado",
-        "E02-A": "Posible sobrefacturación eléctrica",
-        "E02-B": "Posible cobro duplicado",
-        "C01": "Producto defectuoso o garantía rechazada",
-        "C04": "Pedido no entregado",
-        "C05": "Desistimiento o devolución de compra a distancia",
-    }
     case = Case(
         status="INTAKE",
         vertical=classification["vertical"],
         family=classification["family"],
-        title=titles.get(classification["family"], "Caso por clasificar"),
+        title=family_title(classification["family"]),
         raw_intake=message,
     )
     db.add(case)
