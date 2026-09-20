@@ -68,7 +68,11 @@
       caseId = null;
       showLanding();
       if (error?.status === 404) {
-        clearActiveCase();
+        if (currentUser) {
+          clearActiveCase();
+          return;
+        }
+        message('Este enlace puede corresponder a un expediente guardado en una cuenta. Inicia sesión para intentar reabrirlo.', 'notice');
         return;
       }
       message('No he podido reabrir el expediente ahora. Puedes volver a intentarlo recargando la página.', 'error');
