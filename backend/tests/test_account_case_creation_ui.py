@@ -63,3 +63,19 @@ def test_post_login_session_loss_cannot_fall_through_to_saved_case_success():
     success_copy = block.index("Expediente guardado en tu cuenta.", close_account)
 
     assert load_cases < session_guard < expired_copy < early_return < close_account < success_copy
+
+
+def test_created_case_session_expiry_does_not_offer_dead_retry_button():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    start = html.index("async function createCase(){")
+    end = html.index("async function refresh(){", start)
+    block = html[start:end]
+
+    load_cases = block.index("if(currentUser)await loadMyCases();")
+    claim_error = block.index("if(accountClaimError)", load_cases)
+    signed_in_retry = block.index("if(currentUser){message(", claim_error)
+    expired_copy = block.index("tu sesión ha caducado. Vuelve a iniciar sesión", signed_in_retry)
+
+    assert load_cases < claim_error < signed_in_retry < expired_copy
+    assert "retryCaseClaimBtn" in block[signed_in_retry:expired_copy]
+    assert "retryCaseClaimBtn" not in block[expired_copy:]
