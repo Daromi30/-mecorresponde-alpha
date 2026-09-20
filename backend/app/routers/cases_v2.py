@@ -162,17 +162,21 @@ def fact(case_id: str, payload: FactUpsert, db: Session = Depends(get_db)):
             date.fromisoformat(value)
         except ValueError:
             raise HTTPException(422, "Use YYYY-MM-DD")
-    created = upsert_fact(
-        db,
-        case,
-        payload.key,
-        value,
-        payload.state,
-        payload.materiality,
-        payload.confidence,
-        payload.user_confirmed,
-    )
-    return {"fact_id": created.id, "next_question": get_next_question(db, case)}
+
+    with atomic_workflow_transaction(db) as commit:
+        created = upsert_fact(
+            db,
+            case,
+            payload.key,
+            value,
+            payload.state,
+            payload.materiality,
+            payload.confidence,
+            payload.user_confirmed,
+        )
+        response = {"fact_id": created.id, "next_question": get_next_question(db, case)}
+        commit()
+        return response
 
 
 @router.post("/{case_id}/charges")
@@ -187,8 +191,16 @@ def charges(case_id: str, payload: ChargesInput, db: Session = Depends(get_db)):
     if not key:
         raise HTTPException(422, "This case family does not use the charges endpoint")
     values = [item.model_dump(mode="json") for item in payload.charges]
-    created = upsert_fact(db, case, key, values, state="confirmed", user_confirmed=True)
-    return {"fact_id": created.id, "fact_key": key, "next_question": get_next_question(db, case)}
+
+    with atomic_workflow_transaction(db) as commit:
+        created = upsert_fact(db, case, key, values, state="confirmed", user_confirmed=True)
+        response = {
+            "fact_id": created.id,
+            "fact_key": key,
+            "next_question": get_next_question(db, case),
+        }
+        commit()
+        return response
 
 
 @router.post("/{case_id}/documents")
