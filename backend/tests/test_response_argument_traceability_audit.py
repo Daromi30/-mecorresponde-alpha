@@ -32,6 +32,7 @@ ARGUMENT_CASES = [
     ("DELIVERY_PROOF_ASSERTED", "El pedido consta como entregado.", "company.asserts_delivered"),
     ("WITHDRAWAL_LATE_ASSERTED", "Desistimiento fuera de plazo.", "company.asserts_withdrawal_late"),
     ("WITHDRAWAL_EXCEPTION_ASSERTED", "El producto está excluido del desistimiento.", "company.asserts_withdrawal_exception"),
+    ("INTERNET_INTERRUPTION_COMPENSATION_APPLIED_ASSERTED", "La compensación ya aplicada consta en su factura.", "company.asserts_internet_interruption_compensation_applied"),
 ]
 
 
@@ -50,6 +51,7 @@ FAMILY_DENIALS = {
     "C03": ("El producto coincide con lo pedido.", "company.asserts_goods_match_contract"),
     "C04": ("El pedido consta como entregado.", "company.asserts_delivered"),
     "C05": ("Desistimiento fuera de plazo.", "company.asserts_withdrawal_late"),
+    "T01": ("La compensación ya aplicada consta en su factura.", "company.asserts_internet_interruption_compensation_applied"),
 }
 
 
