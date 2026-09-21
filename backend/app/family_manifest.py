@@ -28,6 +28,7 @@ FAMILY_MANIFEST: dict[str, FamilyManifestEntry] = {
     "B03": FamilyManifestEntry("B03","banking","Comisión bancaria por servicio no solicitado, no aceptado o no prestado",("BANK_FEE_REQUEST_AND_SERVICE_CURRENT",)),
     "R01": FamilyManifestEntry("R01","rentals","Fianza de alquiler no devuelta tras finalizar el arrendamiento",("RENTAL_DEPOSIT_RETURN_CURRENT",)),
     "S01": FamilyManifestEntry("S01","insurance","Seguro: importe mínimo reconocido no pagado tras la declaración del siniestro",("INSURANCE_MINIMUM_PAYMENT_CURRENT",)),
+    "S02": FamilyManifestEntry("S02","insurance","Oposición del tomador a la renovación automática del seguro",("INSURANCE_POLICYHOLDER_NON_RENEWAL_CURRENT",)),
     "C01": FamilyManifestEntry("C01","purchases","Producto defectuoso o garantía rechazada",("GOODS_CONFORMITY_CURRENT",)),
     "C02": FamilyManifestEntry("C02","purchases","Reparación fallida, repetida o demorada",("GOODS_POST_CONFORMITY_ATTEMPT",)),
     "C03": FamilyManifestEntry("C03","purchases","Producto equivocado, incompleto o distinto de lo contratado",("GOODS_CONTRACT_DESCRIPTION",)),
