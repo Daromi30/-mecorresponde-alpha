@@ -5,11 +5,14 @@ from sqlalchemy.orm import Session
 
 from . import services_v2 as svc
 from .engine.s01 import evaluate_s01
+from .engine.s02 import evaluate_s02
 
 
 def register_insurance_family() -> None:
     svc.EVALUATORS["S01"] = evaluate_s01
     svc.FAMILY_RULES["S01"] = ["INSURANCE_MINIMUM_PAYMENT_CURRENT"]
+    svc.EVALUATORS["S02"] = evaluate_s02
+    svc.FAMILY_RULES["S02"] = ["INSURANCE_POLICYHOLDER_NON_RENEWAL_CURRENT"]
 
 
 def seed_insurance_legal(db: Session) -> dict[str, object]:
@@ -45,4 +48,30 @@ def seed_insurance_legal(db: Session) -> dict[str, object]:
             "del artículo 20 quedan fuera de esta ruta automática."
         ),
     )
-    return {"INSURANCE_MINIMUM_PAYMENT_CURRENT": rule}
+    nonrenewal = svc._ensure_rule(
+        db,
+        "INSURANCE_POLICYHOLDER_NON_RENEWAL_CURRENT",
+        1,
+        date(2016, 1, 1),
+        "LCS_1980",
+        "22.2 y 22.5",
+        {
+            "policyholder": True,
+            "non_life_policy": True,
+            "automatic_renewal": True,
+            "written_opposition": True,
+        },
+        {
+            "policyholder_notice_months": 1,
+            "life_insurance_incompatibility_requires_review": True,
+        },
+        (
+            "El artículo 22.2 permite al tomador oponerse por escrito a la prórroga con al menos un mes de "
+            "antelación a la conclusión del período en curso. S02 se limita a seguros no vida y no decide "
+            "cancelaciones a mitad de período ni comunicaciones tardías."
+        ),
+    )
+    return {
+        "INSURANCE_MINIMUM_PAYMENT_CURRENT": rule,
+        "INSURANCE_POLICYHOLDER_NON_RENEWAL_CURRENT": nonrenewal,
+    }

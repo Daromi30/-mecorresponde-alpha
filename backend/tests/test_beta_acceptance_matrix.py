@@ -270,6 +270,17 @@ SCENARIOS = {
             "insurance.minimum_payment_received": False,
         },
     },
+    "S02": {
+        "message": "No quiero que se renueve automáticamente mi seguro cuando venza",
+        "facts": {
+            "insurance.contract_role": "policyholder",
+            "insurance.policy_kind": "non_life",
+            "insurance.automatic_renewal_provided": True,
+            "insurance.policyholder_wants_nonrenewal": True,
+            "insurance.current_period_end_date": "2026-12-31",
+            "insurance.current_period_end_date_evidence": True,
+        },
+    },
     "C01": {
         "message": "Compré un televisor en una tienda, está defectuoso y me rechazan la garantía",
         "facts": {

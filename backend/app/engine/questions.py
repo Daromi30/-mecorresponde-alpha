@@ -694,7 +694,61 @@ def _s01_question(facts: dict[str, FactValue]) -> dict:
     return {"done": True, "question": None, "field": None}
 
 
+
+def _s02_question(facts: dict[str, FactValue]) -> dict:
+    order = [
+        (
+            "insurance.contract_role",
+            "¿Eres el tomador que figura como parte contratante de la póliza?",
+            "choice:policyholder|insured_only|beneficiary_only|other_or_unknown",
+        ),
+        (
+            "insurance.policy_kind",
+            "¿Qué tipo de póliza es?",
+            "choice:non_life|life|unknown",
+        ),
+        (
+            "insurance.automatic_renewal_provided",
+            "¿La póliza prevé que se renueve o prorrogue automáticamente al terminar el período actual?",
+            "boolean",
+        ),
+        (
+            "insurance.policyholder_wants_nonrenewal",
+            "¿Quieres impedir la próxima renovación y finalizar la póliza al terminar el período actual?",
+            "boolean",
+        ),
+    ]
+    for key, question, input_type in order:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if _value(facts, "insurance.contract_role") != "policyholder":
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "insurance.policy_kind") != "non_life":
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "insurance.automatic_renewal_provided") is not True:
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "insurance.policyholder_wants_nonrenewal") is not True:
+        return {"done": True, "question": None, "field": None}
+
+    if "insurance.current_period_end_date" not in facts:
+        return _ask(
+            "insurance.current_period_end_date",
+            "¿Qué día termina el período de seguro actualmente en curso según la póliza?",
+            "date",
+        )
+    if "insurance.current_period_end_date_evidence" not in facts:
+        return _ask(
+            "insurance.current_period_end_date_evidence",
+            "¿Tienes la póliza o un documento que acredite esa fecha de finalización?",
+            "boolean",
+        )
+    return {"done": True, "question": None, "field": None}
+
+
 def next_question(facts: dict[str, FactValue], family: str | None) -> dict:
+    if family == "S02":
+        return _s02_question(facts)
     if family == "S01":
         return _s01_question(facts)
     if family == "R01":

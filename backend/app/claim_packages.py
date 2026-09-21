@@ -14,7 +14,7 @@ from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, 
 # These families were historically installed as a chain of extension wrappers.
 # The registry gives them one final dispatch boundary without changing their public
 # claim-package contract.
-REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02", "V03", "B01", "R01", "S01"})
+REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02", "V03", "B01", "R01", "S01", "S02"})
 
 
 @dataclass(frozen=True)
@@ -413,6 +413,25 @@ def _render_s01(ctx: ClaimContext) -> dict[str, Any]:
     }
 
 
+def _render_s02(ctx: ClaimContext) -> dict[str, Any]:
+    if ctx.next_action != "PREPARE_S02_POLICY_NONRENEWAL_NOTICE":
+        raise ValueError("Current S02 action requires information or human review rather than a non-renewal notice")
+    period_end = ctx.facts.get("insurance.current_period_end_date")
+    text = (
+        "Por medio de la presente comunico, como tomador de la póliza, mi oposición a su próxima prórroga "
+        f"y solicito que el contrato finalice al término del período en curso, previsto para {period_end}. "
+        "La comunicación se formula conforme al artículo 22.2 de la Ley 50/1980 de Contrato de Seguro, "
+        "con al menos un mes de antelación según la fecha acreditada del expediente. "
+        "Esta comunicación se limita a impedir la próxima renovación: no pretende resolver anticipadamente el período en curso "
+        "ni solicita devolución de prima no verificada."
+    )
+    return {
+        "claim_type": "S02_POLICYHOLDER_NONRENEWAL_NOTICE",
+        "amount": 0.0,
+        "text": text,
+    }
+
+
 RENDERERS: dict[str, Renderer] = {
     "E01": _render_e01,
     "E03": _render_e03,
@@ -429,6 +448,7 @@ RENDERERS: dict[str, Renderer] = {
     "B01": _render_b01,
     "R01": _render_r01,
     "S01": _render_s01,
+    "S02": _render_s02,
 }
 
 
