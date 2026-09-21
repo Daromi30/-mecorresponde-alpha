@@ -11,6 +11,7 @@ from ..config import settings
 from ..db import engine, get_db
 from ..family_manifest import FAMILY_MANIFEST, supported_family_codes
 from ..models import LegalRuleVersion, LegalSource
+from ..privacy_information import privacy_information_status
 from ..services_v2 import EVALUATORS, FAMILY_RULES
 from ..storage import StorageConfigurationError, storage_status
 
@@ -27,7 +28,6 @@ router = APIRouter(
 # real PostgreSQL custom dump and isolated restore rehearsal.
 DATABASE_LIFECYCLE_MANAGED = False
 DATABASE_RECOVERY_AVAILABLE = True
-PRIVACY_INFORMATION_PUBLISHED = False
 
 # These capabilities are executable CI contracts, not launch claims. The checks
 # are intentionally limited to an internal beta using synthetic/test data. If any
@@ -157,6 +157,7 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
     backend = engine.url.get_backend_name()
     email_operational = settings.transactional_email_operational
     verification_enforced = bool(email_operational and settings.email_verification_enforced)
+    privacy_status = privacy_information_status(settings)
 
     persistent_database = _check(
         "persistent_database",
@@ -279,15 +280,18 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
         _storage_check(),
         _check(
             "privacy_information",
-            PRIVACY_INFORMATION_PUBLISHED,
+            privacy_status.ready,
             label="Información de privacidad para usuarios reales",
             detail=(
                 "La información de privacidad revisada está publicada en el momento de recogida de datos."
-                if PRIVACY_INFORMATION_PUBLISHED
+                if privacy_status.ready
                 else "No debe abrirse una beta con datos personales reales hasta identificar al responsable y publicar información revisada sobre fines, base jurídica, conservación, destinatarios/transferencias y derechos."
             ),
             severity="BETA_BLOCKER",
             metadata={
+                "reviewed": privacy_status.reviewed,
+                "notice_version": privacy_status.notice_version,
+                "missing_fields": list(privacy_status.missing_fields),
                 "official_guidance": [
                     "https://www.aepd.es/derechos-y-deberes/conoce-tus-derechos/derecho-de-informacion",
                     "https://eur-lex.europa.eu/eli/reg/2016/679/oj",

@@ -30,16 +30,24 @@ class PrivacyInformationStatus:
 
 
 def privacy_information_status(settings: Any) -> PrivacyInformationStatus:
-    missing = tuple(
+    missing = [
         field
         for field in REQUIRED_PRIVACY_FIELDS
         if not str(getattr(settings, field, "") or "").strip()
+    ]
+    dpo_applicability_confirmed = bool(
+        getattr(settings, "privacy_dpo_applicability_confirmed", False)
     )
+    dpo_required = bool(getattr(settings, "privacy_dpo_required", False))
+    if not dpo_applicability_confirmed:
+        missing.append("privacy_dpo_applicability_confirmed")
+    elif dpo_required and not str(getattr(settings, "privacy_dpo_contact", "") or "").strip():
+        missing.append("privacy_dpo_contact")
     reviewed = bool(getattr(settings, "privacy_information_reviewed", False))
     return PrivacyInformationStatus(
         ready=reviewed and not missing,
         reviewed=reviewed,
-        missing_fields=missing,
+        missing_fields=tuple(missing),
         notice_version=str(getattr(settings, "privacy_notice_version", "") or "").strip(),
     )
 

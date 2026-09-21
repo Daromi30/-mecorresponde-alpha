@@ -16,6 +16,7 @@ from .engine.model_contracts import ModelOutputRejected
 from .family_bootstrap import install_all_families
 from .migrations import upgrade_database
 from .models import LegalSource
+from .privacy_information import render_first_layer, render_full_privacy_page
 from .seo_pages import SEO_PROBLEM_PAGES
 
 SUPPORTED_FAMILIES = install_all_families()
@@ -155,6 +156,12 @@ def _render_product_home() -> str:
         "</body>",
         f'{_problem_library_html()}\n<script src="/demo/dossier_quality.js"></script>\n</body>',
         1,
+    )
+    # The notice is injected at the collection point only when the complete,
+    # reviewed notice is operational. An incomplete configuration shows no
+    # misleading partial privacy statement.
+    html = html.replace(
+        '<div id="mcr-privacy-layer"></div>', render_first_layer(settings), 1
     )
     return html.replace("</head>", f"{metadata}</head>", 1)
 
@@ -334,6 +341,23 @@ app.include_router(seo_router)
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def product_home():
     return HTMLResponse(_render_product_home())
+
+
+@app.get("/privacidad", response_class=HTMLResponse, include_in_schema=False)
+def privacy_information_page():
+    try:
+        return HTMLResponse(render_full_privacy_page(settings))
+    except ValueError:
+        # A route must never make an incomplete notice look publishable. The
+        # product remains synthetic-only until real information is configured.
+        return HTMLResponse(
+            "<!doctype html><html lang=\"es\"><meta charset=\"utf-8\">"
+            "<title>Información de privacidad no disponible</title>"
+            "<p>La información de privacidad para datos reales todavía no está "
+            "configurada. Este entorno no acepta datos personales reales.</p>",
+            status_code=503,
+            headers={"Cache-Control": "no-store"},
+        )
 
 
 @app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
