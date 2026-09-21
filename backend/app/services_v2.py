@@ -600,6 +600,7 @@ def analyze_company_response(db: Session, case: Case, text: str):
         "WITHDRAWAL_LATE_ASSERTED": "company.asserts_withdrawal_late",
         "WITHDRAWAL_EXCEPTION_ASSERTED": "company.asserts_withdrawal_exception",
         "INTERNET_INTERRUPTION_COMPENSATION_APPLIED_ASSERTED": "company.asserts_internet_interruption_compensation_applied",
+        "FLIGHT_REFUND_ALREADY_PAID_ASSERTED": "company.asserts_flight_refund_already_paid",
     }
     for argument in result["arguments"]:
         key = argument_fact_map.get(argument)
