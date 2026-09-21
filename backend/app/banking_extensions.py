@@ -74,8 +74,4 @@ def install_banking_extensions():
         return {"claim_type":"B02_AUTHORIZED_DIRECT_DEBIT_REFUND","amount":amount,"text":f"Solicito la devolución pendiente de {amount:.2f} € del adeudo domiciliado autorizado, conforme a los artículos 48.2 y 49 del Real Decreto-ley 19/2018. La solicitud se formula dentro de ocho semanas desde el adeudo y el expediente no identifica una excepción contractual aplicable del artículo 48.4."}
     cp.RENDERERS["B02"]=render_b02
 
-    from . import seo_pages as sp
-    if not any(p.family=="B02" for p in sp.SEO_PROBLEM_PAGES):
-        sp.SEO_PROBLEM_PAGES += (sp.SeoProblemPage("B02","banking","banca","devolver-recibo-domiciliado-autorizado","Devolver un recibo domiciliado autorizado: qué comprobar","Qué revisar para solicitar la devolución de un adeudo domiciliado autorizado dentro del plazo legal.","Los adeudos domiciliados autorizados tienen un régimen distinto de las operaciones no autorizadas. Hay que confirmar el tipo de adeudo, el plazo de ocho semanas y si existe una posible excepción contractual.",( "Extracto con el adeudo", "Mandato o contrato marco", "Solicitud y respuesta de la entidad")),)
-        sp.SEO_BY_PATH={(p.vertical_slug,p.slug):p for p in sp.SEO_PROBLEM_PAGES}
     _INSTALLED=True
