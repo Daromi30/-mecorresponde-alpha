@@ -279,7 +279,8 @@ class DeterministicAlphaGateway:
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
         if any(x in t for x in [
-            "vehiculo manipulado por otro taller", "manipulado por un tercero",
+            "vehiculo manipulado por otro taller", "vehiculo fue manipulado por otro taller",
+            "fue manipulado por otro taller", "manipulado por un tercero",
             "reparado por otro taller despues", "intervencion de otro taller",
         ]):
             return {"type": "DENIAL", "arguments": ["AUTOMOTIVE_THIRD_PARTY_MANIPULATION_ASSERTED"]}
