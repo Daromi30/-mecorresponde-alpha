@@ -746,7 +746,49 @@ def _s02_question(facts: dict[str, FactValue]) -> dict:
     return {"done": True, "question": None, "field": None}
 
 
+
+def _a01_question(facts: dict[str, FactValue]) -> dict:
+    order = [
+        ("automotive.workshop_in_spain", "¿La reparación la hizo un taller situado en España?", "boolean"),
+        (
+            "automotive.vehicle_type",
+            "¿Qué tipo de vehículo es?",
+            "choice:non_industrial|industrial|unknown",
+        ),
+        ("automotive.repair_delivery_date", "¿Qué día te entregaron el vehículo después de la reparación?", "date"),
+        (
+            "automotive.repair_documentation_available",
+            "¿Tienes factura, orden de reparación u otro documento que identifique la reparación y su fecha?",
+            "boolean",
+        ),
+        ("automotive.failure_date", "¿Qué día apareció la nueva avería?", "date"),
+        ("automotive.km_since_repair", "¿Cuántos kilómetros aproximadamente has recorrido desde la entrega tras la reparación?", "number"),
+        (
+            "automotive.failure_repaired_part_status",
+            "¿La nueva avería afecta a la misma parte o partes que fueron reparadas?",
+            "choice:same_repaired_part|different_part|unclear",
+        ),
+        (
+            "automotive.third_party_manipulation_after_repair",
+            "¿Otro taller o tercero ha manipulado o reparado el vehículo después de aquella reparación?",
+            "boolean",
+        ),
+        (
+            "automotive.refused_hidden_anomaly_causal_status",
+            "¿El taller te había avisado por escrito de otra anomalía oculta relacionada con este fallo y rechazaste repararla?",
+            "choice:no|yes|unknown",
+        ),
+    ]
+    for key, question, input_type in order:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    return {"done": True, "question": None, "field": None}
+
+
 def next_question(facts: dict[str, FactValue], family: str | None) -> dict:
+    if family == "A01":
+        return _a01_question(facts)
     if family == "S02":
         return _s02_question(facts)
     if family == "S01":
