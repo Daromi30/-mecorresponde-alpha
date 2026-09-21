@@ -153,6 +153,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "La compensación depende del ámbito del Reglamento, del motivo de la denegación, la distancia y, en algunos casos, del retraso del transporte alternativo.",
         ("Tarjeta de embarque o reserva", "Prueba de que te presentaste a tiempo", "Comunicación o incidencia de la aerolínea y transporte alternativo"),
     ),
+    SeoProblemPage(
+        "B01", "banking", "banca", "operacion-pago-no-autorizada-reembolso",
+        "Operación bancaria no autorizada: qué comprobar para pedir el reembolso",
+        "Ordena el cargo, las fechas de conocimiento y aviso, y la respuesta de tu entidad cuando niegas haber autorizado una operación.",
+        "La devolución no debe decidirse por una etiqueta de fraude. Esta guía separa la obligación de reembolso, la carga de prueba y las excepciones que requieren revisar el caso.",
+        ("Extracto o movimiento con el cargo", "Justificante de la comunicación a la entidad", "Respuesta del banco y cualquier prueba de autenticación que invoque"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}
