@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     privacy_information_reviewed: bool = False
     privacy_controller_identity: str = ""
     privacy_controller_contact: str = ""
+    # The need for a DPO must be determined expressly; a blank contact alone
+    # must never be interpreted as "not applicable".
+    privacy_dpo_applicability_confirmed: bool = False
+    privacy_dpo_required: bool = False
     privacy_dpo_contact: str = ""
     privacy_purposes: str = ""
     privacy_legal_basis: str = ""
