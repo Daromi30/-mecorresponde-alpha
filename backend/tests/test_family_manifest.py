@@ -6,7 +6,7 @@ from app.family_manifest import FAMILY_MANIFEST, family_title
 def test_family_bootstrap_matches_manifest():
     codes = install_all_families()
     assert set(codes) == set(FAMILY_MANIFEST)
-    assert len(codes) == 14
+    assert len(codes) == len(FAMILY_MANIFEST)
     assert set(svc.EVALUATORS) == set(FAMILY_MANIFEST)
     assert set(svc.FAMILY_RULES) == set(FAMILY_MANIFEST)
 
@@ -16,6 +16,6 @@ def test_every_family_has_a_customer_title_and_legal_rule_mapping():
     for code, entry in FAMILY_MANIFEST.items():
         assert entry.title
         assert family_title(code) == entry.title
-        assert entry.vertical in {"electricity", "purchases"}
+        assert entry.vertical in {"electricity", "purchases", "telecom"}
         assert entry.rule_ids
         assert tuple(svc.FAMILY_RULES[code]) == entry.rule_ids
