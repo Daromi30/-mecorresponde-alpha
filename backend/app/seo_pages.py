@@ -167,6 +167,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "Los adeudos domiciliados autorizados tienen un régimen distinto de las operaciones no autorizadas. Hay que confirmar el tipo de adeudo, el plazo de ocho semanas y si existe una posible excepción contractual.",
         ("Extracto con el adeudo", "Mandato o contrato marco", "Solicitud y respuesta de la entidad"),
     ),
+    SeoProblemPage(
+        "B03", "banking", "banca", "comision-bancaria-servicio-no-solicitado",
+        "Comisión bancaria por un servicio no solicitado o no prestado",
+        "Qué documentación revisar si el banco te cobra una comisión por un servicio que no solicitaste, no aceptaste o que no consta como prestado.",
+        "Las comisiones suelen ser libres en su importe, pero su cobro exige condiciones concretas. Esta guía separa la existencia del servicio y su aceptación de una discusión distinta sobre si el importe es abusivo.",
+        ("Extracto donde figure la comisión", "Contrato o solicitud del servicio", "Respuesta del banco y prueba del servicio o gasto que invoque"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}
