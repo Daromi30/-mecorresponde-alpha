@@ -608,6 +608,7 @@ def analyze_company_response(db: Session, case: Case, text: str):
         "RENT_DEPOSIT_DEDUCTIONS_ASSERTED": "company.asserts_rent_deposit_deductions",
         "INSURANCE_MINIMUM_PAYMENT_PAID_ASSERTED": "company.asserts_insurance_minimum_payment_paid",
         "INSURANCE_NONRENEWAL_LATE_ASSERTED": "company.asserts_insurance_nonrenewal_late",
+        "AUTOMOTIVE_THIRD_PARTY_MANIPULATION_ASSERTED": "company.asserts_automotive_third_party_manipulation",
     }
     for argument in result["arguments"]:
         key = argument_fact_map.get(argument)
