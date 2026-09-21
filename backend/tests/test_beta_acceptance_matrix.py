@@ -150,6 +150,21 @@ SCENARIOS = {
             "telecom.retains_subsidized_terminal": False,
         },
     },
+    "V01": {
+        "message": "Ryanair me ha cancelado el vuelo y quiero que me devuelvan el dinero del billete",
+        "facts": {
+            "travel.flight_cancelled_by_operating_carrier": True,
+            "travel.cancellation_notified_date": "2026-09-18",
+            "travel.departure_airport_in_eu": True,
+            "travel.confirmed_reservation": True,
+            "travel.fare_status": "public_fare",
+            "travel.package_trip": False,
+            "travel.booking_scope": "single_flight",
+            "travel.passenger_choice": "refund",
+            "travel.documented_ticket_price": 189.90,
+            "travel.refund_received": False,
+        },
+    },
     "C01": {
         "message": "Compré un televisor en una tienda, está defectuoso y me rechazan la garantía",
         "facts": {
