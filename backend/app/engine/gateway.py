@@ -267,7 +267,10 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
         if any(x in t for x in [
             "oposicion fuera de plazo", "comunicacion fuera de plazo",
-            "aviso de no renovacion fuera de plazo", "no renovacion fuera de plazo",
+            "comunicacion de no renovacion fuera de plazo",
+            "comunicacion de no renovacion esta fuera de plazo",
+            "aviso de no renovacion fuera de plazo", "aviso de no renovacion esta fuera de plazo",
+            "no renovacion fuera de plazo", "no renovacion esta fuera de plazo",
             "no se comunico con un mes de antelacion",
         ]):
             return {"type": "DENIAL", "arguments": ["INSURANCE_NONRENEWAL_LATE_ASSERTED"]}
