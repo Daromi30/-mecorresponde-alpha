@@ -181,6 +181,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "La devolución de una fianza puede complicarse si existen daños, rentas o suministros discutidos. Esta guía automatiza solo un saldo que ya consta como determinado o reconocido.",
         ("Contrato y justificante de la fianza", "Prueba de entrega de llaves", "Documento o comunicación donde conste el saldo a devolver"),
     ),
+    SeoProblemPage(
+        "S01", "insurance", "seguros", "aseguradora-no-paga-importe-minimo-siniestro",
+        "La aseguradora no paga el importe mínimo reconocido del siniestro",
+        "Qué comprobar si la aseguradora ha reconocido una cantidad mínima pero no la ha pagado tras recibir el parte del siniestro.",
+        "Esta guía separa el pago mínimo del artículo 18 de cuestiones distintas como cobertura, valoración total del daño o intereses de mora.",
+        ("Póliza o documento de cobertura", "Prueba de recepción del parte por la aseguradora", "Comunicación donde la aseguradora reconozca o cuantifique la cantidad mínima"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}

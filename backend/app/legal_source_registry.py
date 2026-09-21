@@ -89,6 +89,12 @@ OFFICIAL_LEGAL_SOURCES: dict[str, OfficialLegalSource] = {
         official_url="https://www.boe.es/eli/es/l/1994/11/24/29/con",
         publication_date=date(1994, 11, 25),
     ),
+    "LCS_1980": OfficialLegalSource(
+        authority="BOE / Jefatura del Estado",
+        title="Ley 50/1980, de 8 de octubre, de Contrato de Seguro",
+        official_url="https://www.boe.es/eli/es/l/1980/10/08/50/con",
+        publication_date=date(1980, 10, 17),
+    ),
     "TRLGDCU": OfficialLegalSource(
         authority="BOE / Jefatura del Estado",
         title=(

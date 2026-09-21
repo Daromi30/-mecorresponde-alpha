@@ -13,6 +13,7 @@ _REGISTERED_WAIT_ACTIONS = frozenset({
     "WAIT_UNTIL_DELIVERY_DUE",
     "WAIT_ADDITIONAL_DELIVERY_PERIOD",
     "WAIT_WITHDRAWAL_REFUND_PERIOD",
+    "WAIT_S01_ARTICLE_18_FORTY_DAYS",
 })
 
 
@@ -52,6 +53,11 @@ def _wait_milestone_elapsed(action_type: str, facts) -> bool:
         sent_date = _as_date(_raw(facts, "purchase.withdrawal_sent_date"))
         refund_due_date = sent_date + timedelta(days=14) if sent_date else None
         return refund_due_date is not None and analysis_date > refund_due_date
+
+    if action_type == "WAIT_S01_ARTICLE_18_FORTY_DAYS":
+        received_date = _as_date(_raw(facts, "insurance.claim_declaration_received_date"))
+        due_date = received_date + timedelta(days=40) if received_date else None
+        return due_date is not None and analysis_date > due_date
 
     return False
 

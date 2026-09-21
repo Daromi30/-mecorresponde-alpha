@@ -14,7 +14,7 @@ from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, 
 # These families were historically installed as a chain of extension wrappers.
 # The registry gives them one final dispatch boundary without changing their public
 # claim-package contract.
-REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02", "V03", "B01", "R01"})
+REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02", "V03", "B01", "R01", "S01"})
 
 
 @dataclass(frozen=True)
@@ -391,6 +391,28 @@ def _render_r01(ctx: ClaimContext) -> dict[str, Any]:
     }
 
 
+def _render_s01(ctx: ClaimContext) -> dict[str, Any]:
+    if ctx.next_action != "PREPARE_S01_INSURANCE_MINIMUM_PAYMENT":
+        raise ValueError("Current S01 action requires information, waiting or human review rather than a payment request")
+    amount = round(float(ctx.decision.claimable_amount or 0.0), 2)
+    if amount <= 0:
+        raise ValueError("No outstanding verified S01 minimum payment to request")
+    received_date = ctx.facts.get("insurance.claim_declaration_received_date")
+    text = (
+        f"Solicito el pago pendiente de {amount:.2f} € correspondiente a la cantidad mínima que la propia aseguradora "
+        "ha reconocido o cuantificado por escrito en relación con este siniestro. Conforme al artículo 18 de la "
+        "Ley 50/1980 de Contrato de Seguro, el asegurador debe efectuar dentro de cuarenta días desde la recepción "
+        f"de la declaración del siniestro (fecha acreditada en el expediente: {received_date}) el pago del importe mínimo "
+        "de lo que pueda deber según las circunstancias conocidas. Esta solicitud no fija la indemnización total, "
+        "no resuelve controversias de cobertura o causalidad y no cuantifica intereses de mora del artículo 20."
+    )
+    return {
+        "claim_type": "S01_ACKNOWLEDGED_INSURANCE_MINIMUM_PAYMENT",
+        "amount": amount,
+        "text": text,
+    }
+
+
 RENDERERS: dict[str, Renderer] = {
     "E01": _render_e01,
     "E03": _render_e03,
@@ -406,6 +428,7 @@ RENDERERS: dict[str, Renderer] = {
     "V03": _render_v03,
     "B01": _render_b01,
     "R01": _render_r01,
+    "S01": _render_s01,
 }
 
 

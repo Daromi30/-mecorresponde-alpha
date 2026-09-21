@@ -617,7 +617,86 @@ def _r01_question(facts: dict[str, FactValue]) -> dict:
     return {"done": True, "question": None, "field": None}
 
 
+
+def _s01_question(facts: dict[str, FactValue]) -> dict:
+    order = [
+        (
+            "insurance.claimant_role",
+            "¿Qué relación tienes con el seguro?",
+            "choice:policyholder|insured|beneficiary|third_party|other_or_unknown",
+        ),
+        (
+            "insurance.counterparty_type",
+            "¿A quién reclamas el pago?",
+            "choice:insurer|consortium|broker|third_party|other_or_unknown",
+        ),
+        (
+            "insurance.claim_declaration_received_by_insurer",
+            "¿La aseguradora recibió ya la declaración o parte del siniestro?",
+            "boolean",
+        ),
+    ]
+    for key, question, input_type in order:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if _value(facts, "insurance.claimant_role") not in {"policyholder", "insured", "beneficiary"}:
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "insurance.counterparty_type") != "insurer":
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "insurance.claim_declaration_received_by_insurer") is not True:
+        return {"done": True, "question": None, "field": None}
+
+    fixed = [
+        (
+            "insurance.claim_declaration_received_date",
+            "¿Qué día consta que la aseguradora recibió la declaración del siniestro?",
+            "date",
+        ),
+        (
+            "insurance.claim_declaration_receipt_evidence",
+            "¿Tienes una prueba de esa fecha de recepción (acuse, email, número de parte o documento equivalente)?",
+            "boolean",
+        ),
+        (
+            "insurance.insurer_acknowledged_minimum_amount",
+            "¿La aseguradora ha reconocido o cuantificado por escrito una cantidad mínima que admite deber por este siniestro?",
+            "boolean",
+        ),
+    ]
+    for key, question, input_type in fixed:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if _value(facts, "insurance.claim_declaration_receipt_evidence") is not True:
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "insurance.insurer_acknowledged_minimum_amount") is not True:
+        return {"done": True, "question": None, "field": None}
+
+    if "insurance.acknowledged_minimum_amount" not in facts:
+        return _ask(
+            "insurance.acknowledged_minimum_amount",
+            "¿Qué cantidad mínima exacta reconoce por escrito la aseguradora?",
+            "money",
+        )
+    if "insurance.minimum_payment_received" not in facts:
+        return _ask(
+            "insurance.minimum_payment_received",
+            "¿La aseguradora ya te ha pagado alguna parte de esa cantidad mínima?",
+            "boolean",
+        )
+    if _value(facts, "insurance.minimum_payment_received") is True and "insurance.minimum_payment_received_amount" not in facts:
+        return _ask(
+            "insurance.minimum_payment_received_amount",
+            "¿Qué importe de esa cantidad mínima te ha pagado ya?",
+            "money",
+        )
+    return {"done": True, "question": None, "field": None}
+
+
 def next_question(facts: dict[str, FactValue], family: str | None) -> dict:
+    if family == "S01":
+        return _s01_question(facts)
     if family == "R01":
         return _r01_question(facts)
     if family == "B01":
