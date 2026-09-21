@@ -39,6 +39,7 @@ ARGUMENT_CASES = [
     ("ARTICLE_48_4_EXCEPTION_ASSERTED", "Usted consintió el adeudo y recibió aviso previo con cuatro semanas.", "company.asserts_article_48_4_exception"),
     ("BANK_FEE_REQUESTED_AND_PROVIDED_ASSERTED", "El servicio fue solicitado y efectivamente prestado.", "company.asserts_bank_fee_requested_and_provided"),
     ("RENT_DEPOSIT_DEDUCTIONS_ASSERTED", "Descontamos de la fianza por daños en la vivienda.", "company.asserts_rent_deposit_deductions"),
+    ("INSURANCE_MINIMUM_PAYMENT_PAID_ASSERTED", "El importe mínimo ya pagado consta en el expediente.", "company.asserts_insurance_minimum_payment_paid"),
 ]
 
 
@@ -47,6 +48,7 @@ FAMILY_DENIALS = {
     "B02": ("Usted consintió el adeudo y recibió aviso previo con cuatro semanas.", "company.asserts_article_48_4_exception"),
     "B03": ("El servicio fue solicitado y efectivamente prestado.", "company.asserts_bank_fee_requested_and_provided"),
     "R01": ("Descontamos de la fianza por daños en la vivienda.", "company.asserts_rent_deposit_deductions"),
+    "S01": ("El importe mínimo ya pagado consta en el expediente.", "company.asserts_insurance_minimum_payment_paid"),
     "E01": ("El precio coincide con el contrato.", "company.asserts_pricing_matches_contract"),
     "E02-A": ("Facturación correcta.", "company.asserts_correct_amount"),
     "E02-B": ("Los cargos corresponden a facturas distintas.", "company.asserts_different_debts"),
