@@ -207,7 +207,7 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
-        if any(x in t for x in ["compensacion por denegacion ya pagada", "ya pagamos la compensacion por denegacion", "compensacion por overbooking abonada"]):
+        if any(x in t for x in ["compensacion por denegacion ya pagada", "compensacion por denegacion ya fue pagada", "ya pagamos la compensacion por denegacion", "compensacion por overbooking abonada"]):
             return {"type": "DENIAL", "arguments": ["DENIED_BOARDING_COMPENSATION_PAID_ASSERTED"]}
         if any(x in t for x in ["reembolso ya realizado", "billete ya reembolsado", "ya hemos reembolsado el billete", "reembolso abonado"]):
             return {"type": "DENIAL", "arguments": ["FLIGHT_REFUND_ALREADY_PAID_ASSERTED"]}
