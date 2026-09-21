@@ -31,16 +31,23 @@ def test_s01_requests_only_acknowledged_outstanding_minimum_after_forty_days():
     assert result.calculation["article_20_default_interest_calculated"] is False
 
 
-def test_s01_waits_before_forty_day_boundary():
-    facts = base_facts()
-    facts["insurance.claim_declaration_received_date"] = fv("2026-09-01")
-    facts["system.analysis_date"] = fv("2026-09-21")
+def test_s01_waits_through_forty_day_boundary_and_applies_after_it():
+    day_40 = base_facts()
+    day_40["insurance.claim_declaration_received_date"] = fv("2026-08-12")
+    day_40["system.analysis_date"] = fv("2026-09-21")
 
-    result = evaluate_s01(facts)
-
+    result = evaluate_s01(day_40)
     assert result.viability == "LOW"
     assert result.next_action == "WAIT_S01_ARTICLE_18_FORTY_DAYS"
     assert result.calculation["forty_days_elapsed"] is False
+
+    day_41 = base_facts()
+    day_41["insurance.claim_declaration_received_date"] = fv("2026-08-11")
+    day_41["system.analysis_date"] = fv("2026-09-21")
+    result = evaluate_s01(day_41)
+    assert result.viability == "HIGH"
+    assert result.next_action == "PREPARE_S01_INSURANCE_MINIMUM_PAYMENT"
+    assert result.calculation["forty_days_elapsed"] is True
 
 
 def test_s01_does_not_decide_unacknowledged_minimum_or_coverage():
