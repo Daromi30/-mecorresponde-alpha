@@ -132,6 +132,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "No todo cambio contractual produce el mismo efecto. Conviene separar qué cambia, por qué, cuándo se comunicó y si la comunicación informa del derecho a resolver sin coste.",
         ("Contrato y condiciones vigentes", "Comunicación del cambio", "Fecha prevista de aplicación y cualquier información sobre baja o permanencia"),
     ),
+    SeoProblemPage(
+        "V01", "travel", "viajes", "vuelo-cancelado-reembolso-billete",
+        "Vuelo cancelado: qué comprobar para reclamar el reembolso",
+        "Ordena la reserva, la cancelación, el precio y la opción elegida si la aerolínea ha cancelado tu vuelo.",
+        "El reembolso del billete y la compensación adicional son cuestiones distintas. Esta guía estructura primero el derecho al reembolso y evita mezclar automáticamente ambos conceptos.",
+        ("Billete o confirmación de reserva", "Comunicación de cancelación de la aerolínea", "Justificante del precio pagado y de cualquier reembolso recibido"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}
