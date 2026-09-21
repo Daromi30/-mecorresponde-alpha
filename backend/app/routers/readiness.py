@@ -247,9 +247,15 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
             "guided_browser_input_contract",
             GUIDED_BROWSER_INPUT_CONTRACT_PROVEN,
             label="Preguntas guiadas utilizables en navegador",
-            detail="Los tipos de entrada emitidos por las 14 familias tienen un renderer seguro en la interfaz y los formatos desconocidos fallan cerrado.",
+            detail=(
+                f"Los tipos de entrada emitidos por las {len(FAMILY_MANIFEST)} familias registradas tienen un renderer "
+                "seguro en la interfaz y los formatos desconocidos fallan cerrado."
+            ),
             severity="INTERNAL_BETA_BLOCKER",
-            metadata={"verification": "ci_guided_question_acceptance_and_js_contract"},
+            metadata={
+                "family_count": len(FAMILY_MANIFEST),
+                "verification": "ci_guided_question_acceptance_and_js_contract",
+            },
         ),
         _check(
             "saved_account_resolution_journey",
