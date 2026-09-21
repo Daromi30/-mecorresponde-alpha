@@ -118,6 +118,10 @@ def install_all_families() -> tuple[str, ...]:
 
         install_travel_extensions()
 
+        from .banking_extensions import install_banking_extensions
+
+        install_banking_extensions()
+
         previous_seed = svc.seed_legal
 
         def seed_with_reviewed_provenance(db):
