@@ -59,8 +59,11 @@ def install_banking_extensions():
     inner.classify=classify
     previous_response=inner.analyze_response
     def analyze_response(text):
-        t=text.lower()
-        if ("consentimiento" in t or "consentido" in t) and ("cuatro semanas" in t or "4 semanas" in t or "aviso previo" in t):
+        import unicodedata
+        t="".join(c for c in unicodedata.normalize("NFD",text.lower()) if unicodedata.category(c)!="Mn")
+        consent=any(x in t for x in ["consentimiento", "consentido", "consintio", "consintio el adeudo", "autorizo directamente"])
+        prior_notice=any(x in t for x in ["cuatro semanas", "4 semanas", "aviso previo"])
+        if consent and prior_notice:
             return {"type":"DENIAL","arguments":["ARTICLE_48_4_EXCEPTION_ASSERTED"]}
         return previous_response(text)
     inner.analyze_response=analyze_response
