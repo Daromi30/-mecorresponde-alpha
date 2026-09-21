@@ -95,6 +95,12 @@ OFFICIAL_LEGAL_SOURCES: dict[str, OfficialLegalSource] = {
         official_url="https://www.boe.es/eli/es/l/1980/10/08/50/con",
         publication_date=date(1980, 10, 17),
     ),
+    "RD1457_1986": OfficialLegalSource(
+        authority="BOE / Presidencia del Gobierno",
+        title="Real Decreto 1457/1986, de 10 de enero, sobre talleres de reparación de vehículos automóviles",
+        official_url="https://www.boe.es/eli/es/rd/1986/01/10/1457/con",
+        publication_date=date(1986, 7, 16),
+    ),
     "TRLGDCU": OfficialLegalSource(
         authority="BOE / Jefatura del Estado",
         title=(
