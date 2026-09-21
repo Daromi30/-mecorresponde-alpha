@@ -338,8 +338,10 @@ def _render_v03(ctx: ClaimContext) -> dict[str, Any]:
         "El expediente confirma reserva y presentación válidas, ausencia de un motivo razonable automatizado "
         "del artículo 2.j) y la banda de distancia utilizada para el cálculo."
     )
-    if ctx.decision.calculation and ctx.decision.calculation.get("article_7_2_reduction_applied"):
-        text += " La cuantía incorpora la reducción del 50 % prevista en el artículo 7.2 por el transporte alternativo."
+    text += (
+        " La cuantía solicitada es la resultante del cálculo verificado según la banda de distancia y, "
+        "cuando procede, el tiempo de llegada del transporte alternativo conforme al artículo 7.2."
+    )
     return {
         "claim_type": "V03_INVOLUNTARY_DENIED_BOARDING_COMPENSATION",
         "amount": amount,
