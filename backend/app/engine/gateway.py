@@ -81,6 +81,11 @@ class DeterministicAlphaGateway:
             "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
             "ryanair", "iberia", "vueling", "easyjet", "air europa", "volotea",
         ])
+        flight_delay = any(w in t for w in [
+            "vuelo retrasado", "retraso del vuelo", "retraso de vuelo",
+            "vuelo lleva", "vuelo tiene retraso", "demora del vuelo",
+            "cinco horas de retraso", "5 horas de retraso",
+        ])
         flight_cancellation = any(w in t for w in [
             "vuelo cancelado", "cancelaron el vuelo", "cancelaron mi vuelo",
             "me ha cancelado el vuelo", "me han cancelado el vuelo",
@@ -129,6 +134,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
         if travel and flight_cancellation:
             return {"vertical": "travel", "family": "V01", "confidence": 0.96}
+        if travel and flight_delay:
+            return {"vertical": "travel", "family": "V02", "confidence": 0.95}
         if telecom and telecom_interruption:
             return {"vertical": "telecom", "family": "T01", "confidence": 0.95}
         if telecom and contract_change:
