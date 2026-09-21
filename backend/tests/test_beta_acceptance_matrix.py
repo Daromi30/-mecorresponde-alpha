@@ -213,6 +213,22 @@ SCENARIOS = {
             "bank.refund_received": False,
         },
     },
+    "B02": {
+        "message": "Quiero devolver un recibo domiciliado que sí autoricé",
+        "facts": {
+            "bank.user_scope": "consumer",
+            "bank.payer_provider_in_spain": True,
+            "bank.operation_authorized": True,
+            "bank.authorized_payment_type": "direct_debit",
+            "bank.direct_debit_article_48_2_confirmed": True,
+            "bank.debit_date": "2026-08-01",
+            "bank.refund_request_date": "2026-09-21",
+            "bank.article_48_4_exception_status": "clearly_absent",
+            "bank.payment_scope_clear": True,
+            "bank.documented_operation_amount": 120.0,
+            "bank.refund_received": False,
+        },
+    },
     "C01": {
         "message": "Compré un televisor en una tienda, está defectuoso y me rechazan la garantía",
         "facts": {
