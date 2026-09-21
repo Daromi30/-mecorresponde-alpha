@@ -14,7 +14,7 @@ from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, 
 # These families were historically installed as a chain of extension wrappers.
 # The registry gives them one final dispatch boundary without changing their public
 # claim-package contract.
-REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02", "V03", "B01", "R01", "S01", "S02"})
+REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02", "V03", "B01", "R01", "S01", "S02", "A01"})
 
 
 @dataclass(frozen=True)
@@ -432,6 +432,28 @@ def _render_s02(ctx: ClaimContext) -> dict[str, Any]:
     }
 
 
+def _render_a01(ctx: ClaimContext) -> dict[str, Any]:
+    if ctx.next_action != "PREPARE_A01_FREE_REPAIR_NOTICE":
+        raise ValueError("Current A01 action requires information or human review rather than a guarantee notice")
+    delivery_date = ctx.facts.get("automotive.repair_delivery_date")
+    failure_date = ctx.facts.get("automotive.failure_date")
+    km_since = ctx.facts.get("automotive.km_since_repair")
+    text = (
+        "Comunico la nueva avería aparecida en la parte o partes reparadas y solicito su reparación gratuita "
+        "al amparo del artículo 16 del Real Decreto 1457/1986. Según los hechos documentados del expediente, "
+        f"el vehículo fue entregado tras la reparación el {delivery_date}, la nueva avería apareció el {failure_date} "
+        f"y desde la entrega se han recorrido aproximadamente {km_since} km, dentro de la garantía mínima automatizada "
+        "de tres meses o 2.000 km. No consta intervención posterior de un tercero ni una anomalía oculta rechazada "
+        "que el Motor pueda aplicar como excepción sin revisión humana. La solicitud no inventa una indemnización "
+        "monetaria: pide la reparación gratuita cubierta por la garantía del taller."
+    )
+    return {
+        "claim_type": "A01_WORKSHOP_FREE_REPAIR_GUARANTEE",
+        "amount": 0.0,
+        "text": text,
+    }
+
+
 RENDERERS: dict[str, Renderer] = {
     "E01": _render_e01,
     "E03": _render_e03,
@@ -449,6 +471,7 @@ RENDERERS: dict[str, Renderer] = {
     "R01": _render_r01,
     "S01": _render_s01,
     "S02": _render_s02,
+    "A01": _render_a01,
 }
 
 

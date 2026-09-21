@@ -123,6 +123,17 @@ class DeterministicAlphaGateway:
             "oposicion a la prorroga", "dar de baja al vencimiento",
             "que no se prorrogue", "que no me renueven el seguro",
         ])
+        automotive = any(w in t for w in [
+            "coche", "vehiculo", "automovil", "taller", "mecanico", "reparacion del coche",
+            "reparacion del vehiculo", "garaje mecanico",
+        ])
+        automotive_repair_failure = any(w in t for w in [
+            "repararon y volvio a fallar", "repararon y vuelve a fallar",
+            "averia despues de reparar", "averia tras la reparacion",
+            "reparacion fallida", "garantia del taller", "garantia de la reparacion",
+            "misma averia despues de reparar", "fallo en la pieza reparada",
+            "volvio a fallar", "vuelve a fallar",
+        ])
         travel = any(w in t for w in [
             "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
             "ryanair", "iberia", "vueling", "easyjet", "air europa", "volotea",
@@ -183,6 +194,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
+        if automotive and automotive_repair_failure:
+            return {"vertical": "automotive", "family": "A01", "confidence": 0.96}
         if insurance and insurance_nonrenewal:
             return {"vertical": "insurance", "family": "S02", "confidence": 0.96}
         if insurance and insurance_nonpayment:
@@ -265,6 +278,12 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
+        if any(x in t for x in [
+            "vehiculo manipulado por otro taller", "vehiculo fue manipulado por otro taller",
+            "fue manipulado por otro taller", "manipulado por un tercero",
+            "reparado por otro taller despues", "intervencion de otro taller",
+        ]):
+            return {"type": "DENIAL", "arguments": ["AUTOMOTIVE_THIRD_PARTY_MANIPULATION_ASSERTED"]}
         if any(x in t for x in [
             "oposicion fuera de plazo", "comunicacion fuera de plazo",
             "comunicacion de no renovacion fuera de plazo",

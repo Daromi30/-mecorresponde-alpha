@@ -195,6 +195,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "La oposición a la prórroga no es lo mismo que cancelar el seguro a mitad de período. Esta guía comprueba la fecha de vencimiento y el mes de antelación exigido al tomador.",
         ("Póliza y condiciones de renovación", "Documento donde conste la fecha de fin del período actual", "Justificante de la comunicación escrita de no renovación cuando se envíe"),
     ),
+    SeoProblemPage(
+        "A01", "automotive", "automocion", "taller-reparacion-falla-garantia",
+        "El coche vuelve a fallar después de una reparación: garantía del taller",
+        "Qué comprobar si una avería reaparece en la parte reparada poco después de recoger el vehículo.",
+        "La garantía mínima del taller tiene límites de tiempo y kilometraje y no cubre automáticamente cualquier avería posterior. Esta guía comprueba solo un supuesto estrecho y documentado.",
+        ("Factura u orden de reparación", "Fecha de entrega del vehículo", "Prueba o descripción de que el nuevo fallo afecta a la parte reparada"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}

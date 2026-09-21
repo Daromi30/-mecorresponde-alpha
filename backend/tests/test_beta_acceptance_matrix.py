@@ -195,6 +195,20 @@ SCENARIOS = {
             "travel.compensation_received": False,
         },
     },
+    "A01": {
+        "message": "El taller reparó mi coche y volvió a fallar",
+        "facts": {
+            "automotive.workshop_in_spain": True,
+            "automotive.vehicle_type": "non_industrial",
+            "automotive.repair_delivery_date": "2026-08-01",
+            "automotive.repair_documentation_available": True,
+            "automotive.failure_date": "2026-09-01",
+            "automotive.km_since_repair": 500,
+            "automotive.failure_repaired_part_status": "same_repaired_part",
+            "automotive.third_party_manipulation_after_repair": False,
+            "automotive.refused_hidden_anomaly_causal_status": "no",
+        },
+    },
     "B01": {
         "message": "Mi banco me ha cargado un pago que no reconozco y no he autorizado",
         "facts": {
