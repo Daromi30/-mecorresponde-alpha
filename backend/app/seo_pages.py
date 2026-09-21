@@ -146,6 +146,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "El Reglamento europeo conecta el retraso de cinco horas con una opción de reembolso. Esta guía separa ese reembolso de cualquier compensación adicional por retraso.",
         ("Billete o confirmación de reserva", "Prueba del retraso de salida", "Precio del vuelo y justificante de cualquier reembolso"),
     ),
+    SeoProblemPage(
+        "V03", "travel", "viajes", "denegacion-embarque-overbooking-compensacion",
+        "Denegación de embarque u overbooking: qué compensación revisar",
+        "Qué comprobar si tenías reserva, te presentaste correctamente y la aerolínea te impidió embarcar contra tu voluntad.",
+        "La compensación depende del ámbito del Reglamento, del motivo de la denegación, la distancia y, en algunos casos, del retraso del transporte alternativo.",
+        ("Tarjeta de embarque o reserva", "Prueba de que te presentaste a tiempo", "Comunicación o incidencia de la aerolínea y transporte alternativo"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}
