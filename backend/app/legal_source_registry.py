@@ -28,6 +28,12 @@ OFFICIAL_LEGAL_SOURCES: dict[str, OfficialLegalSource] = {
         official_url="https://www.boe.es/eli/es/rd/2026/02/11/88",
         publication_date=date(2026, 2, 12),
     ),
+    "RD899_2009": OfficialLegalSource(
+        authority="BOE / Ministerio de la Presidencia",
+        title="Real Decreto 899/2009, de 22 de mayo, por el que se aprueba la carta de derechos del usuario de los servicios de comunicaciones electrónicas",
+        official_url="https://www.boe.es/eli/es/rd/2009/05/22/899",
+        publication_date=date(2009, 5, 30),
+    ),
     "TRLGDCU": OfficialLegalSource(
         authority="BOE / Jefatura del Estado",
         title=(
