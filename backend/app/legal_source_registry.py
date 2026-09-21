@@ -83,6 +83,12 @@ OFFICIAL_LEGAL_SOURCES: dict[str, OfficialLegalSource] = {
         official_url="https://www.boe.es/eli/es/o/2011/10/28/eha2899/con",
         publication_date=date(2011, 10, 29),
     ),
+    "LAU_1994": OfficialLegalSource(
+        authority="BOE / Jefatura del Estado",
+        title="Ley 29/1994, de 24 de noviembre, de Arrendamientos Urbanos",
+        official_url="https://www.boe.es/eli/es/l/1994/11/24/29/con",
+        publication_date=date(1994, 11, 25),
+    ),
     "TRLGDCU": OfficialLegalSource(
         authority="BOE / Jefatura del Estado",
         title=(

@@ -244,6 +244,19 @@ SCENARIOS = {
             "bank.commission_refund_received": False,
         },
     },
+    "R01": {
+        "message": "Mi casero no me devuelve la fianza del alquiler después de entregar las llaves",
+        "facts": {
+            "rental.contract_type": "dwelling",
+            "rental.lease_ended": True,
+            "rental.keys_delivered_date": "2026-08-01",
+            "rental.keys_delivery_proof_available": True,
+            "rental.deposit_type": "statutory_cash_deposit",
+            "rental.refundable_balance_status": "confirmed_amount",
+            "rental.confirmed_refundable_balance": 900.0,
+            "rental.refund_received": False,
+        },
+    },
     "C01": {
         "message": "Compré un televisor en una tienda, está defectuoso y me rechazan la garantía",
         "facts": {

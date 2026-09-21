@@ -560,7 +560,66 @@ def _b01_question(facts: dict[str, FactValue]) -> dict:
     return {"done": True, "question": None, "field": None}
 
 
+
+def _r01_question(facts: dict[str, FactValue]) -> dict:
+    order = [
+        (
+            "rental.contract_type",
+            "¿Qué tipo de alquiler terminó?",
+            "choice:dwelling|other_urban_use|room_only|tourist_or_hospitality|unknown",
+        ),
+        ("rental.lease_ended", "¿El arrendamiento ya ha terminado?", "boolean"),
+    ]
+    for key, question, input_type in order:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if _value(facts, "rental.contract_type") not in {"dwelling", "other_urban_use"}:
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "rental.lease_ended") is not True:
+        return {"done": True, "question": None, "field": None}
+
+    fixed = [
+        ("rental.keys_delivered_date", "¿Qué día entregaste las llaves al arrendador?", "date"),
+        ("rental.keys_delivery_proof_available", "¿Tienes una prueba de la fecha de entrega de llaves?", "boolean"),
+        (
+            "rental.deposit_type",
+            "Según el contrato o recibo, ¿el importe reclamado es la fianza legal en metálico o una garantía adicional?",
+            "choice:statutory_cash_deposit|additional_guarantee|mixed_or_unknown",
+        ),
+        (
+            "rental.refundable_balance_status",
+            "¿Está documentado o reconocido por el arrendador el saldo de fianza que debe devolverte?",
+            "choice:confirmed_amount|deductions_or_amount_disputed|unknown",
+        ),
+    ]
+    for key, question, input_type in fixed:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if _value(facts, "rental.keys_delivery_proof_available") is not True:
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "rental.deposit_type") != "statutory_cash_deposit":
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "rental.refundable_balance_status") != "confirmed_amount":
+        return {"done": True, "question": None, "field": None}
+
+    if "rental.confirmed_refundable_balance" not in facts:
+        return _ask(
+            "rental.confirmed_refundable_balance",
+            "¿Qué saldo exacto de la fianza consta como pendiente de devolución?",
+            "money",
+        )
+    if "rental.refund_received" not in facts:
+        return _ask("rental.refund_received", "¿El arrendador ya te ha devuelto alguna parte de ese saldo?", "boolean")
+    if _value(facts, "rental.refund_received") is True and "rental.refund_received_amount" not in facts:
+        return _ask("rental.refund_received_amount", "¿Qué importe te ha devuelto ya?", "money")
+    return {"done": True, "question": None, "field": None}
+
+
 def next_question(facts: dict[str, FactValue], family: str | None) -> dict:
+    if family == "R01":
+        return _r01_question(facts)
     if family == "B01":
         return _b01_question(facts)
     if family == "V01":
