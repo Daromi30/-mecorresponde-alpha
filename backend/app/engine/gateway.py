@@ -81,10 +81,16 @@ class DeterministicAlphaGateway:
             "banco", "bancaria", "bancario", "cuenta", "tarjeta", "transferencia",
             "operacion de pago", "cargo", "bizum", "pago", "adeudo",
         ])
-        unauthorized_payment = any(w in t for w in [
+        explicit_unauthorized_payment = any(w in t for w in [
             "no autorice", "no he autorizado", "no reconozco", "operacion no autorizada",
             "cargo no autorizado", "pago no autorizado", "transferencia no autorizada",
+        ])
+        unauthorized_payment = explicit_unauthorized_payment or any(w in t for w in [
             "me han cargado", "me cargaron", "me han quitado dinero",
+        ])
+        authorized_direct_debit = any(w in t for w in [
+            "adeudo domiciliado", "recibo domiciliado", "devolver un recibo",
+            "devolucion del recibo", "devolucion de un recibo",
         ])
         travel = any(w in t for w in [
             "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
@@ -146,6 +152,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
+        if authorized_direct_debit and not explicit_unauthorized_payment:
+            return {"vertical": "banking", "family": "B02", "confidence": 0.96}
         if banking and unauthorized_payment:
             return {"vertical": "banking", "family": "B01", "confidence": 0.96}
         if travel and denied_boarding:
@@ -218,6 +226,11 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
+        if (
+            any(x in t for x in ["consentimiento", "consentido", "consintio", "autorizo directamente"])
+            and any(x in t for x in ["cuatro semanas", "4 semanas", "aviso previo"])
+        ):
+            return {"type": "DENIAL", "arguments": ["ARTICLE_48_4_EXCEPTION_ASSERTED"]}
         if any(x in t for x in ["la operacion fue autenticada", "operacion autenticada correctamente", "pago autenticado correctamente"]):
             return {"type": "DENIAL", "arguments": ["PAYMENT_AUTHENTICATED_ASSERTED"]}
         if any(x in t for x in ["compensacion por denegacion ya pagada", "compensacion por denegacion ya fue pagada", "ya pagamos la compensacion por denegacion", "compensacion por overbooking abonada"]):

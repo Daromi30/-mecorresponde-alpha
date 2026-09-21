@@ -160,6 +160,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "La devolución no debe decidirse por una etiqueta de fraude. Esta guía separa la obligación de reembolso, la carga de prueba y las excepciones que requieren revisar el caso.",
         ("Extracto o movimiento con el cargo", "Justificante de la comunicación a la entidad", "Respuesta del banco y cualquier prueba de autenticación que invoque"),
     ),
+    SeoProblemPage(
+        "B02", "banking", "banca", "devolver-recibo-domiciliado-autorizado",
+        "Devolver un recibo domiciliado autorizado: qué comprobar",
+        "Qué revisar para solicitar la devolución de un adeudo domiciliado autorizado dentro del plazo legal.",
+        "Los adeudos domiciliados autorizados tienen un régimen distinto de las operaciones no autorizadas. Hay que confirmar el tipo de adeudo, el plazo de ocho semanas y si existe una posible excepción contractual.",
+        ("Extracto con el adeudo", "Mandato o contrato marco", "Solicitud y respuesta de la entidad"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}
