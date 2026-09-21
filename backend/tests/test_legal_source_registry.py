@@ -2,7 +2,7 @@ from datetime import date
 
 from sqlalchemy import select
 
-from app.legal_source_registry import OFFICIAL_LEGAL_SOURCES
+from app.legal_source_registry import OFFICIAL_LEGAL_SOURCES, is_trusted_official_legal_url
 from app.models import LegalRuleVersion, LegalSource
 from app.services_v2 import seed_legal
 
@@ -15,9 +15,9 @@ def test_reviewed_official_source_metadata_is_seeded_exactly(db):
         assert source.title == expected.title
         assert source.official_url == expected.official_url
         assert source.publication_date == expected.publication_date
-        assert source.jurisdiction == "ES"
-        assert source.status == "active"
-        assert source.official_url.startswith("https://www.boe.es/")
+        assert source.jurisdiction == expected.jurisdiction
+        assert source.status == expected.status
+        assert is_trusted_official_legal_url(source.official_url)
 
 
 def test_seed_repairs_stale_source_metadata_without_rewriting_rule_versions(db):
