@@ -188,6 +188,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "Esta guía separa el pago mínimo del artículo 18 de cuestiones distintas como cobertura, valoración total del daño o intereses de mora.",
         ("Póliza o documento de cobertura", "Prueba de recepción del parte por la aseguradora", "Comunicación donde la aseguradora reconozca o cuantifique la cantidad mínima"),
     ),
+    SeoProblemPage(
+        "S02", "insurance", "seguros", "no-renovar-seguro-aviso-un-mes",
+        "No renovar un seguro: cómo comprobar el plazo de aviso",
+        "Qué revisar si eres tomador y quieres evitar la próxima renovación automática de una póliza no vida.",
+        "La oposición a la prórroga no es lo mismo que cancelar el seguro a mitad de período. Esta guía comprueba la fecha de vencimiento y el mes de antelación exigido al tomador.",
+        ("Póliza y condiciones de renovación", "Documento donde conste la fecha de fin del período actual", "Justificante de la comunicación escrita de no renovación cuando se envíe"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}
