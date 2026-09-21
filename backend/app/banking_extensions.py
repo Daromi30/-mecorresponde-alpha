@@ -49,27 +49,6 @@ def install_banking_extensions():
     previous_q=svc.next_question
     svc.next_question=lambda facts,family: _b02_question(facts) if family=="B02" else previous_q(facts,family)
 
-    # Extend deterministic classification without confusing unauthorized B01 cases.
-    inner=getattr(svc.gateway,"inner",svc.gateway); previous_classify=inner.classify
-    def classify(text):
-        import unicodedata
-        t="".join(c for c in unicodedata.normalize("NFD",text.lower()) if unicodedata.category(c)!="Mn")
-        unauthorized=any(x in t for x in ["no autorice","no he autorizado","no reconozco","no autorizado"])
-        direct=any(x in t for x in ["adeudo domiciliado","recibo domiciliado","devolver un recibo","devolucion del recibo"])
-        if direct and not unauthorized:return {"vertical":"banking","family":"B02","confidence":0.96}
-        return previous_classify(text)
-    inner.classify=classify
-    previous_response=inner.analyze_response
-    def analyze_response(text):
-        import unicodedata
-        t="".join(c for c in unicodedata.normalize("NFD",text.lower()) if unicodedata.category(c)!="Mn")
-        consent=any(x in t for x in ["consentimiento", "consentido", "consintio", "consintio el adeudo", "autorizo directamente"])
-        prior_notice=any(x in t for x in ["cuatro semanas", "4 semanas", "aviso previo"])
-        if consent and prior_notice:
-            return {"type":"DENIAL","arguments":["ARTICLE_48_4_EXCEPTION_ASSERTED"]}
-        return previous_response(text)
-    inner.analyze_response=analyze_response
-
     from . import claim_packages as cp
     cp.REGISTERED_EXTENSION_FAMILIES=frozenset(set(cp.REGISTERED_EXTENSION_FAMILIES)|{"B02"})
     def render_b02(ctx):
