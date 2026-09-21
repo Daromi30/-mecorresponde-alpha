@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from . import services_v2 as svc
 from .engine.v01 import evaluate_v01
+from .engine.v02 import evaluate_v02
 
 _INSTALLED = False
 _PREVIOUS_SEED = svc.seed_legal
@@ -46,6 +47,32 @@ def _seed_legal(db: Session):
             "8.1(a) prevé el reembolso en siete días. La compensación del artículo 7 se analiza por separado."
         ),
     )
+    rules["AIR_FIVE_HOUR_DELAY_REFUND_CURRENT"] = svc._ensure_rule(
+        db,
+        "AIR_FIVE_HOUR_DELAY_REFUND_CURRENT",
+        1,
+        date(2005, 2, 17),
+        "EU261_2004",
+        "3, 6.1(iii), 8.1(a)",
+        {
+            "departure_delay_hours_at_least": 5,
+            "confirmed_reservation": True,
+            "departure_airport_in_eu": True,
+            "passenger_requests_refund": True,
+            "passenger_did_not_take_delayed_flight": True,
+            "single_flight_booking": True,
+        },
+        {
+            "refund_ticket_cost": True,
+            "refund_period_days": 7,
+            "delay_compensation_separate": True,
+        },
+        (
+            "Cuando el retraso alcanza al menos cinco horas, el artículo 6.1(iii) remite al reembolso "
+            "del artículo 8.1(a). V02 automatiza únicamente un vuelo único no utilizado, con precio "
+            "documentado y salida desde la UE; cualquier compensación adicional se analiza por separado."
+        ),
+    )
     return rules
 
 
@@ -55,5 +82,7 @@ def install_travel_extensions() -> None:
         return
     svc.EVALUATORS["V01"] = evaluate_v01
     svc.FAMILY_RULES["V01"] = ["AIR_CANCELLATION_REFUND_CURRENT"]
+    svc.EVALUATORS["V02"] = evaluate_v02
+    svc.FAMILY_RULES["V02"] = ["AIR_FIVE_HOUR_DELAY_REFUND_CURRENT"]
     svc.seed_legal = _seed_legal
     _INSTALLED = True
