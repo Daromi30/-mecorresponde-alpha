@@ -114,6 +114,10 @@ def install_all_families() -> tuple[str, ...]:
 
         install_telecom_extensions()
 
+        from .travel_extensions import install_travel_extensions
+
+        install_travel_extensions()
+
         previous_seed = svc.seed_legal
 
         def seed_with_reviewed_provenance(db):
