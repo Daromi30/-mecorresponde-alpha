@@ -148,7 +148,6 @@ def evaluate_t02(facts: dict[str, FactValue]) -> EngineResult:
         ("telecom.notice_clear_and_durable", durable),
         ("telecom.contract_contains_valid_change_reason", valid_reason),
         ("telecom.user_wants_to_terminate", wants_terminate),
-        ("telecom.retains_subsidized_terminal", retained_terminal),
     ]:
         if value is None:
             missing.append(key)
@@ -252,28 +251,6 @@ def evaluate_t02(facts: dict[str, FactValue]) -> EngineResult:
             burden_of_proof=[],
         )
 
-    if retained_terminal is True:
-        return EngineResult(
-            viability="PROFESSIONAL_REVIEW",
-            scope_status="LIMITED_SCOPE",
-            claimable_amount=None,
-            economic_value=None,
-            worth_pursuing="PROFESSIONAL_REVIEW",
-            reasoning_summary=(
-                "El artículo 67.10 contempla una posible compensación vinculada al equipo terminal subvencionado que "
-                "el usuario conserve. T02 no calcula esa cantidad sin datos verificables del terminal y del contrato."
-            ),
-            counterarguments=[],
-            missing_facts=[],
-            next_action="HUMAN_REVIEW_T02_SUBSIDIZED_TERMINAL",
-            rule_result="MANUAL_REVIEW",
-            failed_conditions=[],
-            calculation=None,
-            sources=sources,
-            remedies=[],
-            burden_of_proof=[],
-        )
-
     if wants_terminate is False:
         return EngineResult(
             viability="LOW",
@@ -297,6 +274,47 @@ def evaluate_t02(facts: dict[str, FactValue]) -> EngineResult:
             },
             sources=sources,
             remedies=["FREE_TERMINATION_OPTION"],
+            burden_of_proof=[],
+        )
+
+    if retained_terminal is None:
+        return EngineResult(
+            viability="INSUFFICIENT_INFORMATION",
+            scope_status="SUPPORTED",
+            claimable_amount=None,
+            economic_value=None,
+            worth_pursuing="NEEDS_INFORMATION",
+            reasoning_summary="Falta confirmar si existe un terminal subvencionado que el usuario vaya a conservar al resolver el contrato.",
+            counterarguments=[],
+            missing_facts=["telecom.retains_subsidized_terminal"],
+            next_action="REQUEST_MATERIAL_FACT",
+            rule_result="PENDING",
+            failed_conditions=[],
+            calculation=None,
+            sources=sources,
+            remedies=[],
+            burden_of_proof=[],
+        )
+
+    if retained_terminal is True:
+        return EngineResult(
+            viability="PROFESSIONAL_REVIEW",
+            scope_status="LIMITED_SCOPE",
+            claimable_amount=None,
+            economic_value=None,
+            worth_pursuing="PROFESSIONAL_REVIEW",
+            reasoning_summary=(
+                "El artículo 67.10 contempla una posible compensación vinculada al equipo terminal subvencionado que "
+                "el usuario conserve. T02 no calcula esa cantidad sin datos verificables del terminal y del contrato."
+            ),
+            counterarguments=[],
+            missing_facts=[],
+            next_action="HUMAN_REVIEW_T02_SUBSIDIZED_TERMINAL",
+            rule_result="MANUAL_REVIEW",
+            failed_conditions=[],
+            calculation=None,
+            sources=sources,
+            remedies=[],
             burden_of_proof=[],
         )
 
