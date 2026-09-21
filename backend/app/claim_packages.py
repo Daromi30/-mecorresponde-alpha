@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .case_lifecycle import complete_current_action, set_current_action
+from .legal_source_registry import is_trusted_official_legal_url
 from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, LegalSource
 
 
@@ -76,7 +77,7 @@ def _verified_legal_basis(db: Session, decision: Decision) -> list[dict[str, Any
         if rule is None:
             raise ValueError(f"Reviewed legal rule version missing for {rule_id} v{version}")
         source = db.get(LegalSource, rule.source_id)
-        if source is None or source.status != "active" or not source.official_url.startswith("https://www.boe.es/"):
+        if source is None or source.status != "active" or not is_trusted_official_legal_url(source.official_url):
             raise ValueError(f"Verified official legal source missing for {rule_id} v{version}")
         basis.append(
             {
