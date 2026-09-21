@@ -52,6 +52,7 @@ FAMILY_DENIALS = {
     "C04": ("El pedido consta como entregado.", "company.asserts_delivered"),
     "C05": ("Desistimiento fuera de plazo.", "company.asserts_withdrawal_late"),
     "T01": ("La compensación ya aplicada consta en su factura.", "company.asserts_internet_interruption_compensation_applied"),
+    "T02": ("Avisamos con un mes de antelación.", "company.asserts_notice_compliant"),
 }
 
 
