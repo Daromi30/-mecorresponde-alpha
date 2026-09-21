@@ -13,7 +13,7 @@ def register_rental_family() -> None:
     svc.FAMILY_RULES["R01"] = ["RENTAL_DEPOSIT_RETURN_CURRENT"]
 
 
-def seed_rental_legal(db: Session) -> None:
+def seed_rental_legal(db: Session) -> dict[str, object]:
     svc._ensure_source(
         db,
         "LAU_1994",
@@ -22,7 +22,7 @@ def seed_rental_legal(db: Session) -> None:
         "https://www.boe.es/eli/es/l/1994/11/24/29/con",
         date(1994, 11, 25),
     )
-    svc._ensure_rule(
+    rule = svc._ensure_rule(
         db,
         "RENTAL_DEPOSIT_RETURN_CURRENT",
         1,
@@ -47,3 +47,4 @@ def seed_rental_legal(db: Session) -> None:
             "el importe de intereses sin una fuente oficial separada para el tipo aplicable."
         ),
     )
+    return {"RENTAL_DEPOSIT_RETURN_CURRENT": rule}
