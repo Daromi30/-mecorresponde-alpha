@@ -16,6 +16,6 @@ def test_every_family_has_a_customer_title_and_legal_rule_mapping():
     for code, entry in FAMILY_MANIFEST.items():
         assert entry.title
         assert family_title(code) == entry.title
-        assert entry.vertical in {"electricity", "purchases", "telecom", "travel", "banking", "rentals", "insurance"}
+        assert entry.vertical in {"electricity", "purchases", "telecom", "travel", "banking", "rentals", "insurance", "automotive"}
         assert entry.rule_ids
         assert tuple(svc.FAMILY_RULES[code]) == entry.rule_ids
