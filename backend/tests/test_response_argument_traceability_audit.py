@@ -55,6 +55,7 @@ FAMILY_DENIALS = {
     "T01": ("La compensación ya aplicada consta en su factura.", "company.asserts_internet_interruption_compensation_applied"),
     "T02": ("Avisamos con un mes de antelación.", "company.asserts_notice_compliant"),
     "V01": ("Ya hemos reembolsado el billete.", "company.asserts_flight_refund_already_paid"),
+    "V02": ("Ya hemos reembolsado el billete.", "company.asserts_flight_refund_already_paid"),
 }
 
 
