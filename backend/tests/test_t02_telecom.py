@@ -34,6 +34,17 @@ def test_t02_supports_free_termination_with_verified_current_notice():
     assert result.remedies == ["TERMINATE_WITHOUT_ADDITIONAL_COST"]
 
 
+def test_t02_missing_scope_fact_does_not_emit_legal_conclusion():
+    facts = base_facts()
+    facts.pop("telecom.final_user_contract")
+
+    result = evaluate_t02(facts)
+
+    assert result.viability == "INSUFFICIENT_INFORMATION"
+    assert result.rule_result == "PENDING"
+    assert "telecom.final_user_contract" in result.missing_facts
+
+
 def test_t02_excluded_change_does_not_create_free_termination_right():
     facts = base_facts()
     facts["telecom.change_exception_type"] = fv("legally_required")
