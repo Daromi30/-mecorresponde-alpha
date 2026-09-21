@@ -14,7 +14,7 @@ from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, 
 # These families were historically installed as a chain of extension wrappers.
 # The registry gives them one final dispatch boundary without changing their public
 # claim-package contract.
-REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02"})
+REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02", "V03"})
 
 
 @dataclass(frozen=True)
@@ -326,6 +326,27 @@ def _render_v02(ctx: ClaimContext) -> dict[str, Any]:
     }
 
 
+def _render_v03(ctx: ClaimContext) -> dict[str, Any]:
+    if ctx.next_action != "PREPARE_V03_DENIED_BOARDING_COMPENSATION":
+        raise ValueError("Current V03 action requires information or human review rather than a compensation claim")
+    amount = round(float(ctx.decision.claimable_amount or 0.0), 2)
+    if amount <= 0:
+        raise ValueError("No outstanding verified V03 compensation to request")
+    text = (
+        f"Solicito el pago pendiente de {amount:.2f} € por la denegación involuntaria de embarque, "
+        "conforme al artículo 4.3 en relación con el artículo 7 del Reglamento (CE) n.º 261/2004. "
+        "El expediente confirma reserva y presentación válidas, ausencia de un motivo razonable automatizado "
+        "del artículo 2.j) y la banda de distancia utilizada para el cálculo."
+    )
+    if ctx.decision.calculation and ctx.decision.calculation.get("article_7_2_reduction_applied"):
+        text += " La cuantía incorpora la reducción del 50 % prevista en el artículo 7.2 por el transporte alternativo."
+    return {
+        "claim_type": "V03_INVOLUNTARY_DENIED_BOARDING_COMPENSATION",
+        "amount": amount,
+        "text": text,
+    }
+
+
 RENDERERS: dict[str, Renderer] = {
     "E01": _render_e01,
     "E03": _render_e03,
@@ -338,6 +359,7 @@ RENDERERS: dict[str, Renderer] = {
     "T02": _render_t02,
     "V01": _render_v01,
     "V02": _render_v02,
+    "V03": _render_v03,
 }
 
 
