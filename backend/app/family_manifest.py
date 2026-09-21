@@ -25,6 +25,7 @@ FAMILY_MANIFEST: dict[str, FamilyManifestEntry] = {
     "V03": FamilyManifestEntry("V03","travel","Denegación involuntaria de embarque y compensación",("AIR_INVOLUNTARY_DENIED_BOARDING_COMPENSATION_CURRENT",)),
     "B01": FamilyManifestEntry("B01","banking","Operación de pago no autorizada y solicitud de reembolso",("PAYMENT_UNAUTHORIZED_REFUND_CURRENT",)),
     "B02": FamilyManifestEntry("B02","banking","Adeudo domiciliado autorizado y solicitud de devolución",("PAYMENT_AUTHORIZED_DIRECT_DEBIT_REFUND_CURRENT",)),
+    "B03": FamilyManifestEntry("B03","banking","Comisión bancaria por servicio no solicitado, no aceptado o no prestado",("BANK_FEE_REQUEST_AND_SERVICE_CURRENT",)),
     "C01": FamilyManifestEntry("C01","purchases","Producto defectuoso o garantía rechazada",("GOODS_CONFORMITY_CURRENT",)),
     "C02": FamilyManifestEntry("C02","purchases","Reparación fallida, repetida o demorada",("GOODS_POST_CONFORMITY_ATTEMPT",)),
     "C03": FamilyManifestEntry("C03","purchases","Producto equivocado, incompleto o distinto de lo contratado",("GOODS_CONTRACT_DESCRIPTION",)),

@@ -231,6 +231,19 @@ SCENARIOS = {
             "bank.refund_received": False,
         },
     },
+    "B03": {
+        "message": "Mi banco me ha cobrado una comisión por un servicio que no solicité",
+        "facts": {
+            "bank.customer_is_consumer": True,
+            "bank.entity_is_credit_institution": True,
+            "bank.commission_service_scope": "ordinary_banking_service",
+            "bank.commission_charge_date": "2026-09-15",
+            "bank.commission_amount": 60.0,
+            "bank.commission_request_acceptance_status": "not_requested_or_accepted",
+            "bank.commission_service_performance_status": "provided_or_expense_incurred",
+            "bank.commission_refund_received": False,
+        },
+    },
     "C01": {
         "message": "Compré un televisor en una tienda, está defectuoso y me rechazan la garantía",
         "facts": {
