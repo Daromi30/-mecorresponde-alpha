@@ -107,6 +107,16 @@ class DeterministicAlphaGateway:
             "devolver la fianza", "devolucion de la fianza", "retiene la fianza",
             "se queda con la fianza",
         ])
+        insurance = any(w in t for w in [
+            "seguro", "aseguradora", "asegurador", "poliza", "siniestro",
+            "indemnizacion del seguro", "compania de seguros",
+        ])
+        insurance_nonpayment = any(w in t for w in [
+            "no me paga", "no me han pagado", "no me ha pagado",
+            "no paga la indemnizacion", "no paga el siniestro",
+            "pago minimo", "importe minimo", "40 dias", "cuarenta dias",
+            "cantidad reconocida", "importe reconocido",
+        ])
         travel = any(w in t for w in [
             "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
             "ryanair", "iberia", "vueling", "easyjet", "air europa", "volotea",
@@ -167,6 +177,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
+        if insurance and insurance_nonpayment:
+            return {"vertical": "insurance", "family": "S01", "confidence": 0.94}
         if rental and rental_deposit:
             return {"vertical": "rentals", "family": "R01", "confidence": 0.96}
         if banking and banking_fee:
@@ -245,6 +257,11 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
+        if any(x in t for x in [
+            "importe minimo ya pagado", "cantidad minima ya pagada",
+            "ya abonamos el importe minimo", "minimo ya abonado",
+        ]):
+            return {"type": "DENIAL", "arguments": ["INSURANCE_MINIMUM_PAYMENT_PAID_ASSERTED"]}
         if any(x in t for x in [
             "deduccion de la fianza", "deducimos de la fianza", "descontamos de la fianza",
             "danos en la vivienda", "danos en el inmueble", "rentas pendientes",
