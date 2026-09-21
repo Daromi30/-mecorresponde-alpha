@@ -68,6 +68,15 @@ class DeterministicAlphaGateway:
             "modificaron el contrato", "modificacion del contrato",
             "revision de precio", "revision de precios", "actualizacion de precio", "formula de revision",
         ])
+        telecom = any(w in t for w in [
+            "internet", "fibra", "router", "wifi", "operador", "operadora",
+            "movistar", "vodafone", "orange", "digi", "o2", "masmovil", "yoigo",
+        ])
+        telecom_interruption = any(w in t for w in [
+            "sin internet", "sin fibra", "corte de internet", "corte de fibra",
+            "interrupcion", "cortad", "se cayo internet", "caida de internet", "averia de internet",
+            "internet no funciona", "fibra no funciona", "estuve sin internet",
+        ])
         purchase = any(w in t for w in ["compre", "comprado", "compra", "tienda", "vendedor", "producto", "pedido", "televisor", "tv", "movil", "telefono", "ordenador", "portatil", "lavadora", "nevera", "electrodomestico"])
         conformity = any(w in t for w in ["garantia", "defecto", "defectuoso", "averia", "averiado", "roto", "no funciona", "dejo de funcionar", "rechazan la garantia"])
         repair_followup = any(w in t for w in [
@@ -107,6 +116,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
+        if telecom and telecom_interruption:
+            return {"vertical": "telecom", "family": "T01", "confidence": 0.95}
         if purchase and non_delivery:
             return {"vertical": "purchases", "family": "C04", "confidence": 0.94}
         if purchase and distance and withdrawal:
@@ -167,6 +178,8 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
+        if any(x in t for x in ["compensacion ya aplicada", "ya aplicamos la compensacion", "compensacion abonada"]):
+            return {"type": "DENIAL", "arguments": ["INTERNET_INTERRUPTION_COMPENSATION_APPLIED_ASSERTED"]}
         if any(x in t for x in ["desistimiento fuera de plazo", "fuera del plazo de desistimiento", "plazo para desistir vencido"]):
             return {"type": "DENIAL", "arguments": ["WITHDRAWAL_LATE_ASSERTED"]}
         if any(x in t for x in ["excluido del desistimiento", "no admite desistimiento", "producto personalizado", "por razones de higiene"]):

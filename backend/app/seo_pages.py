@@ -118,6 +118,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "El análisis cambia según el tipo de producto o servicio, las fechas y lo que se comunicó al vendedor. Conviene registrar esos hechos antes de asumir que un plazo o reembolso concreto aplica al caso.",
         ("Confirmación de compra", "Fecha de entrega o de contratación", "Comunicación de desistimiento y prueba de devolución si existe"),
     ),
+    SeoProblemPage(
+        "T01", "telecom", "telecomunicaciones", "corte-internet-compensacion",
+        "Corte de internet: qué comprobar para calcular una compensación",
+        "Ordena duración, cuota fija y datos del contrato cuando has sufrido una interrupción temporal del acceso a internet.",
+        "La existencia y cuantía de una compensación depende de hechos verificables como la duración del corte, el tipo de servicio y la cuota fija atribuible a internet. El Motor no presume daños adicionales.",
+        ("Factura o contrato donde conste la cuota del servicio", "Fechas y duración de la interrupción", "Incidencia, aviso o comunicación de la operadora"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}

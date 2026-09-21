@@ -12,6 +12,7 @@ def test_problem_page_registry_covers_every_supported_family_once():
     assert len(paths) == len(set(paths))
     assert any(page.vertical == "electricity" for page in SEO_PROBLEM_PAGES)
     assert any(page.vertical == "purchases" for page in SEO_PROBLEM_PAGES)
+    assert any(page.vertical == "telecom" for page in SEO_PROBLEM_PAGES)
 
 
 def test_alpha_problem_page_is_reachable_but_not_indexable(client):

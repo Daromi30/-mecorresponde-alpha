@@ -33,8 +33,8 @@ PRIVACY_INFORMATION_PUBLISHED = False
 # are intentionally limited to an internal beta using synthetic/test data. If any
 # of the underlying regressions break, branch protection prevents that revision
 # from reaching main.
-FOURTEEN_FAMILY_ACCEPTANCE_PROVEN = True
-FOURTEEN_FAMILY_RESPONSE_RESOLUTION_LOOP_PROVEN = True
+ALL_FAMILY_ACCEPTANCE_PROVEN = True
+ALL_FAMILY_RESPONSE_RESOLUTION_LOOP_PROVEN = True
 PROFESSIONAL_ESCALATION_HANDOFF_PROVEN = True
 GUIDED_BROWSER_INPUT_CONTRACT_PROVEN = True
 FULL_SAVED_ACCOUNT_JOURNEY_PROVEN = True
@@ -205,19 +205,19 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
         legal_catalog,
         protected_backoffice,
         _check(
-            "fourteen_family_acceptance",
-            FOURTEEN_FAMILY_ACCEPTANCE_PROVEN,
+            "all_family_acceptance",
+            ALL_FAMILY_ACCEPTANCE_PROVEN,
             label="Aceptación end-to-end de familias",
-            detail="Las 14 familias registradas tienen un escenario de aceptación que llega desde intake hasta una acción con procedencia jurídica verificada.",
+            detail=f"Las {len(FAMILY_MANIFEST)} familias registradas tienen un escenario de aceptación que llega desde intake hasta una acción con procedencia jurídica verificada.",
             severity="INTERNAL_BETA_BLOCKER",
             metadata={"family_count": len(FAMILY_MANIFEST), "verification": "ci_beta_acceptance_matrix"},
         ),
         _check(
-            "fourteen_family_response_resolution_loop",
-            FOURTEEN_FAMILY_RESPONSE_RESOLUTION_LOOP_PROVEN,
+            "all_family_response_resolution_loop",
+            ALL_FAMILY_RESPONSE_RESOLUTION_LOOP_PROVEN,
             label="Respuesta y resolución end-to-end de familias",
             detail=(
-                "Las 14 familias registradas recorren en CI el envío, una respuesta favorable, la comprobación de cumplimiento y la resolución; "
+                f"Las {len(FAMILY_MANIFEST)} familias registradas recorren en CI el envío, una respuesta favorable, la comprobación de cumplimiento y la resolución; "
                 "también se prueba que una respuesta parcial no reabre una segunda reclamación inicial y deriva a revisión humana de escalado."
             ),
             severity="INTERNAL_BETA_BLOCKER",

@@ -599,6 +599,7 @@ def analyze_company_response(db: Session, case: Case, text: str):
         "DELIVERY_PROOF_ASSERTED": "company.asserts_delivered",
         "WITHDRAWAL_LATE_ASSERTED": "company.asserts_withdrawal_late",
         "WITHDRAWAL_EXCEPTION_ASSERTED": "company.asserts_withdrawal_exception",
+        "INTERNET_INTERRUPTION_COMPENSATION_APPLIED_ASSERTED": "company.asserts_internet_interruption_compensation_applied",
     }
     for argument in result["arguments"]:
         key = argument_fact_map.get(argument)

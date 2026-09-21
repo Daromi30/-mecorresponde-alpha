@@ -225,7 +225,62 @@ def _c05_question(facts: dict[str, FactValue]) -> dict:
     return {"done": True, "question": None, "field": None}
 
 
+
+def _t01_question(facts: dict[str, FactValue]) -> dict:
+    order = [
+        ("telecom.subscriber_has_contract", "¿Eres titular o abonado del contrato del servicio de internet afectado?", "boolean"),
+        ("telecom.service_kind", "¿La interrupción afectó a internet fijo/fibra o a internet móvil?", "choice:fixed_internet|mobile_internet"),
+    ]
+    for key, question, input_type in order:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if _value(facts, "telecom.service_kind") != "fixed_internet":
+        return {"done": True, "question": None, "field": None}
+
+    if "telecom.service_restored" not in facts:
+        return _ask("telecom.service_restored", "¿El servicio ya se ha restablecido?", "boolean")
+    if _value(facts, "telecom.service_restored") is False:
+        return {"done": True, "question": None, "field": None}
+
+    fixed = [
+        ("telecom.interruption_duration_hours", "¿Cuántas horas duró en total la interrupción?", "number"),
+        ("telecom.affected_hours_8_22", "De esas horas, ¿cuántas transcurrieron entre las 8:00 y las 22:00?", "number"),
+        ("telecom.interruption_due_to_serious_subscriber_breach", "¿La operadora atribuye el corte a un incumplimiento grave del contrato por tu parte?", "boolean"),
+        ("telecom.interruption_due_to_nonconforming_terminal_damage", "¿La operadora atribuye el corte a daños de red causados por un equipo terminal tuyo no conforme?", "boolean"),
+        ("telecom.internet_fee_identified", "¿La factura o contrato identifica cuánto de la cuota fija corresponde específicamente al acceso a internet?", "boolean"),
+    ]
+    for key, question, input_type in fixed:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if _value(facts, "telecom.internet_fee_identified") is True:
+        if "telecom.monthly_internet_fixed_fee" not in facts:
+            return _ask("telecom.monthly_internet_fixed_fee", "¿Cuál es la cuota fija mensual identificada para internet?", "money")
+    else:
+        if "telecom.bundle_total_monthly_price" not in facts:
+            return _ask("telecom.bundle_total_monthly_price", "¿Cuál es el precio fijo mensual total del paquete?", "money")
+        if "telecom.operator_sells_services_separately" not in facts:
+            return _ask(
+                "telecom.operator_sells_services_separately",
+                "¿La operadora comercializa por separado los servicios incluidos en ese paquete?",
+                "boolean",
+            )
+        if _value(facts, "telecom.operator_sells_services_separately") is True:
+            return {"done": True, "question": None, "field": None}
+
+    if "telecom.billing_period_days" not in facts:
+        return _ask("telecom.billing_period_days", "¿Cuántos días comprende el período de facturación de esa cuota?", "number")
+    if "telecom.compensation_already_applied" not in facts:
+        return _ask("telecom.compensation_already_applied", "¿La operadora ya aplicó alguna compensación por este corte?", "boolean")
+    if _value(facts, "telecom.compensation_already_applied") is True and "telecom.compensation_received_amount" not in facts:
+        return _ask("telecom.compensation_received_amount", "¿Qué importe de compensación te aplicó?", "money")
+    return {"done": True, "question": None, "field": None}
+
+
 def next_question(facts: dict[str, FactValue], family: str | None) -> dict:
+    if family == "T01":
+        return _t01_question(facts)
     if family == "C02":
         return _c02_question(facts)
     if family == "C03":

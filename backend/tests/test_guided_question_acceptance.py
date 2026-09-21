@@ -8,7 +8,7 @@ import tempfile
 
 
 # Reuse the single beta scenario catalogue without maintaining a second copy of
-# 14 legal test fixtures. Loading by path keeps this independent of whether the
+# legal test fixtures. Loading by path keeps this independent of whether the
 # tests directory is installed as a Python package.
 _matrix_path = Path(__file__).with_name("test_beta_acceptance_matrix.py")
 _spec = importlib.util.spec_from_file_location("mcr_beta_acceptance_matrix", _matrix_path)

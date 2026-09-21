@@ -119,6 +119,22 @@ SCENARIOS = {
             "electricity.notice_informed_free_termination_right": False,
         },
     },
+    "T01": {
+        "message": "Mi fibra de internet estuvo cortada 12 horas y la operadora no me ha compensado",
+        "facts": {
+            "telecom.subscriber_has_contract": True,
+            "telecom.service_kind": "fixed_internet",
+            "telecom.service_restored": True,
+            "telecom.interruption_duration_hours": 12.0,
+            "telecom.affected_hours_8_22": 8.0,
+            "telecom.interruption_due_to_serious_subscriber_breach": False,
+            "telecom.interruption_due_to_nonconforming_terminal_damage": False,
+            "telecom.internet_fee_identified": True,
+            "telecom.monthly_internet_fixed_fee": 40.0,
+            "telecom.billing_period_days": 30,
+            "telecom.compensation_already_applied": False,
+        },
+    },
     "C01": {
         "message": "Compré un televisor en una tienda, está defectuoso y me rechazan la garantía",
         "facts": {

@@ -13,7 +13,7 @@ from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, 
 # These families were historically installed as a chain of extension wrappers.
 # The registry gives them one final dispatch boundary without changing their public
 # claim-package contract.
-REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03"})
+REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01"})
 
 
 @dataclass(frozen=True)
@@ -241,6 +241,31 @@ def _render_c03(ctx: ClaimContext) -> dict[str, Any]:
     raise ValueError("Current C03 action does not require sending a claim yet")
 
 
+def _render_t01(ctx: ClaimContext) -> dict[str, Any]:
+    if ctx.next_action != "PREPARE_T01_INTERNET_INTERRUPTION_COMPENSATION":
+        raise ValueError("Current T01 action requires information or human review rather than a claim")
+    amount = round(float(ctx.decision.claimable_amount or 0.0), 2)
+    if amount <= 0:
+        raise ValueError("No outstanding verified T01 compensation to request")
+    daytime = float(ctx.facts.get("telecom.affected_hours_8_22") or 0.0)
+    automatic = daytime > 6.0
+    text = (
+        f"Solicito la compensación pendiente de {amount:.2f} € por la interrupción temporal del servicio de acceso a internet, "
+        "calculada mediante el prorrateo de la cuota fija atribuible a internet por el tiempo de interrupción, conforme al artículo 16 del Real Decreto 899/2009."
+    )
+    if automatic:
+        text += (
+            " La interrupción superó seis horas, continuas o discontinuas, entre las 8:00 y las 22:00, "
+            "por lo que el artículo 16.1 prevé su abono automático en la factura del período inmediato."
+        )
+    text += " Esta reclamación no cuantifica daños adicionales, que el artículo 18 trata de forma separada."
+    return {
+        "claim_type": "T01_FIXED_INTERNET_INTERRUPTION_COMPENSATION",
+        "amount": amount,
+        "text": text,
+    }
+
+
 RENDERERS: dict[str, Renderer] = {
     "E01": _render_e01,
     "E03": _render_e03,
@@ -249,6 +274,7 @@ RENDERERS: dict[str, Renderer] = {
     "E07": _render_e07,
     "C02": _render_c02,
     "C03": _render_c03,
+    "T01": _render_t01,
 }
 
 

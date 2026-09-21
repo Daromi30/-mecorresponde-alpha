@@ -110,6 +110,10 @@ def install_all_families() -> tuple[str, ...]:
 
         install_energy_pricing_extensions()
 
+        from .telecom_extensions import install_telecom_extensions
+
+        install_telecom_extensions()
+
         previous_seed = svc.seed_legal
 
         def seed_with_reviewed_provenance(db):
