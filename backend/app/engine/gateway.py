@@ -98,6 +98,15 @@ class DeterministicAlphaGateway:
             "comision por un servicio que no solicite", "comision por servicio no prestado",
             "comision sin servicio",
         ])
+        rental = any(w in t for w in [
+            "alquiler", "arrendamiento", "arrendador", "casero", "inquilino",
+            "piso alquilado", "local alquilado", "entrega de llaves",
+        ])
+        rental_deposit = any(w in t for w in [
+            "fianza", "no me devuelve la fianza", "no me devuelven la fianza",
+            "devolver la fianza", "devolucion de la fianza", "retiene la fianza",
+            "se queda con la fianza",
+        ])
         travel = any(w in t for w in [
             "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
             "ryanair", "iberia", "vueling", "easyjet", "air europa", "volotea",
@@ -158,6 +167,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
+        if rental and rental_deposit:
+            return {"vertical": "rentals", "family": "R01", "confidence": 0.96}
         if banking and banking_fee:
             return {"vertical": "banking", "family": "B03", "confidence": 0.95}
         if authorized_direct_debit and not explicit_unauthorized_payment:
@@ -234,6 +245,12 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
+        if any(x in t for x in [
+            "deduccion de la fianza", "deducimos de la fianza", "descontamos de la fianza",
+            "danos en la vivienda", "danos en el inmueble", "rentas pendientes",
+            "suministros pendientes", "deudas pendientes del alquiler",
+        ]):
+            return {"type": "DENIAL", "arguments": ["RENT_DEPOSIT_DEDUCTIONS_ASSERTED"]}
         if (
             any(x in t for x in ["servicio solicitado", "servicio fue solicitado", "servicio aceptado"])
             and any(x in t for x in ["servicio prestado", "efectivamente prestado", "gasto habido", "gasto incurrido"])
