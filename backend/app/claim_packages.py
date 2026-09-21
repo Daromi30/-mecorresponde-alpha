@@ -14,7 +14,7 @@ from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, 
 # These families were historically installed as a chain of extension wrappers.
 # The registry gives them one final dispatch boundary without changing their public
 # claim-package contract.
-REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01"})
+REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02"})
 
 
 @dataclass(frozen=True)
@@ -306,6 +306,26 @@ def _render_v01(ctx: ClaimContext) -> dict[str, Any]:
     }
 
 
+def _render_v02(ctx: ClaimContext) -> dict[str, Any]:
+    if ctx.next_action != "PREPARE_V02_FIVE_HOUR_DELAY_REFUND":
+        raise ValueError("Current V02 action requires information or human review rather than a refund claim")
+    amount = round(float(ctx.decision.claimable_amount or 0.0), 2)
+    if amount <= 0:
+        raise ValueError("No outstanding verified V02 refund to request")
+    delay = ctx.facts.get("travel.departure_delay_hours")
+    text = (
+        f"Solicito el reembolso pendiente de {amount:.2f} € del billete del vuelo que no utilicé después de que "
+        f"el retraso en la salida alcanzara {delay} horas. El artículo 6.1.iii) del Reglamento (CE) n.º 261/2004 "
+        "remite en ese supuesto al reembolso del artículo 8.1.a). El expediente limita el cálculo a un único vuelo "
+        "con precio documentado. Esta solicitud no cuantifica ni reclama una compensación adicional por retraso."
+    )
+    return {
+        "claim_type": "V02_FIVE_HOUR_DELAY_TICKET_REFUND",
+        "amount": amount,
+        "text": text,
+    }
+
+
 RENDERERS: dict[str, Renderer] = {
     "E01": _render_e01,
     "E03": _render_e03,
@@ -317,6 +337,7 @@ RENDERERS: dict[str, Renderer] = {
     "T01": _render_t01,
     "T02": _render_t02,
     "V01": _render_v01,
+    "V02": _render_v02,
 }
 
 
