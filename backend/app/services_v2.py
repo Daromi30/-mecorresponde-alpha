@@ -603,6 +603,7 @@ def analyze_company_response(db: Session, case: Case, text: str):
         "FLIGHT_REFUND_ALREADY_PAID_ASSERTED": "company.asserts_flight_refund_already_paid",
         "DENIED_BOARDING_COMPENSATION_PAID_ASSERTED": "company.asserts_denied_boarding_compensation_paid",
         "PAYMENT_AUTHENTICATED_ASSERTED": "company.asserts_payment_authenticated",
+        "ARTICLE_48_4_EXCEPTION_ASSERTED": "company.asserts_article_48_4_exception",
     }
     for argument in result["arguments"]:
         key = argument_fact_map.get(argument)
