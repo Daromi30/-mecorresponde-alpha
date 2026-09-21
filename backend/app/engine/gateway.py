@@ -77,6 +77,15 @@ class DeterministicAlphaGateway:
             "interrupcion", "cortad", "se cayo internet", "caida de internet", "averia de internet",
             "internet no funciona", "fibra no funciona", "estuve sin internet",
         ])
+        banking = any(w in t for w in [
+            "banco", "bancaria", "bancario", "cuenta", "tarjeta", "transferencia",
+            "operacion de pago", "cargo", "bizum", "pago", "adeudo",
+        ])
+        unauthorized_payment = any(w in t for w in [
+            "no autorice", "no he autorizado", "no reconozco", "operacion no autorizada",
+            "cargo no autorizado", "pago no autorizado", "transferencia no autorizada",
+            "me han cargado", "me cargaron", "me han quitado dinero",
+        ])
         travel = any(w in t for w in [
             "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
             "ryanair", "iberia", "vueling", "easyjet", "air europa", "volotea",
@@ -137,6 +146,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
+        if banking and unauthorized_payment:
+            return {"vertical": "banking", "family": "B01", "confidence": 0.96}
         if travel and denied_boarding:
             return {"vertical": "travel", "family": "V03", "confidence": 0.96}
         if travel and flight_cancellation:
@@ -207,6 +218,8 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
+        if any(x in t for x in ["la operacion fue autenticada", "operacion autenticada correctamente", "pago autenticado correctamente"]):
+            return {"type": "DENIAL", "arguments": ["PAYMENT_AUTHENTICATED_ASSERTED"]}
         if any(x in t for x in ["compensacion por denegacion ya pagada", "compensacion por denegacion ya fue pagada", "ya pagamos la compensacion por denegacion", "compensacion por overbooking abonada"]):
             return {"type": "DENIAL", "arguments": ["DENIED_BOARDING_COMPENSATION_PAID_ASSERTED"]}
         if any(x in t for x in ["reembolso ya realizado", "billete ya reembolsado", "ya hemos reembolsado el billete", "reembolso abonado"]):
