@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,25 @@ class OfficialLegalSource:
 # Source metadata is deliberately separate from legal-rule versions. Source metadata
 # (for example an official publication date or canonical URL) can be corrected in place.
 # A substantive rule change must instead create a new LegalRuleVersion.
+TRUSTED_OFFICIAL_LEGAL_HOSTS = frozenset({
+    "www.boe.es",
+    "boe.es",
+    "eur-lex.europa.eu",
+})
+
+
+def is_trusted_official_legal_url(value: str) -> bool:
+    """Allow only reviewed official legal publication hosts over HTTPS."""
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return False
+    return (
+        parsed.scheme == "https"
+        and (parsed.hostname or "").casefold() in TRUSTED_OFFICIAL_LEGAL_HOSTS
+    )
+
+
 OFFICIAL_LEGAL_SOURCES: dict[str, OfficialLegalSource] = {
     "RD88_2026": OfficialLegalSource(
         authority="BOE / Ministerio para la Transición Ecológica y el Reto Demográfico",
@@ -39,6 +59,17 @@ OFFICIAL_LEGAL_SOURCES: dict[str, OfficialLegalSource] = {
         title="Ley 11/2022, de 28 de junio, General de Telecomunicaciones",
         official_url="https://www.boe.es/eli/es/l/2022/06/28/11",
         publication_date=date(2022, 6, 29),
+    ),
+    "EU261_2004": OfficialLegalSource(
+        authority="EUR-Lex / Parlamento Europeo y Consejo de la Unión Europea",
+        title=(
+            "Reglamento (CE) n.º 261/2004, de 11 de febrero de 2004, por el que se "
+            "establecen normas comunes sobre compensación y asistencia a los pasajeros "
+            "aéreos en caso de denegación de embarque y de cancelación o gran retraso de los vuelos"
+        ),
+        official_url="https://eur-lex.europa.eu/eli/reg/2004/261/oj",
+        publication_date=date(2004, 2, 17),
+        jurisdiction="EU",
     ),
     "TRLGDCU": OfficialLegalSource(
         authority="BOE / Jefatura del Estado",

@@ -13,6 +13,7 @@ def test_problem_page_registry_covers_every_supported_family_once():
     assert any(page.vertical == "electricity" for page in SEO_PROBLEM_PAGES)
     assert any(page.vertical == "purchases" for page in SEO_PROBLEM_PAGES)
     assert any(page.vertical == "telecom" for page in SEO_PROBLEM_PAGES)
+    assert any(page.vertical == "travel" for page in SEO_PROBLEM_PAGES)
 
 
 def test_alpha_problem_page_is_reachable_but_not_indexable(client):
@@ -60,5 +61,6 @@ def test_homepage_links_to_problem_library_for_internal_discovery(client):
     assert 'id="problem-library"' in response.text
     assert "/reclamar/luz/" in response.text
     assert "/reclamar/compras/" in response.text
+    assert "/reclamar/viajes/" in response.text
     for page in SEO_PROBLEM_PAGES:
         assert f'href="{page.path}"' in response.text

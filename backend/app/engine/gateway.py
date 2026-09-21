@@ -77,6 +77,17 @@ class DeterministicAlphaGateway:
             "interrupcion", "cortad", "se cayo internet", "caida de internet", "averia de internet",
             "internet no funciona", "fibra no funciona", "estuve sin internet",
         ])
+        travel = any(w in t for w in [
+            "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
+            "ryanair", "iberia", "vueling", "easyjet", "air europa", "volotea",
+        ])
+        flight_cancellation = any(w in t for w in [
+            "vuelo cancelado", "cancelaron el vuelo", "cancelaron mi vuelo",
+            "me ha cancelado el vuelo", "me han cancelado el vuelo",
+            "ha cancelado el vuelo", "han cancelado el vuelo",
+            "aerolinea cancelo", "aerolinea ha cancelado", "me cancelaron",
+            "cancelacion del vuelo", "cancelacion de vuelo",
+        ])
         purchase = any(w in t for w in ["compre", "comprado", "compra", "tienda", "vendedor", "producto", "pedido", "televisor", "tv", "movil", "telefono", "ordenador", "portatil", "lavadora", "nevera", "electrodomestico"])
         conformity = any(w in t for w in ["garantia", "defecto", "defectuoso", "averia", "averiado", "roto", "no funciona", "dejo de funcionar", "rechazan la garantia"])
         repair_followup = any(w in t for w in [
@@ -116,6 +127,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
+        if travel and flight_cancellation:
+            return {"vertical": "travel", "family": "V01", "confidence": 0.96}
         if telecom and telecom_interruption:
             return {"vertical": "telecom", "family": "T01", "confidence": 0.95}
         if telecom and contract_change:
@@ -180,6 +193,8 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
+        if any(x in t for x in ["reembolso ya realizado", "billete ya reembolsado", "ya hemos reembolsado el billete", "reembolso abonado"]):
+            return {"type": "DENIAL", "arguments": ["FLIGHT_REFUND_ALREADY_PAID_ASSERTED"]}
         if any(x in t for x in ["compensacion ya aplicada", "ya aplicamos la compensacion", "compensacion abonada"]):
             return {"type": "DENIAL", "arguments": ["INTERNET_INTERRUPTION_COMPENSATION_APPLIED_ASSERTED"]}
         if any(x in t for x in ["desistimiento fuera de plazo", "fuera del plazo de desistimiento", "plazo para desistir vencido"]):

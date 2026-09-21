@@ -78,6 +78,12 @@ FAMILY_MANIFEST: dict[str, FamilyManifestEntry] = {
         title="Cambio de precio o condiciones del contrato de telecomunicaciones",
         rule_ids=("TELECOM_CONTRACT_CHANGE_FREE_TERMINATION",),
     ),
+    "V01": FamilyManifestEntry(
+        code="V01",
+        vertical="travel",
+        title="Vuelo cancelado por la aerolínea y reembolso del billete",
+        rule_ids=("AIR_CANCELLATION_REFUND_CURRENT",),
+    ),
     "C01": FamilyManifestEntry(
         code="C01",
         vertical="purchases",
