@@ -43,6 +43,24 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     legal_holidays_csv: str = ""
 
+    # Privacy information remains fail-closed. These values are intentionally
+    # empty until the real controller, purposes, legal bases and operational
+    # policies have been identified and professionally reviewed.
+    privacy_information_reviewed: bool = False
+    privacy_controller_identity: str = ""
+    privacy_controller_contact: str = ""
+    privacy_dpo_contact: str = ""
+    privacy_purposes: str = ""
+    privacy_legal_basis: str = ""
+    privacy_retention: str = ""
+    privacy_recipients: str = ""
+    privacy_international_transfers: str = ""
+    privacy_rights: str = ""
+    privacy_automated_decisions: str = ""
+    privacy_special_categories: str = ""
+    privacy_data_requirement: str = ""
+    privacy_notice_version: str = ""
+
     # SEO remains fail-closed until both flags are intentionally configured.
     # This prevents an unfinished Render alpha from being indexed by mistake.
     public_indexing_enabled: bool = False
