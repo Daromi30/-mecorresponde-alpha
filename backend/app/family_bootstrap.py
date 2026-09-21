@@ -130,7 +130,7 @@ def install_all_families() -> tuple[str, ...]:
 
         def seed_with_reviewed_provenance(db):
             rules = previous_seed(db)
-            seed_rental_legal(db)
+            rules.update(seed_rental_legal(db))
             reconcile_legal_sources(db)
             return rules
 
