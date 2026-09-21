@@ -174,6 +174,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "Las comisiones suelen ser libres en su importe, pero su cobro exige condiciones concretas. Esta guía separa la existencia del servicio y su aceptación de una discusión distinta sobre si el importe es abusivo.",
         ("Extracto donde figure la comisión", "Contrato o solicitud del servicio", "Respuesta del banco y prueba del servicio o gasto que invoque"),
     ),
+    SeoProblemPage(
+        "R01", "rentals", "alquiler", "fianza-alquiler-no-devuelta",
+        "Fianza de alquiler no devuelta: qué comprobar",
+        "Ordena contrato, entrega de llaves y saldo pendiente cuando ha terminado el alquiler y no te devuelven la fianza.",
+        "La devolución de una fianza puede complicarse si existen daños, rentas o suministros discutidos. Esta guía automatiza solo un saldo que ya consta como determinado o reconocido.",
+        ("Contrato y justificante de la fianza", "Prueba de entrega de llaves", "Documento o comunicación donde conste el saldo a devolver"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}
