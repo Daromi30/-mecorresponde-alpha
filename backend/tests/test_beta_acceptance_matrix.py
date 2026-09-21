@@ -257,6 +257,19 @@ SCENARIOS = {
             "rental.refund_received": False,
         },
     },
+    "S01": {
+        "message": "Mi aseguradora ha reconocido una cantidad mínima por el siniestro pero no me la paga",
+        "facts": {
+            "insurance.claimant_role": "insured",
+            "insurance.counterparty_type": "insurer",
+            "insurance.claim_declaration_received_by_insurer": True,
+            "insurance.claim_declaration_received_date": "2026-07-01",
+            "insurance.claim_declaration_receipt_evidence": True,
+            "insurance.insurer_acknowledged_minimum_amount": True,
+            "insurance.acknowledged_minimum_amount": 1250.0,
+            "insurance.minimum_payment_received": False,
+        },
+    },
     "C01": {
         "message": "Compré un televisor en una tienda, está defectuoso y me rechazan la garantía",
         "facts": {
