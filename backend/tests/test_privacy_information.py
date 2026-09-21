@@ -70,3 +70,15 @@ def test_privacy_route_and_readiness_fail_closed(client, monkeypatch):
     privacy = next(item for item in ready["checks"] if item["key"] == "privacy_information")
     assert privacy["ok"] is True
     assert "privacy_information" not in ready["beta_blockers"]
+
+
+def test_complete_privacy_notice_stays_noindex_until_public_launch_is_enabled(client, monkeypatch):
+    for key, value in vars(_complete_settings()).items():
+        monkeypatch.setattr(settings, key, value)
+    monkeypatch.setattr(settings, "public_indexing_enabled", False)
+    monkeypatch.setattr(settings, "public_base_url", "")
+
+    response = client.get("/privacidad")
+
+    assert response.status_code == 200
+    assert response.headers["x-robots-tag"] == "noindex, nofollow"

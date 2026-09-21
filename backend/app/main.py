@@ -294,7 +294,12 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
         or path.startswith("/demo")
         or path.startswith("/backoffice")
     )
-    public_indexable_surface = path == "/" or path.startswith("/reclamar")
+    # Privacy information can become complete before public indexing is approved.
+    # Keep that page out of search results until the same explicit launch gate is
+    # enabled, rather than allowing a direct URL to bypass the alpha noindex policy.
+    public_indexable_surface = (
+        path == "/" or path == "/privacidad" or path.startswith("/reclamar")
+    )
     if always_noindex or (public_indexable_surface and not settings.public_indexing_ready):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
 
