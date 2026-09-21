@@ -95,6 +95,7 @@ def _problem_library_html() -> str:
     purchases = [page for page in SEO_PROBLEM_PAGES if page.vertical == "purchases"]
     telecom = [page for page in SEO_PROBLEM_PAGES if page.vertical == "telecom"]
     travel = [page for page in SEO_PROBLEM_PAGES if page.vertical == "travel"]
+    banking = [page for page in SEO_PROBLEM_PAGES if page.vertical == "banking"]
 
     def links(pages):
         return "".join(
@@ -112,6 +113,7 @@ def _problem_library_html() -> str:
         f'<div><h3>Compras y garantías</h3><ul>{links(purchases)}</ul></div>'
         f'<div><h3>Telecomunicaciones</h3><ul>{links(telecom)}</ul></div>'
         f'<div><h3>Viajes</h3><ul>{links(travel)}</ul></div>'
+        f'<div><h3>Banca</h3><ul>{links(banking)}</ul></div>'
         '</div></section>'
     )
 
