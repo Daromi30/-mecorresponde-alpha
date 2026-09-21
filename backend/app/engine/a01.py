@@ -50,7 +50,6 @@ def evaluate_a01(facts: dict[str, FactValue]) -> EngineResult:
     part_status = raw(facts, "automotive.failure_repaired_part_status")
     third_party = raw(facts, "automotive.third_party_manipulation_after_repair")
     hidden_anomaly = raw(facts, "automotive.refused_hidden_anomaly_causal_status")
-    company_third_party = raw(facts, "company.asserts_automotive_third_party_manipulation")
 
     required = {
         "automotive.workshop_in_spain": workshop_spain,
@@ -241,7 +240,7 @@ def evaluate_a01(facts: dict[str, FactValue]) -> EngineResult:
             burden_of_proof=[],
         )
 
-    if third_party is True or company_third_party is True:
+    if third_party is True:
         return EngineResult(
             viability="PROFESSIONAL_REVIEW",
             scope_status="LIMITED_SCOPE",
@@ -249,8 +248,8 @@ def evaluate_a01(facts: dict[str, FactValue]) -> EngineResult:
             economic_value=None,
             worth_pursuing="PROFESSIONAL_REVIEW",
             reasoning_summary=(
-                "Consta una manipulación o reparación posterior por tercero —o el taller la afirma— y el artículo 16.2 "
-                "condiciona la garantía a la ausencia de esa intervención. Debe revisarse la prueba antes de concluir."
+                "Consta una manipulación o reparación posterior por tercero y el artículo 16.2 condiciona la garantía "
+                "a la ausencia de esa intervención. Debe revisarse la prueba antes de concluir."
             ),
             counterarguments=[],
             missing_facts=[],
