@@ -124,9 +124,11 @@ def install_all_families() -> tuple[str, ...]:
 
         from .rental_family import register_rental_family, seed_rental_legal
         from .insurance_family import register_insurance_family, seed_insurance_legal
+        from .automotive_family import register_automotive_family, seed_automotive_legal
 
         register_rental_family()
         register_insurance_family()
+        register_automotive_family()
 
         previous_seed = svc.seed_legal
 
@@ -134,6 +136,7 @@ def install_all_families() -> tuple[str, ...]:
             rules = previous_seed(db)
             rules.update(seed_rental_legal(db))
             rules.update(seed_insurance_legal(db))
+            rules.update(seed_automotive_legal(db))
             reconcile_legal_sources(db)
             return rules
 
