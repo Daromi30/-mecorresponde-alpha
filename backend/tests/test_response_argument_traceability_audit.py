@@ -14,6 +14,7 @@ from app.reviews import HumanReview
 
 
 ARGUMENT_CASES = [
+    ("AUTOMOTIVE_THIRD_PARTY_MANIPULATION_ASSERTED", "El vehículo fue manipulado por otro taller.", "company.asserts_automotive_third_party_manipulation"),
     ("INDEPENDENT_ADDON_CONTRACT", "El mantenimiento es un contrato independiente.", "company.asserts_independent_addon_contract"),
     ("EXPRESS_KEEP_REQUEST", "Usted solicitó mantener el servicio.", "company.asserts_keep_request"),
     ("CONSENT_EVIDENCE", "Consta su consentimiento expreso.", "company.asserts_consent"),
@@ -45,6 +46,7 @@ ARGUMENT_CASES = [
 
 
 FAMILY_DENIALS = {
+    "A01": ("El vehículo fue manipulado por otro taller.", "company.asserts_automotive_third_party_manipulation"),
     "B01": ("La operación fue autenticada.", "company.asserts_payment_authenticated"),
     "B02": ("Usted consintió el adeudo y recibió aviso previo con cuatro semanas.", "company.asserts_article_48_4_exception"),
     "B03": ("El servicio fue solicitado y efectivamente prestado.", "company.asserts_bank_fee_requested_and_provided"),
