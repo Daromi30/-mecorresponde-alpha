@@ -7,7 +7,7 @@ from sqlalchemy import select
 from . import services_v2 as svc
 from .engine.guarded_gateway import GuardedModelGateway
 from .family_manifest import FAMILY_MANIFEST, supported_family_codes
-from .legal_source_registry import reconcile_legal_sources
+from .legal_source_registry import is_trusted_official_legal_url, reconcile_legal_sources
 from .models import LegalRuleVersion, LegalSource
 
 _INSTALLED = False
@@ -45,7 +45,7 @@ def _verified_basis_for_preparable_decision(db, decision):
         if (
             source is None
             or source.status != "active"
-            or not source.official_url.startswith("https://www.boe.es/")
+            or not is_trusted_official_legal_url(source.official_url)
         ):
             raise ValueError(f"Verified official legal source missing for {rule_id} v{version}")
         basis.append(
