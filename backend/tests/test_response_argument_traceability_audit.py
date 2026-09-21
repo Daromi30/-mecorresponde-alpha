@@ -35,10 +35,12 @@ ARGUMENT_CASES = [
     ("INTERNET_INTERRUPTION_COMPENSATION_APPLIED_ASSERTED", "La compensación ya aplicada consta en su factura.", "company.asserts_internet_interruption_compensation_applied"),
     ("FLIGHT_REFUND_ALREADY_PAID_ASSERTED", "Ya hemos reembolsado el billete.", "company.asserts_flight_refund_already_paid"),
     ("DENIED_BOARDING_COMPENSATION_PAID_ASSERTED", "La compensación por denegación ya fue pagada.", "company.asserts_denied_boarding_compensation_paid"),
+    ("PAYMENT_AUTHENTICATED_ASSERTED", "La operación fue autenticada.", "company.asserts_payment_authenticated"),
 ]
 
 
 FAMILY_DENIALS = {
+    "B01": ("La operación fue autenticada.", "company.asserts_payment_authenticated"),
     "E01": ("El precio coincide con el contrato.", "company.asserts_pricing_matches_contract"),
     "E02-A": ("Facturación correcta.", "company.asserts_correct_amount"),
     "E02-B": ("Los cargos corresponden a facturas distintas.", "company.asserts_different_debts"),

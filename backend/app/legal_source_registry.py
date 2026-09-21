@@ -71,6 +71,12 @@ OFFICIAL_LEGAL_SOURCES: dict[str, OfficialLegalSource] = {
         publication_date=date(2004, 2, 17),
         jurisdiction="EU",
     ),
+    "RDL19_2018": OfficialLegalSource(
+        authority="BOE / Jefatura del Estado",
+        title="Real Decreto-ley 19/2018, de 23 de noviembre, de servicios de pago y otras medidas urgentes en materia financiera",
+        official_url="https://www.boe.es/eli/es/rdl/2018/11/23/19/con",
+        publication_date=date(2018, 11, 24),
+    ),
     "TRLGDCU": OfficialLegalSource(
         authority="BOE / Jefatura del Estado",
         title=(

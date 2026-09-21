@@ -14,7 +14,7 @@ from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, 
 # These families were historically installed as a chain of extension wrappers.
 # The registry gives them one final dispatch boundary without changing their public
 # claim-package contract.
-REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02", "V03"})
+REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02", "V03", "B01"})
 
 
 @dataclass(frozen=True)
@@ -349,6 +349,27 @@ def _render_v03(ctx: ClaimContext) -> dict[str, Any]:
     }
 
 
+def _render_b01(ctx: ClaimContext) -> dict[str, Any]:
+    if ctx.next_action != "PREPARE_B01_UNAUTHORIZED_PAYMENT_REFUND":
+        raise ValueError("Current B01 action requires information or human review rather than a refund request")
+    amount = round(float(ctx.decision.claimable_amount or 0.0), 2)
+    if amount <= 0:
+        raise ValueError("No outstanding verified B01 refund to request")
+    text = (
+        f"Solicito el reembolso pendiente de {amount:.2f} € correspondiente a la operación de pago que niego haber autorizado. "
+        "La solicitud se formula conforme a los artículos 43 a 46 del Real Decreto-ley 19/2018. "
+        "Los hechos confirmados del expediente sitúan la comunicación dentro del alcance temporal automatizado de B01 "
+        "y no activan una excepción que el Motor pueda aplicar sin revisión humana. "
+        "Conforme al artículo 44, el mero registro del uso del instrumento no basta necesariamente para demostrar autorización "
+        "y corresponde al proveedor acreditar la autenticación y, si lo alega, el fraude o la negligencia grave."
+    )
+    return {
+        "claim_type": "B01_UNAUTHORIZED_PAYMENT_REFUND",
+        "amount": amount,
+        "text": text,
+    }
+
+
 RENDERERS: dict[str, Renderer] = {
     "E01": _render_e01,
     "E03": _render_e03,
@@ -362,6 +383,7 @@ RENDERERS: dict[str, Renderer] = {
     "V01": _render_v01,
     "V02": _render_v02,
     "V03": _render_v03,
+    "B01": _render_b01,
 }
 
 

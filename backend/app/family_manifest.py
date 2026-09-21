@@ -96,6 +96,12 @@ FAMILY_MANIFEST: dict[str, FamilyManifestEntry] = {
         title="Denegación involuntaria de embarque y compensación",
         rule_ids=("AIR_INVOLUNTARY_DENIED_BOARDING_COMPENSATION_CURRENT",),
     ),
+    "B01": FamilyManifestEntry(
+        code="B01",
+        vertical="banking",
+        title="Operación de pago no autorizada y solicitud de reembolso",
+        rule_ids=("PAYMENT_UNAUTHORIZED_REFUND_CURRENT",),
+    ),
     "C01": FamilyManifestEntry(
         code="C01",
         vertical="purchases",

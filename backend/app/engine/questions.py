@@ -511,7 +511,58 @@ def _v03_question(facts: dict[str, FactValue]) -> dict:
     return {"done": True, "question": None, "field": None}
 
 
+
+def _b01_question(facts: dict[str, FactValue]) -> dict:
+    fixed = [
+        (
+            "bank.user_scope",
+            "¿Actúas como consumidor o como microempresa en relación con esta cuenta o medio de pago?",
+            "choice:consumer|microenterprise|other",
+        ),
+        ("bank.payer_provider_in_spain", "¿La cuenta o medio de pago lo presta una entidad/proveedor situado en España?", "boolean"),
+        ("bank.operation_unauthorized", "¿Niega haber autorizado esta operación de pago?", "boolean"),
+    ]
+    for key, question, input_type in fixed:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if _value(facts, "bank.operation_unauthorized") is False:
+        return {"done": True, "question": None, "field": None}
+
+    rest = [
+        ("bank.debit_date", "¿Qué día se cargó la operación en la cuenta?", "date"),
+        ("bank.awareness_date", "¿Qué día viste o conociste la operación no autorizada?", "date"),
+        ("bank.notification_date", "¿Qué día la comunicaste a tu entidad o proveedor de pago?", "date"),
+        ("bank.provider_supplied_operation_info", "¿La entidad te había facilitado o puesto a disposición la información de esa operación?", "boolean"),
+        ("bank.payment_initiation_provider_involved", "¿La operación se inició mediante un proveedor externo de iniciación de pagos?", "boolean"),
+        (
+            "bank.instrument_status",
+            "¿La operación está relacionada con una tarjeta o instrumento perdido, robado o apropiado por un tercero?",
+            "choice:not_lost_stolen_or_misappropriated|lost_stolen_or_misappropriated|unknown",
+        ),
+        ("bank.provider_alleges_fraud_or_gross_negligence", "¿La entidad te acusa de fraude o negligencia grave en la custodia o uso del medio de pago?", "boolean"),
+        (
+            "bank.provider_fraud_suspicion_status",
+            "¿La entidad afirma haber retenido la devolución por sospecha razonable de fraude comunicada al Banco de España?",
+            "choice:none|reported_to_bde|unknown",
+        ),
+    ]
+    for key, question, input_type in rest:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if "bank.documented_operation_amount" not in facts:
+        return _ask("bank.documented_operation_amount", "¿Qué importe exacto figura cargado en la operación?", "money")
+    if "bank.refund_received" not in facts:
+        return _ask("bank.refund_received", "¿La entidad ya te ha devuelto algún importe de esa operación?", "boolean")
+    if _value(facts, "bank.refund_received") is True and "bank.refund_received_amount" not in facts:
+        return _ask("bank.refund_received_amount", "¿Qué importe te ha devuelto ya?", "money")
+    return {"done": True, "question": None, "field": None}
+
+
 def next_question(facts: dict[str, FactValue], family: str | None) -> dict:
+    if family == "B01":
+        return _b01_question(facts)
     if family == "V01":
         return _v01_question(facts)
     if family == "V02":
