@@ -93,6 +93,7 @@ def _public_base_url() -> str:
 def _problem_library_html() -> str:
     electricity = [page for page in SEO_PROBLEM_PAGES if page.vertical == "electricity"]
     purchases = [page for page in SEO_PROBLEM_PAGES if page.vertical == "purchases"]
+    telecom = [page for page in SEO_PROBLEM_PAGES if page.vertical == "telecom"]
 
     def links(pages):
         return "".join(
@@ -108,6 +109,7 @@ def _problem_library_html() -> str:
         '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px">'
         f'<div><h3>Luz</h3><ul>{links(electricity)}</ul></div>'
         f'<div><h3>Compras y garantías</h3><ul>{links(purchases)}</ul></div>'
+        f'<div><h3>Telecomunicaciones</h3><ul>{links(telecom)}</ul></div>'
         '</div></section>'
     )
 
