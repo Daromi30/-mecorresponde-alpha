@@ -58,7 +58,7 @@ def test_a01_unclear_repaired_part_or_third_party_fails_closed():
     assert evaluate_a01(unclear).next_action == "HUMAN_REVIEW_A01_REPAIRED_PART_CAUSATION"
 
     third_party = base_facts()
-    third_party["company.asserts_automotive_third_party_manipulation"] = fv(True)
+    third_party["automotive.third_party_manipulation_after_repair"] = fv(True)
     assert evaluate_a01(third_party).next_action == "HUMAN_REVIEW_A01_THIRD_PARTY_MANIPULATION"
 
 
