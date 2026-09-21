@@ -132,6 +132,7 @@ class DeterministicAlphaGateway:
             "averia despues de reparar", "averia tras la reparacion",
             "reparacion fallida", "garantia del taller", "garantia de la reparacion",
             "misma averia despues de reparar", "fallo en la pieza reparada",
+            "volvio a fallar", "vuelve a fallar",
         ])
         travel = any(w in t for w in [
             "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
