@@ -16,6 +16,7 @@ def test_problem_page_registry_covers_every_supported_family_once():
     assert any(page.vertical == "travel" for page in SEO_PROBLEM_PAGES)
     assert any(page.vertical == "rentals" for page in SEO_PROBLEM_PAGES)
     assert any(page.vertical == "insurance" for page in SEO_PROBLEM_PAGES)
+    assert any(page.vertical == "automotive" for page in SEO_PROBLEM_PAGES)
     assert any(page.vertical == "banking" for page in SEO_PROBLEM_PAGES)
 
 
@@ -67,6 +68,7 @@ def test_homepage_links_to_problem_library_for_internal_discovery(client):
     assert "/reclamar/viajes/" in response.text
     assert "/reclamar/alquiler/" in response.text
     assert "/reclamar/seguros/" in response.text
+    assert "/reclamar/automocion/" in response.text
     assert "/reclamar/banca/" in response.text
     for page in SEO_PROBLEM_PAGES:
         assert f'href="{page.path}"' in response.text
