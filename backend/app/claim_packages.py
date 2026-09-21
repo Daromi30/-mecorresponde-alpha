@@ -14,7 +14,7 @@ from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, 
 # These families were historically installed as a chain of extension wrappers.
 # The registry gives them one final dispatch boundary without changing their public
 # claim-package contract.
-REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02"})
+REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01"})
 
 
 @dataclass(frozen=True)
@@ -286,6 +286,26 @@ def _render_t02(ctx: ClaimContext) -> dict[str, Any]:
     }
 
 
+def _render_v01(ctx: ClaimContext) -> dict[str, Any]:
+    if ctx.next_action != "PREPARE_V01_CANCELLATION_REFUND":
+        raise ValueError("Current V01 action requires information or human review rather than a refund claim")
+    amount = round(float(ctx.decision.claimable_amount or 0.0), 2)
+    if amount <= 0:
+        raise ValueError("No outstanding verified V01 refund to request")
+    text = (
+        f"Solicito el reembolso pendiente de {amount:.2f} € correspondiente al vuelo cancelado, "
+        "conforme al artículo 5.1.a), en relación con el artículo 8.1.a), del Reglamento (CE) n.º 261/2004. "
+        "El expediente confirma una reserva de un único vuelo con salida desde la Unión Europea, la elección de reembolso "
+        "y el precio documentado del billete. Esta solicitud se limita al reembolso del billete y no cuantifica ni reclama "
+        "la compensación adicional del artículo 7."
+    )
+    return {
+        "claim_type": "V01_CANCELLED_FLIGHT_TICKET_REFUND",
+        "amount": amount,
+        "text": text,
+    }
+
+
 RENDERERS: dict[str, Renderer] = {
     "E01": _render_e01,
     "E03": _render_e03,
@@ -296,6 +316,7 @@ RENDERERS: dict[str, Renderer] = {
     "C03": _render_c03,
     "T01": _render_t01,
     "T02": _render_t02,
+    "V01": _render_v01,
 }
 
 
