@@ -7,7 +7,13 @@ from app.config import settings
 from app.documents import save_upload
 from app.models import DocumentExtraction, Evidence
 from app.services_v2 import confirm_document_fact, create_case
-from app.storage import LocalDocumentStorage, UnsafeDocumentUpload, validate_document_bytes
+from app.storage import (
+    LocalDocumentStorage,
+    S3DocumentStorage,
+    UnsafeDocumentUpload,
+    validate_document_bytes,
+    validated_storage_key,
+)
 
 
 def test_local_storage_is_content_addressed_and_immutable(tmp_path, db):
@@ -69,6 +75,21 @@ def test_document_fact_keeps_document_provenance(tmp_path, db):
 def test_invalid_file_signature_is_rejected():
     with pytest.raises(UnsafeDocumentUpload, match="PDF signature"):
         validate_document_bytes("fake.pdf", "application/pdf", b"this is not a pdf")
+
+
+@pytest.mark.parametrize("key", ["", "/", "../other", "originals/../other", "a//b", r"a\\b"])
+def test_storage_keys_reject_traversal_and_ambiguous_paths(key):
+    with pytest.raises(UnsafeDocumentUpload, match="Invalid storage key"):
+        validated_storage_key(key)
+
+
+def test_s3_key_uses_the_same_safe_relative_key_grammar():
+    storage = object.__new__(S3DocumentStorage)
+    storage.prefix = "mecorresponde"
+
+    assert storage._key("/originals/case-a/ab/digest/") == "mecorresponde/originals/case-a/ab/digest"
+    with pytest.raises(UnsafeDocumentUpload, match="Invalid storage key"):
+        storage._key("originals/case-a/../../another-case")
 
 
 def test_render_blocks_document_upload_until_storage_is_persistent(client, monkeypatch):

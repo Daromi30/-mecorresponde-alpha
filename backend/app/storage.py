@@ -15,6 +15,26 @@ class UnsafeDocumentUpload(RuntimeError):
     pass
 
 
+def validated_storage_key(key: str) -> str:
+    """Return a canonical relative object key or reject an unsafe one.
+
+    Object stores do not resolve ``..`` like a filesystem, but accepting it would
+    make a future backend-specific normalisation capable of escaping the intended
+    logical prefix.  Every backend therefore uses one deliberately small key
+    grammar: non-empty, slash-separated segments, with no dot segments or
+    backslashes.
+    """
+    if not isinstance(key, str):
+        raise UnsafeDocumentUpload("Invalid storage key")
+    clean = key.strip("/")
+    if not clean or "\\" in clean:
+        raise UnsafeDocumentUpload("Invalid storage key")
+    parts = clean.split("/")
+    if any(not part or part in {".", ".."} for part in parts):
+        raise UnsafeDocumentUpload("Invalid storage key")
+    return clean
+
+
 @dataclass(frozen=True)
 class StorageStatus:
     backend: str
@@ -39,7 +59,7 @@ class LocalDocumentStorage:
         self.persistent = persistent
 
     def _path(self, key: str) -> Path:
-        clean = key.strip("/")
+        clean = validated_storage_key(key)
         path = (self.root / clean).resolve()
         root = self.root.resolve()
         if root not in path.parents and path != root:
@@ -100,7 +120,7 @@ class S3DocumentStorage:
         self.prefix = settings.s3_prefix.strip("/")
 
     def _key(self, key: str) -> str:
-        clean = key.strip("/")
+        clean = validated_storage_key(key)
         return f"{self.prefix}/{clean}" if self.prefix else clean
 
     def put_bytes(self, key: str, data: bytes, *, content_type: str, sha256: str) -> None:
