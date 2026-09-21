@@ -117,6 +117,12 @@ class DeterministicAlphaGateway:
             "pago minimo", "importe minimo", "cantidad minima", "40 dias", "cuarenta dias",
             "cantidad reconocida", "importe reconocido", "ha reconocido una cantidad",
         ])
+        insurance_nonrenewal = any(w in t for w in [
+            "no renovar el seguro", "no quiero renovar", "no quiero que se renueve",
+            "cancelar la renovacion", "evitar la renovacion", "oponerme a la renovacion",
+            "oposicion a la prorroga", "dar de baja al vencimiento",
+            "que no se prorrogue", "que no me renueven el seguro",
+        ])
         travel = any(w in t for w in [
             "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
             "ryanair", "iberia", "vueling", "easyjet", "air europa", "volotea",
@@ -177,6 +183,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
+        if insurance and insurance_nonrenewal:
+            return {"vertical": "insurance", "family": "S02", "confidence": 0.96}
         if insurance and insurance_nonpayment:
             return {"vertical": "insurance", "family": "S01", "confidence": 0.94}
         if rental and rental_deposit:
@@ -257,6 +265,12 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
+        if any(x in t for x in [
+            "oposicion fuera de plazo", "comunicacion fuera de plazo",
+            "aviso de no renovacion fuera de plazo", "no renovacion fuera de plazo",
+            "no se comunico con un mes de antelacion",
+        ]):
+            return {"type": "DENIAL", "arguments": ["INSURANCE_NONRENEWAL_LATE_ASSERTED"]}
         if any(x in t for x in [
             "importe minimo ya pagado", "cantidad minima ya pagada",
             "ya abonamos el importe minimo", "minimo ya abonado",
