@@ -302,14 +302,7 @@ def _t02_question(facts: dict[str, FactValue]) -> dict:
         return _ask(
             "telecom.change_exception_type",
             "¿Qué tipo de cambio te comunicaron?",
-            "choice",
-            [
-                {"value": "adverse_or_other", "label": "Me perjudica o no es meramente administrativo"},
-                {"value": "benefit_only", "label": "Es exclusivamente beneficioso para mí"},
-                {"value": "administrative_no_negative", "label": "Es solo administrativo y no tiene efectos negativos"},
-                {"value": "legally_required", "label": "La operadora indica que viene impuesto por una norma"},
-                {"value": "unknown", "label": "No lo sé / no está claro"},
-            ],
+            "choice:adverse_or_other|benefit_only|administrative_no_negative|legally_required|unknown",
         )
     if _value(facts, "telecom.change_exception_type") != "adverse_or_other":
         return {"done": True, "question": None, "field": None}
