@@ -125,6 +125,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "La existencia y cuantía de una compensación depende de hechos verificables como la duración del corte, el tipo de servicio y la cuota fija atribuible a internet. El Motor no presume daños adicionales.",
         ("Factura o contrato donde conste la cuota del servicio", "Fechas y duración de la interrupción", "Incidencia, aviso o comunicación de la operadora"),
     ),
+    SeoProblemPage(
+        "T02", "telecom", "telecomunicaciones", "cambio-precio-condiciones-operadora",
+        "Cambio de precio o condiciones de tu operadora: qué revisar",
+        "Comprueba la comunicación, las fechas y el contrato si tu operadora anuncia una subida de precio u otro cambio de condiciones.",
+        "No todo cambio contractual produce el mismo efecto. Conviene separar qué cambia, por qué, cuándo se comunicó y si la comunicación informa del derecho a resolver sin coste.",
+        ("Contrato y condiciones vigentes", "Comunicación del cambio", "Fecha prevista de aplicación y cualquier información sobre baja o permanencia"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}
