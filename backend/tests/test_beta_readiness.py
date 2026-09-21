@@ -3,6 +3,8 @@ import shutil
 import subprocess
 import tempfile
 
+from app.family_manifest import FAMILY_MANIFEST
+
 
 ADMIN = {"Authorization": "Bearer test-admin-token"}
 ADMIN_STATIC = Path(__file__).parents[1] / "app" / "admin_static"
@@ -36,6 +38,9 @@ def test_readiness_separates_internal_real_data_public_beta_and_launch_blockers(
     assert checks["protected_backoffice"]["ok"] is True
     assert checks["all_family_acceptance"]["ok"] is True
     assert checks["guided_browser_input_contract"]["ok"] is True
+    assert checks["guided_browser_input_contract"]["metadata"]["family_count"] == len(FAMILY_MANIFEST)
+    assert str(len(FAMILY_MANIFEST)) in checks["guided_browser_input_contract"]["detail"]
+    assert "14 familias" not in checks["guided_browser_input_contract"]["detail"]
     assert checks["saved_account_resolution_journey"]["ok"] is True
 
     # Tests deliberately run on SQLite/local storage. Internal deployed beta therefore
