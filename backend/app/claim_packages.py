@@ -14,7 +14,7 @@ from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, 
 # These families were historically installed as a chain of extension wrappers.
 # The registry gives them one final dispatch boundary without changing their public
 # claim-package contract.
-REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02", "V03", "B01"})
+REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02", "V01", "V02", "V03", "B01", "R01"})
 
 
 @dataclass(frozen=True)
@@ -370,6 +370,33 @@ def _render_b01(ctx: ClaimContext) -> dict[str, Any]:
     }
 
 
+def _render_r01(ctx: ClaimContext) -> dict[str, Any]:
+    if ctx.next_action != "PREPARE_R01_RENTAL_DEPOSIT_RETURN":
+        raise ValueError("Current R01 action requires information or human review rather than a refund request")
+    amount = round(float(ctx.decision.claimable_amount or 0.0), 2)
+    if amount <= 0:
+        raise ValueError("No outstanding verified R01 rental-deposit balance to request")
+    calculation = ctx.decision.calculation_json or {}
+    interest_accrues = bool(calculation.get("legal_interest_accrues"))
+    interest_from = calculation.get("legal_interest_from")
+    text = (
+        f"Solicito la restitución del saldo pendiente de fianza de {amount:.2f} €, cuyo importe consta como "
+        "determinado o reconocido en el expediente, conforme al artículo 36.4 de la Ley 29/1994 de Arrendamientos Urbanos."
+    )
+    result = {
+        "claim_type": "R01_CONFIRMED_RENTAL_DEPOSIT_RETURN",
+        "amount": amount,
+        "text": text,
+    }
+    if interest_accrues:
+        result["text"] += (
+            f" Ha transcurrido un mes desde la entrega acreditada de llaves; el artículo 36.4 establece el devengo "
+            f"del interés legal desde {interest_from}. Esta reclamación no cuantifica automáticamente ese interés."
+        )
+        result["amount_status"] = "PRINCIPAL_ONLY_LEGAL_INTEREST_NOT_CALCULATED"
+    return result
+
+
 RENDERERS: dict[str, Renderer] = {
     "E01": _render_e01,
     "E03": _render_e03,
@@ -384,6 +411,7 @@ RENDERERS: dict[str, Renderer] = {
     "V02": _render_v02,
     "V03": _render_v03,
     "B01": _render_b01,
+    "R01": _render_r01,
 }
 
 
