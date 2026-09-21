@@ -40,6 +40,7 @@ ARGUMENT_CASES = [
     ("BANK_FEE_REQUESTED_AND_PROVIDED_ASSERTED", "El servicio fue solicitado y efectivamente prestado.", "company.asserts_bank_fee_requested_and_provided"),
     ("RENT_DEPOSIT_DEDUCTIONS_ASSERTED", "Descontamos de la fianza por daños en la vivienda.", "company.asserts_rent_deposit_deductions"),
     ("INSURANCE_MINIMUM_PAYMENT_PAID_ASSERTED", "El importe mínimo ya pagado consta en el expediente.", "company.asserts_insurance_minimum_payment_paid"),
+    ("INSURANCE_NONRENEWAL_LATE_ASSERTED", "La comunicación de no renovación está fuera de plazo.", "company.asserts_insurance_nonrenewal_late"),
 ]
 
 
@@ -49,6 +50,7 @@ FAMILY_DENIALS = {
     "B03": ("El servicio fue solicitado y efectivamente prestado.", "company.asserts_bank_fee_requested_and_provided"),
     "R01": ("Descontamos de la fianza por daños en la vivienda.", "company.asserts_rent_deposit_deductions"),
     "S01": ("El importe mínimo ya pagado consta en el expediente.", "company.asserts_insurance_minimum_payment_paid"),
+    "S02": ("La comunicación de no renovación está fuera de plazo.", "company.asserts_insurance_nonrenewal_late"),
     "E01": ("El precio coincide con el contrato.", "company.asserts_pricing_matches_contract"),
     "E02-A": ("Facturación correcta.", "company.asserts_correct_amount"),
     "E02-B": ("Los cargos corresponden a facturas distintas.", "company.asserts_different_debts"),
