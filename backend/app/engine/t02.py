@@ -68,6 +68,25 @@ def evaluate_t02(facts: dict[str, FactValue]) -> EngineResult:
     if exception_type is None:
         missing.append("telecom.change_exception_type")
 
+    if exception_type == "unknown":
+        return EngineResult(
+            viability="PROFESSIONAL_REVIEW",
+            scope_status="LIMITED_SCOPE",
+            claimable_amount=None,
+            economic_value=None,
+            worth_pursuing="PROFESSIONAL_REVIEW",
+            reasoning_summary="No está claro si el cambio entra en una de las excepciones del artículo 67.8; T02 no presume que el derecho de resolución sea aplicable.",
+            counterarguments=[],
+            missing_facts=[],
+            next_action="HUMAN_REVIEW_T02_CHANGE_EXCEPTION",
+            rule_result="MANUAL_REVIEW",
+            failed_conditions=[],
+            calculation=None,
+            sources=sources,
+            remedies=[],
+            burden_of_proof=[],
+        )
+
     if exception_type in {"benefit_only", "administrative_no_negative", "legally_required"}:
         return EngineResult(
             viability="LOW",
