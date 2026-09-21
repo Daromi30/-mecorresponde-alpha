@@ -235,6 +235,11 @@ class DeterministicAlphaGateway:
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
         if (
+            any(x in t for x in ["servicio solicitado", "servicio fue solicitado", "servicio aceptado"])
+            and any(x in t for x in ["servicio prestado", "efectivamente prestado", "gasto habido", "gasto incurrido"])
+        ):
+            return {"type": "DENIAL", "arguments": ["BANK_FEE_REQUESTED_AND_PROVIDED_ASSERTED"]}
+        if (
             any(x in t for x in ["consentimiento", "consentido", "consintio", "autorizo directamente"])
             and any(x in t for x in ["cuatro semanas", "4 semanas", "aviso previo"])
         ):
