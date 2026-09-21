@@ -13,7 +13,7 @@ from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, 
 # These families were historically installed as a chain of extension wrappers.
 # The registry gives them one final dispatch boundary without changing their public
 # claim-package contract.
-REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01"})
+REGISTERED_EXTENSION_FAMILIES = frozenset({"E01", "E03", "E05", "E06", "E07", "C02", "C03", "T01", "T02"})
 
 
 @dataclass(frozen=True)
@@ -266,6 +266,25 @@ def _render_t01(ctx: ClaimContext) -> dict[str, Any]:
     }
 
 
+def _render_t02(ctx: ClaimContext) -> dict[str, Any]:
+    if ctx.next_action != "PREPARE_T02_FREE_TERMINATION_NOTICE":
+        raise ValueError("Current T02 action requires information or human review rather than a termination notice")
+    notice_date = ctx.facts.get("telecom.change_notice_date")
+    text = (
+        "Comunico mi decisión de resolver el contrato sin coste adicional como consecuencia del cambio de condiciones anunciado"
+        + (f" el {notice_date}" if notice_date else "")
+        + ", en ejercicio del derecho previsto en el artículo 67.8 de la Ley 11/2022, General de Telecomunicaciones. "
+        "Según los hechos confirmados del expediente, el cambio no se encuadra en las excepciones automatizadas del artículo 67.8 "
+        "y no se conservará un terminal subvencionado que requiera calcular una compensación conforme al artículo 67.10. "
+        "Esta comunicación no presupone un derecho a mantener indefinidamente las condiciones anteriores ni reclama una cuantía monetaria no verificada."
+    )
+    return {
+        "claim_type": "T02_FREE_TERMINATION_AFTER_CONTRACT_CHANGE",
+        "amount": 0.0,
+        "text": text,
+    }
+
+
 RENDERERS: dict[str, Renderer] = {
     "E01": _render_e01,
     "E03": _render_e03,
@@ -275,6 +294,7 @@ RENDERERS: dict[str, Renderer] = {
     "C02": _render_c02,
     "C03": _render_c03,
     "T01": _render_t01,
+    "T02": _render_t02,
 }
 
 
