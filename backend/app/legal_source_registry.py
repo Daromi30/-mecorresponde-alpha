@@ -77,6 +77,12 @@ OFFICIAL_LEGAL_SOURCES: dict[str, OfficialLegalSource] = {
         official_url="https://www.boe.es/eli/es/rdl/2018/11/23/19/con",
         publication_date=date(2018, 11, 24),
     ),
+    "EHA2899_2011": OfficialLegalSource(
+        authority="BOE / Ministerio de Economía y Hacienda",
+        title="Orden EHA/2899/2011, de 28 de octubre, de transparencia y protección del cliente de servicios bancarios",
+        official_url="https://www.boe.es/eli/es/o/2011/10/28/eha2899/con",
+        publication_date=date(2011, 10, 29),
+    ),
     "TRLGDCU": OfficialLegalSource(
         authority="BOE / Jefatura del Estado",
         title=(
