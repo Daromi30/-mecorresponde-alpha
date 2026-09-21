@@ -9,7 +9,7 @@ def base_facts():
         "bank.user_scope": fv("consumer"), "bank.payer_provider_in_spain": fv(True),
         "bank.operation_authorized": fv(True), "bank.authorized_payment_type": fv("direct_debit"),
         "bank.direct_debit_article_48_2_confirmed": fv(True), "bank.debit_date": fv("2026-08-01"),
-        "bank.refund_request_date": fv("2026-09-21"), "bank.article_48_4_exception_status": fv("clearly_absent"),
+        "bank.refund_request_date": fv("2026-09-21"), "bank.contract_contains_article_48_4_waiver": fv(False), "bank.direct_consent_given_to_payment_provider": fv(False), "bank.future_operation_info_four_weeks_before": fv(False),
         "bank.payment_scope_clear": fv(True), "bank.documented_operation_amount": fv(120.0), "bank.refund_received": fv(False),
     }
 
@@ -28,7 +28,10 @@ def test_b02_after_eight_weeks_fails_closed():
     assert evaluate_b02(f).next_action == "HUMAN_REVIEW_B02_OUTSIDE_EIGHT_WEEKS"
 
 def test_b02_article_48_4_possible_fails_closed():
-    f=base_facts(); f["bank.article_48_4_exception_status"]=fv("possible_or_unknown")
+    f=base_facts()
+    f["bank.contract_contains_article_48_4_waiver"]=fv(True)
+    f["bank.direct_consent_given_to_payment_provider"]=fv(True)
+    f["bank.future_operation_info_four_weeks_before"]=fv(True)
     assert evaluate_b02(f).next_action == "HUMAN_REVIEW_B02_ARTICLE_48_4"
 
 def test_b02_unauthorized_redirects_b01():
