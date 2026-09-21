@@ -152,7 +152,7 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
-        if banking and authorized_direct_debit and not explicit_unauthorized_payment:
+        if authorized_direct_debit and not explicit_unauthorized_payment:
             return {"vertical": "banking", "family": "B02", "confidence": 0.96}
         if banking and unauthorized_payment:
             return {"vertical": "banking", "family": "B01", "confidence": 0.96}
