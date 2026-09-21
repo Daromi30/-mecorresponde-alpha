@@ -112,10 +112,10 @@ class DeterministicAlphaGateway:
             "indemnizacion del seguro", "compania de seguros",
         ])
         insurance_nonpayment = any(w in t for w in [
-            "no me paga", "no me han pagado", "no me ha pagado",
+            "no me paga", "no me la paga", "no me han pagado", "no me ha pagado",
             "no paga la indemnizacion", "no paga el siniestro",
-            "pago minimo", "importe minimo", "40 dias", "cuarenta dias",
-            "cantidad reconocida", "importe reconocido",
+            "pago minimo", "importe minimo", "cantidad minima", "40 dias", "cuarenta dias",
+            "cantidad reconocida", "importe reconocido", "ha reconocido una cantidad",
         ])
         travel = any(w in t for w in [
             "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
