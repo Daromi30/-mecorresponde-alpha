@@ -72,6 +72,12 @@ FAMILY_MANIFEST: dict[str, FamilyManifestEntry] = {
         title="Interrupción temporal del acceso a internet fijo y compensación",
         rule_ids=("TELECOM_FIXED_INTERNET_INTERRUPTION_COMPENSATION",),
     ),
+    "T02": FamilyManifestEntry(
+        code="T02",
+        vertical="telecom",
+        title="Cambio de precio o condiciones del contrato de telecomunicaciones",
+        rule_ids=("TELECOM_CONTRACT_CHANGE_FREE_TERMINATION",),
+    ),
     "C01": FamilyManifestEntry(
         code="C01",
         vertical="purchases",

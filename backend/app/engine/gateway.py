@@ -118,6 +118,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
         if telecom and telecom_interruption:
             return {"vertical": "telecom", "family": "T01", "confidence": 0.95}
+        if telecom and contract_change:
+            return {"vertical": "telecom", "family": "T02", "confidence": 0.94}
         if purchase and non_delivery:
             return {"vertical": "purchases", "family": "C04", "confidence": 0.94}
         if purchase and distance and withdrawal:

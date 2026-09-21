@@ -135,6 +135,21 @@ SCENARIOS = {
             "telecom.compensation_already_applied": False,
         },
     },
+    "T02": {
+        "message": "Mi operadora de fibra me ha subido el precio y me ha comunicado un cambio de condiciones",
+        "facts": {
+            "telecom.final_user_contract": True,
+            "telecom.change_notice_received": True,
+            "telecom.change_exception_type": "adverse_or_other",
+            "telecom.change_notice_date": "2026-09-10",
+            "telecom.change_effective_date": "2026-10-15",
+            "telecom.notice_informed_free_termination_right": True,
+            "telecom.notice_clear_and_durable": True,
+            "telecom.contract_contains_valid_change_reason": True,
+            "telecom.user_wants_to_terminate": True,
+            "telecom.retains_subsidized_terminal": False,
+        },
+    },
     "C01": {
         "message": "Compré un televisor en una tienda, está defectuoso y me rechazan la garantía",
         "facts": {

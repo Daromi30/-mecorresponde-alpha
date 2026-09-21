@@ -278,9 +278,61 @@ def _t01_question(facts: dict[str, FactValue]) -> dict:
     return {"done": True, "question": None, "field": None}
 
 
+
+def _t02_question(facts: dict[str, FactValue]) -> dict:
+    if "telecom.final_user_contract" not in facts:
+        return _ask(
+            "telecom.final_user_contract",
+            "¿Eres usuario final o titular del contrato de telecomunicaciones cuyas condiciones cambian?",
+            "boolean",
+        )
+    if _value(facts, "telecom.final_user_contract") is False:
+        return {"done": True, "question": None, "field": None}
+
+    if "telecom.change_notice_received" not in facts:
+        return _ask(
+            "telecom.change_notice_received",
+            "¿La operadora te comunicó el cambio de precio o condiciones?",
+            "boolean",
+        )
+    if _value(facts, "telecom.change_notice_received") is False:
+        return {"done": True, "question": None, "field": None}
+
+    if "telecom.change_exception_type" not in facts:
+        return _ask(
+            "telecom.change_exception_type",
+            "¿Qué tipo de cambio te comunicaron?",
+            "choice:adverse_or_other|benefit_only|administrative_no_negative|legally_required|unknown",
+        )
+    if _value(facts, "telecom.change_exception_type") != "adverse_or_other":
+        return {"done": True, "question": None, "field": None}
+
+    order = [
+        ("telecom.change_notice_date", "¿Qué día recibiste la comunicación del cambio?", "date"),
+        ("telecom.change_effective_date", "¿Desde qué día indica la operadora que aplicará el cambio?", "date"),
+        ("telecom.notice_informed_free_termination_right", "¿La comunicación te informó de que podías resolver el contrato sin coste adicional si no aceptabas el cambio?", "boolean"),
+        ("telecom.notice_clear_and_durable", "¿Conservas la comunicación en un soporte duradero, por ejemplo email, PDF, carta o área descargable, y resulta clara?", "boolean"),
+        ("telecom.contract_contains_valid_change_reason", "¿El contrato identifica un motivo concreto que permita a la operadora modificar unilateralmente esas condiciones?", "boolean_unknown"),
+        ("telecom.user_wants_to_terminate", "¿Quieres resolver el contrato por este cambio en lugar de aceptarlo?", "boolean"),
+    ]
+    for key, question, input_type in order:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if _value(facts, "telecom.user_wants_to_terminate") is True and "telecom.retains_subsidized_terminal" not in facts:
+        return _ask(
+            "telecom.retains_subsidized_terminal",
+            "¿El contrato incluye un móvil, router u otro terminal subvencionado que quieras conservar al terminar el contrato?",
+            "boolean",
+        )
+    return {"done": True, "question": None, "field": None}
+
+
 def next_question(facts: dict[str, FactValue], family: str | None) -> dict:
     if family == "T01":
         return _t01_question(facts)
+    if family == "T02":
+        return _t02_question(facts)
     if family == "C02":
         return _c02_question(facts)
     if family == "C03":

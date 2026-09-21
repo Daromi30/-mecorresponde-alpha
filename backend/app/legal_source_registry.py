@@ -34,6 +34,12 @@ OFFICIAL_LEGAL_SOURCES: dict[str, OfficialLegalSource] = {
         official_url="https://www.boe.es/eli/es/rd/2009/05/22/899",
         publication_date=date(2009, 5, 30),
     ),
+    "LGT_2022": OfficialLegalSource(
+        authority="BOE / Jefatura del Estado",
+        title="Ley 11/2022, de 28 de junio, General de Telecomunicaciones",
+        official_url="https://www.boe.es/eli/es/l/2022/06/28/11",
+        publication_date=date(2022, 6, 29),
+    ),
     "TRLGDCU": OfficialLegalSource(
         authority="BOE / Jefatura del Estado",
         title=(
