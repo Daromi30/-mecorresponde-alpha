@@ -139,6 +139,13 @@ SEO_PROBLEM_PAGES: tuple[SeoProblemPage, ...] = (
         "El reembolso del billete y la compensación adicional son cuestiones distintas. Esta guía estructura primero el derecho al reembolso y evita mezclar automáticamente ambos conceptos.",
         ("Billete o confirmación de reserva", "Comunicación de cancelación de la aerolínea", "Justificante del precio pagado y de cualquier reembolso recibido"),
     ),
+    SeoProblemPage(
+        "V02", "travel", "viajes", "vuelo-retrasado-cinco-horas-reembolso",
+        "Vuelo retrasado cinco horas o más: reembolso del billete",
+        "Qué comprobar si el retraso de salida alcanza al menos cinco horas y decides no utilizar el vuelo.",
+        "El Reglamento europeo conecta el retraso de cinco horas con una opción de reembolso. Esta guía separa ese reembolso de cualquier compensación adicional por retraso.",
+        ("Billete o confirmación de reserva", "Prueba del retraso de salida", "Precio del vuelo y justificante de cualquier reembolso"),
+    ),
 )
 
 SEO_BY_PATH = {(page.vertical_slug, page.slug): page for page in SEO_PROBLEM_PAGES}
