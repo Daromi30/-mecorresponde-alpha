@@ -83,6 +83,8 @@ class DeterministicAlphaGateway:
         ])
         flight_cancellation = any(w in t for w in [
             "vuelo cancelado", "cancelaron el vuelo", "cancelaron mi vuelo",
+            "me ha cancelado el vuelo", "me han cancelado el vuelo",
+            "ha cancelado el vuelo", "han cancelado el vuelo",
             "aerolinea cancelo", "aerolinea ha cancelado", "me cancelaron",
             "cancelacion del vuelo", "cancelacion de vuelo",
         ])
