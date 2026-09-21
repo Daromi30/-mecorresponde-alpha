@@ -34,6 +34,7 @@ ARGUMENT_CASES = [
     ("WITHDRAWAL_EXCEPTION_ASSERTED", "El producto está excluido del desistimiento.", "company.asserts_withdrawal_exception"),
     ("INTERNET_INTERRUPTION_COMPENSATION_APPLIED_ASSERTED", "La compensación ya aplicada consta en su factura.", "company.asserts_internet_interruption_compensation_applied"),
     ("FLIGHT_REFUND_ALREADY_PAID_ASSERTED", "Ya hemos reembolsado el billete.", "company.asserts_flight_refund_already_paid"),
+    ("DENIED_BOARDING_COMPENSATION_PAID_ASSERTED", "La compensación por denegación ya fue pagada.", "company.asserts_denied_boarding_compensation_paid"),
 ]
 
 
@@ -56,6 +57,7 @@ FAMILY_DENIALS = {
     "T02": ("Avisamos con un mes de antelación.", "company.asserts_notice_compliant"),
     "V01": ("Ya hemos reembolsado el billete.", "company.asserts_flight_refund_already_paid"),
     "V02": ("Ya hemos reembolsado el billete.", "company.asserts_flight_refund_already_paid"),
+    "V03": ("La compensación por denegación ya fue pagada.", "company.asserts_denied_boarding_compensation_paid"),
 }
 
 

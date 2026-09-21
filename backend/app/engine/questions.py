@@ -458,11 +458,66 @@ def _v02_question(facts: dict[str, FactValue]) -> dict:
     return {"done": True, "question": None, "field": None}
 
 
+
+def _v03_question(facts: dict[str, FactValue]) -> dict:
+    if "travel.denied_boarding_involuntary" not in facts:
+        return _ask(
+            "travel.denied_boarding_involuntary",
+            "¿La aerolínea te impidió embarcar contra tu voluntad?",
+            "boolean",
+        )
+    if _value(facts, "travel.denied_boarding_involuntary") is False:
+        return {"done": True, "question": None, "field": None}
+
+    fixed = [
+        ("travel.departure_airport_in_eu", "¿El vuelo salía de un aeropuerto situado en la Unión Europea?", "boolean"),
+        ("travel.confirmed_reservation", "¿Tenías una reserva confirmada?", "boolean"),
+        ("travel.presentation_requirement_met", "¿Te presentaste para embarcar cumpliendo la hora y condiciones exigidas?", "boolean"),
+        (
+            "travel.fare_status",
+            "¿Cómo obtuviste el billete?",
+            "choice:public_fare|frequent_flyer_program|nonpublic_free_or_reduced|unknown",
+        ),
+        (
+            "travel.denied_boarding_reason",
+            "¿Qué motivo dio la aerolínea para impedirte embarcar?",
+            "choice:operational_or_no_reason|health|safety_security|inadequate_travel_documents|unclear",
+        ),
+        (
+            "travel.distance_band",
+            "¿En qué banda está la distancia del vuelo?",
+            "choice:le_1500|intra_eu_gt_1500|other_1500_3500|other_gt_3500|unknown",
+        ),
+        ("travel.rerouted_to_final_destination", "¿La aerolínea te llevó al destino final en otro vuelo?", "boolean"),
+    ]
+    for key, question, input_type in fixed:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if _value(facts, "travel.rerouted_to_final_destination") is True and "travel.rerouting_arrival_delay_hours" not in facts:
+        return _ask(
+            "travel.rerouting_arrival_delay_hours",
+            "¿Cuántas horas más tarde llegaste al destino final respecto de la hora prevista?",
+            "number",
+        )
+    if "travel.compensation_received" not in facts:
+        return _ask(
+            "travel.compensation_received",
+            "¿La aerolínea ya te ha pagado alguna compensación por la denegación de embarque?",
+            "boolean",
+        )
+    if _value(facts, "travel.compensation_received") is True and "travel.compensation_received_amount" not in facts:
+        return _ask("travel.compensation_received_amount", "¿Qué importe te ha pagado ya?", "money")
+    return {"done": True, "question": None, "field": None}
+
+
 def next_question(facts: dict[str, FactValue], family: str | None) -> dict:
     if family == "V01":
         return _v01_question(facts)
     if family == "V02":
         return _v02_question(facts)
+    if family == "V03":
+        return _v03_question(facts)
     if family == "T01":
         return _t01_question(facts)
     if family == "T02":

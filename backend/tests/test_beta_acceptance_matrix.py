@@ -181,6 +181,20 @@ SCENARIOS = {
             "travel.refund_received": False,
         },
     },
+    "V03": {
+        "message": "Tenía reserva y por overbooking no me dejaron embarcar en mi vuelo",
+        "facts": {
+            "travel.denied_boarding_involuntary": True,
+            "travel.departure_airport_in_eu": True,
+            "travel.confirmed_reservation": True,
+            "travel.presentation_requirement_met": True,
+            "travel.fare_status": "public_fare",
+            "travel.denied_boarding_reason": "operational_or_no_reason",
+            "travel.distance_band": "le_1500",
+            "travel.rerouted_to_final_destination": False,
+            "travel.compensation_received": False,
+        },
+    },
     "C01": {
         "message": "Compré un televisor en una tienda, está defectuoso y me rechazan la garantía",
         "facts": {

@@ -81,6 +81,11 @@ class DeterministicAlphaGateway:
             "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
             "ryanair", "iberia", "vueling", "easyjet", "air europa", "volotea",
         ])
+        denied_boarding = any(w in t for w in [
+            "denegaron el embarque", "denegacion de embarque", "no me dejaron embarcar",
+            "no me dejaron subir", "me dejaron en tierra", "overbooking", "sobreventa",
+            "me impidieron embarcar",
+        ])
         flight_delay = any(w in t for w in [
             "vuelo retrasado", "retraso del vuelo", "retraso de vuelo",
             "vuelo lleva", "vuelo tiene retraso", "demora del vuelo",
@@ -132,6 +137,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
+        if travel and denied_boarding:
+            return {"vertical": "travel", "family": "V03", "confidence": 0.96}
         if travel and flight_cancellation:
             return {"vertical": "travel", "family": "V01", "confidence": 0.96}
         if travel and flight_delay:
@@ -200,6 +207,8 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["GOODS_MATCH_CONTRACT_ASSERTED"]}
         if any(x in t for x in ["consta como entregado", "pedido entregado", "entrega realizada", "figura entregado"]):
             return {"type": "DENIAL", "arguments": ["DELIVERY_PROOF_ASSERTED"]}
+        if any(x in t for x in ["compensacion por denegacion ya pagada", "compensacion por denegacion ya fue pagada", "ya pagamos la compensacion por denegacion", "compensacion por overbooking abonada"]):
+            return {"type": "DENIAL", "arguments": ["DENIED_BOARDING_COMPENSATION_PAID_ASSERTED"]}
         if any(x in t for x in ["reembolso ya realizado", "billete ya reembolsado", "ya hemos reembolsado el billete", "reembolso abonado"]):
             return {"type": "DENIAL", "arguments": ["FLIGHT_REFUND_ALREADY_PAID_ASSERTED"]}
         if any(x in t for x in ["compensacion ya aplicada", "ya aplicamos la compensacion", "compensacion abonada"]):
