@@ -376,25 +376,19 @@ def _render_r01(ctx: ClaimContext) -> dict[str, Any]:
     amount = round(float(ctx.decision.claimable_amount or 0.0), 2)
     if amount <= 0:
         raise ValueError("No outstanding verified R01 rental-deposit balance to request")
-    calculation = ctx.decision.calculation_json or {}
-    interest_accrues = bool(calculation.get("legal_interest_accrues"))
-    interest_from = calculation.get("legal_interest_from")
     text = (
         f"Solicito la restitución del saldo pendiente de fianza de {amount:.2f} €, cuyo importe consta como "
-        "determinado o reconocido en el expediente, conforme al artículo 36.4 de la Ley 29/1994 de Arrendamientos Urbanos."
+        "determinado o reconocido en el expediente, conforme al artículo 36.4 de la Ley 29/1994 de Arrendamientos Urbanos. "
+        "Si ha transcurrido un mes desde la entrega de llaves sin haberse hecho efectiva la restitución, el saldo devenga "
+        "el interés legal previsto en ese artículo. Esta reclamación cuantifica únicamente el principal y no inventa "
+        "el tipo ni el importe de ese interés."
     )
-    result = {
+    return {
         "claim_type": "R01_CONFIRMED_RENTAL_DEPOSIT_RETURN",
         "amount": amount,
+        "amount_status": "PRINCIPAL_ONLY_LEGAL_INTEREST_NOT_CALCULATED",
         "text": text,
     }
-    if interest_accrues:
-        result["text"] += (
-            f" Ha transcurrido un mes desde la entrega acreditada de llaves; el artículo 36.4 establece el devengo "
-            f"del interés legal desde {interest_from}. Esta reclamación no cuantifica automáticamente ese interés."
-        )
-        result["amount_status"] = "PRINCIPAL_ONLY_LEGAL_INTEREST_NOT_CALCULATED"
-    return result
 
 
 RENDERERS: dict[str, Renderer] = {
