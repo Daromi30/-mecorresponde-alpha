@@ -33,6 +33,7 @@ ARGUMENT_CASES = [
     ("WITHDRAWAL_LATE_ASSERTED", "Desistimiento fuera de plazo.", "company.asserts_withdrawal_late"),
     ("WITHDRAWAL_EXCEPTION_ASSERTED", "El producto está excluido del desistimiento.", "company.asserts_withdrawal_exception"),
     ("INTERNET_INTERRUPTION_COMPENSATION_APPLIED_ASSERTED", "La compensación ya aplicada consta en su factura.", "company.asserts_internet_interruption_compensation_applied"),
+    ("FLIGHT_REFUND_ALREADY_PAID_ASSERTED", "Ya hemos reembolsado el billete.", "company.asserts_flight_refund_already_paid"),
 ]
 
 
@@ -53,6 +54,7 @@ FAMILY_DENIALS = {
     "C05": ("Desistimiento fuera de plazo.", "company.asserts_withdrawal_late"),
     "T01": ("La compensación ya aplicada consta en su factura.", "company.asserts_internet_interruption_compensation_applied"),
     "T02": ("Avisamos con un mes de antelación.", "company.asserts_notice_compliant"),
+    "V01": ("Ya hemos reembolsado el billete.", "company.asserts_flight_refund_already_paid"),
 }
 
 
