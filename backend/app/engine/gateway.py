@@ -92,6 +92,12 @@ class DeterministicAlphaGateway:
             "adeudo domiciliado", "recibo domiciliado", "devolver un recibo",
             "devolucion del recibo", "devolucion de un recibo",
         ])
+        banking_fee = any(w in t for w in [
+            "comision bancaria", "comision del banco", "me han cobrado una comision",
+            "me cobraron una comision", "me cobran una comision", "comision que no pedi",
+            "comision por un servicio que no solicite", "comision por servicio no prestado",
+            "comision sin servicio",
+        ])
         travel = any(w in t for w in [
             "vuelo", "aerolinea", "aeropuerto", "billete de avion", "pasajero",
             "ryanair", "iberia", "vueling", "easyjet", "air europa", "volotea",
@@ -152,6 +158,8 @@ class DeterministicAlphaGateway:
             return {"vertical": "electricity", "family": "E04-A", "confidence": 0.94}
         if maintenance and switch and electricity:
             return {"vertical": "electricity", "family": "E04-B", "confidence": 0.95}
+        if banking and banking_fee:
+            return {"vertical": "banking", "family": "B03", "confidence": 0.95}
         if authorized_direct_debit and not explicit_unauthorized_payment:
             return {"vertical": "banking", "family": "B02", "confidence": 0.96}
         if banking and unauthorized_payment:
