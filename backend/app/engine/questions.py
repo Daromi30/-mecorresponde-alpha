@@ -394,9 +394,75 @@ def _v01_question(facts: dict[str, FactValue]) -> dict:
     return {"done": True, "question": None, "field": None}
 
 
+
+def _v02_question(facts: dict[str, FactValue]) -> dict:
+    if "travel.departure_delay_hours" not in facts:
+        return _ask(
+            "travel.departure_delay_hours",
+            "¿Cuántas horas alcanzó el retraso respecto de la salida prevista?",
+            "number",
+        )
+    delay = _value(facts, "travel.departure_delay_hours")
+    try:
+        if float(delay) < 5:
+            return {"done": True, "question": None, "field": None}
+    except (TypeError, ValueError):
+        return {"done": True, "question": None, "field": None}
+
+    fixed = [
+        ("travel.departure_airport_in_eu", "¿El vuelo salía de un aeropuerto situado en un país de la Unión Europea?", "boolean"),
+        ("travel.confirmed_reservation", "¿Tenías una reserva confirmada para ese vuelo?", "boolean"),
+        (
+            "travel.fare_status",
+            "¿Cómo obtuviste el billete?",
+            "choice:public_fare|frequent_flyer_program|nonpublic_free_or_reduced|unknown",
+        ),
+        ("travel.package_trip", "¿El vuelo formaba parte de un viaje combinado o paquete turístico?", "boolean"),
+        (
+            "travel.booking_scope",
+            "¿La reserva y el precio corresponden a un único vuelo, sin ida y vuelta ni otros tramos?",
+            "choice:single_flight|multi_segment_or_round_trip",
+        ),
+        ("travel.delay_refund_requested", "¿Quieres dejar de viajar en ese vuelo y solicitar el reembolso del billete?", "boolean"),
+        ("travel.passenger_took_delayed_flight", "¿Finalmente utilizaste el vuelo retrasado?", "boolean"),
+    ]
+    for key, question, input_type in fixed:
+        if key not in facts:
+            return _ask(key, question, input_type)
+
+    if _value(facts, "travel.delay_refund_requested") is not True:
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "travel.passenger_took_delayed_flight") is True:
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "travel.departure_airport_in_eu") is False:
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "travel.confirmed_reservation") is False:
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "travel.package_trip") is True:
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "travel.booking_scope") != "single_flight":
+        return {"done": True, "question": None, "field": None}
+    if _value(facts, "travel.fare_status") not in {"public_fare", "frequent_flyer_program"}:
+        return {"done": True, "question": None, "field": None}
+
+    if "travel.documented_ticket_price" not in facts:
+        return _ask(
+            "travel.documented_ticket_price",
+            "¿Qué precio de ese vuelo consta en el billete o confirmación de reserva?",
+            "money",
+        )
+    if "travel.refund_received" not in facts:
+        return _ask("travel.refund_received", "¿La aerolínea ya te ha devuelto algún importe por ese vuelo?", "boolean")
+    if _value(facts, "travel.refund_received") is True and "travel.refund_received_amount" not in facts:
+        return _ask("travel.refund_received_amount", "¿Qué importe te ha reembolsado ya?", "money")
+    return {"done": True, "question": None, "field": None}
+
+
 def next_question(facts: dict[str, FactValue], family: str | None) -> dict:
     if family == "V01":
         return _v01_question(facts)
+    if family == "V02":
+        return _v02_question(facts)
     if family == "T01":
         return _t01_question(facts)
     if family == "T02":

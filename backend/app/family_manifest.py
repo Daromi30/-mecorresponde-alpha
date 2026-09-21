@@ -84,6 +84,12 @@ FAMILY_MANIFEST: dict[str, FamilyManifestEntry] = {
         title="Vuelo cancelado por la aerolínea y reembolso del billete",
         rule_ids=("AIR_CANCELLATION_REFUND_CURRENT",),
     ),
+    "V02": FamilyManifestEntry(
+        code="V02",
+        vertical="travel",
+        title="Vuelo retrasado al menos cinco horas y reembolso del billete",
+        rule_ids=("AIR_FIVE_HOUR_DELAY_REFUND_CURRENT",),
+    ),
     "C01": FamilyManifestEntry(
         code="C01",
         vertical="purchases",

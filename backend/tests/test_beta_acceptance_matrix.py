@@ -166,6 +166,21 @@ SCENARIOS = {
             "travel.refund_received": False,
         },
     },
+    "V02": {
+        "message": "Mi vuelo lleva más de cinco horas de retraso y quiero que me devuelvan el billete",
+        "facts": {
+            "travel.departure_delay_hours": 5.5,
+            "travel.departure_airport_in_eu": True,
+            "travel.confirmed_reservation": True,
+            "travel.fare_status": "public_fare",
+            "travel.package_trip": False,
+            "travel.booking_scope": "single_flight",
+            "travel.delay_refund_requested": True,
+            "travel.passenger_took_delayed_flight": False,
+            "travel.documented_ticket_price": 210.0,
+            "travel.refund_received": False,
+        },
+    },
     "C01": {
         "message": "Compré un televisor en una tienda, está defectuoso y me rechazan la garantía",
         "facts": {
