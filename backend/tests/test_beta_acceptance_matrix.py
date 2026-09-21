@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from app.calendar_clock import spain_today
 from app.family_manifest import FAMILY_MANIFEST
+from app.legal_source_registry import is_trusted_official_legal_url
 
 
 def _fact(client, case_id, key, value):
@@ -286,7 +287,7 @@ def test_beta_acceptance_matrix_covers_every_registered_resolution_family(client
             assert legal["version"] >= 1, (family, legal)
             assert legal["article"], (family, legal)
             assert legal["source"], (family, legal)
-            assert legal["official_url"].startswith("https://www.boe.es/"), (family, legal)
+            assert is_trusted_official_legal_url(legal["official_url"]), (family, legal)
 
         refreshed = client.get(f"/api/cases/{case_id}")
         assert refreshed.status_code == 200, f"{family}: {refreshed.text}"
