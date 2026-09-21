@@ -72,7 +72,9 @@ def evaluate_b02(facts: dict[str, FactValue]) -> EngineResult:
     art482 = raw(facts, "bank.direct_debit_article_48_2_confirmed")
     debit_date = _date(raw(facts, "bank.debit_date"))
     request_date = _date(raw(facts, "bank.refund_request_date"))
-    exception_status = raw(facts, "bank.article_48_4_exception_status")
+    waiver_clause = raw(facts, "bank.contract_contains_article_48_4_waiver")
+    direct_provider_consent = raw(facts, "bank.direct_consent_given_to_payment_provider")
+    four_week_notice = raw(facts, "bank.future_operation_info_four_weeks_before")
     territorial_scope = raw(facts, "bank.payment_scope_clear")
     amount = _money(raw(facts, "bank.documented_operation_amount"))
     refunded = raw(facts, "bank.refund_received")
@@ -85,7 +87,9 @@ def evaluate_b02(facts: dict[str, FactValue]) -> EngineResult:
         "bank.direct_debit_article_48_2_confirmed": art482,
         "bank.debit_date": debit_date,
         "bank.refund_request_date": request_date,
-        "bank.article_48_4_exception_status": exception_status,
+        "bank.contract_contains_article_48_4_waiver": waiver_clause,
+        "bank.direct_consent_given_to_payment_provider": direct_provider_consent,
+        "bank.future_operation_info_four_weeks_before": four_week_notice,
         "bank.payment_scope_clear": territorial_scope,
         "bank.documented_operation_amount": amount,
         "bank.refund_received": refunded,
@@ -203,7 +207,7 @@ def evaluate_b02(facts: dict[str, FactValue]) -> EngineResult:
             calculation={"eight_week_deadline": deadline.isoformat()},
         )
 
-    if exception_status != "clearly_absent":
+    if waiver_clause is True and direct_provider_consent is True and four_week_notice is True:
         return _result(
             viability="PROFESSIONAL_REVIEW",
             scope_status="LIMITED_SCOPE",
@@ -211,7 +215,7 @@ def evaluate_b02(facts: dict[str, FactValue]) -> EngineResult:
             economic_value=amount,
             worth_pursuing="PROFESSIONAL_REVIEW",
             reasoning_summary=(
-                "Existe o puede existir una exclusión contractual del artículo 48.4 y debe revisarse el contrato, el consentimiento y el aviso previo."
+                "Los hechos confirmados pueden activar una exclusión contractual del artículo 48.4: consta una cláusula de renuncia, consentimiento directo al proveedor de pago y aviso de la futura operación con al menos cuatro semanas. La aplicación concreta requiere revisión humana."
             ),
             missing_facts=[],
             next_action="HUMAN_REVIEW_B02_ARTICLE_48_4",
@@ -284,7 +288,7 @@ def evaluate_b02(facts: dict[str, FactValue]) -> EngineResult:
         economic_value=amount,
         worth_pursuing="YES" if outstanding >= 50 else "YES_IF_LOW_COST",
         reasoning_summary=(
-            "El adeudo domiciliado autorizado está confirmado dentro del artículo 48.2, la solicitud se formula dentro de ocho semanas y no consta una excepción contractual aplicable del artículo 48.4."
+            "El adeudo domiciliado autorizado está confirmado dentro del artículo 48.2, la solicitud se formula dentro de ocho semanas y los hechos confirmados no reúnen conjuntamente las condiciones de una posible exclusión contractual del artículo 48.4."
         ),
         missing_facts=[],
         next_action="PREPARE_B02_AUTHORIZED_DIRECT_DEBIT_REFUND",
