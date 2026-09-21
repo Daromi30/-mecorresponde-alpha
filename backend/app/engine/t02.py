@@ -68,6 +68,25 @@ def evaluate_t02(facts: dict[str, FactValue]) -> EngineResult:
     if exception_type is None:
         missing.append("telecom.change_exception_type")
 
+    if missing:
+        return EngineResult(
+            viability="INSUFFICIENT_INFORMATION",
+            scope_status="SUPPORTED",
+            claimable_amount=None,
+            economic_value=None,
+            worth_pursuing="NEEDS_INFORMATION",
+            reasoning_summary="Faltan hechos básicos para determinar si T02 puede aplicar el artículo 67.8.",
+            counterarguments=[],
+            missing_facts=sorted(set(missing)),
+            next_action="REQUEST_MATERIAL_FACT",
+            rule_result="PENDING",
+            failed_conditions=[],
+            calculation=None,
+            sources=sources,
+            remedies=[],
+            burden_of_proof=[],
+        )
+
     if exception_type == "unknown":
         return EngineResult(
             viability="PROFESSIONAL_REVIEW",
