@@ -122,10 +122,15 @@ def install_all_families() -> tuple[str, ...]:
 
         install_banking_extensions()
 
+        from .rental_family import register_rental_family, seed_rental_legal
+
+        register_rental_family()
+
         previous_seed = svc.seed_legal
 
         def seed_with_reviewed_provenance(db):
             rules = previous_seed(db)
+            seed_rental_legal(db)
             reconcile_legal_sources(db)
             return rules
 
