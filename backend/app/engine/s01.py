@@ -261,7 +261,7 @@ def evaluate_s01(facts: dict[str, FactValue]) -> EngineResult:
         "outstanding_minimum": outstanding,
         "claim_declaration_received_date": received_date.isoformat(),
         "article_18_forty_day_date": deadline.isoformat(),
-        "forty_days_elapsed": analysis_date >= deadline,
+        "forty_days_elapsed": analysis_date > deadline,
         "article_20_default_interest_calculated": False,
     }
 
@@ -284,7 +284,7 @@ def evaluate_s01(facts: dict[str, FactValue]) -> EngineResult:
             burden_of_proof=[],
         )
 
-    if analysis_date < deadline:
+    if analysis_date <= deadline:
         return EngineResult(
             viability="LOW",
             scope_status="SUPPORTED",
