@@ -195,6 +195,24 @@ SCENARIOS = {
             "travel.compensation_received": False,
         },
     },
+    "B01": {
+        "message": "Mi banco me ha cargado un pago que no reconozco y no he autorizado",
+        "facts": {
+            "bank.user_scope": "consumer",
+            "bank.payer_provider_in_spain": True,
+            "bank.operation_unauthorized": True,
+            "bank.debit_date": "2026-09-18",
+            "bank.awareness_date": "2026-09-18",
+            "bank.notification_date": "2026-09-18",
+            "bank.provider_supplied_operation_info": True,
+            "bank.payment_initiation_provider_involved": False,
+            "bank.instrument_status": "not_lost_stolen_or_misappropriated",
+            "bank.provider_alleges_fraud_or_gross_negligence": False,
+            "bank.provider_fraud_suspicion_status": "none",
+            "bank.documented_operation_amount": 175.0,
+            "bank.refund_received": False,
+        },
+    },
     "C01": {
         "message": "Compré un televisor en una tienda, está defectuoso y me rechazan la garantía",
         "facts": {
