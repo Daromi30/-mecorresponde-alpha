@@ -17,6 +17,7 @@ from .family_bootstrap import install_all_families
 from .migrations import upgrade_database
 from .models import LegalSource
 from .privacy_information import render_first_layer, render_full_privacy_page
+from .runtime_revision import get_runtime_revision
 from .seo_pages import SEO_PROBLEM_PAGES
 
 SUPPORTED_FAMILIES = install_all_families()
@@ -168,6 +169,10 @@ def _render_product_home() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info(
+        "MECORRESPONDE runtime: runtime_revision=%s",
+        get_runtime_revision(),
+    )
     Path(settings.storage_dir).mkdir(parents=True, exist_ok=True)
     upgrade_database()
     backend = engine.url.get_backend_name()
@@ -400,6 +405,7 @@ def health():
         "service": "mecorresponde-alpha",
         "version": "0.5.0-alpha",
         "families": len(SUPPORTED_FAMILIES),
+        "runtime_revision": get_runtime_revision(),
     }
 
 

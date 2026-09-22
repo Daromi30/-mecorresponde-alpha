@@ -1,37 +1,39 @@
 # MECORRESPONDE AI HANDOFF
 
 Last updated:
-2026-09-22 19:04:00 +02:00
+2026-09-22
 
 Main SHA:
-6cb62f07a019260377b39fca187b345a23c55b33
+7a28bdf402f0167b4ada08c17d2996e690d3adf6
 
 Render LIVE SHA:
-124a34715c51817104da6b4d3c10b35acaea6b48
-
-Current milestone:
-Cerrar los bloqueantes técnicos gratuitos antes de una beta cerrada con datos reales.
+7a28bdf402f0167b4ada08c17d2996e690d3adf6
 
 Active owner:
 WORK
 
 Active task:
-Revisar e integrar el PR del protocolo de handoff y verificar que el nuevo auto-deploy promociona `main` a LIVE.
+Revisar e integrar el PR de runtime revision health.
 
 Branch:
-docs/ai-handoff-protocol
+feat/runtime-revision-health
 
 PR:
-#207
+#208 — https://github.com/Daromi30/-mecorresponde-alpha/pull/208
 
 CI:
-`main` 6cb62f0: Database Migrations y MECORRESPONDE CI correctos. CI de esta rama pendiente.
+Verde en PR #208: legal-engine-regression, postgres-persistence, postgres-backup-restore y postgres-migrations.
 
 Completed in this block:
-Estado de GitHub, CI, Render y readiness reconciliado. El deploy de 6cb62f0 compiló, agotó el timeout de Render antes de arrancar y no fue promovido; el proceso tardío inició sin errores y reportó `synthetic_internal_beta_ready=True`.
+
+- `/health` conserva sus campos y añade `runtime_revision`.
+- Un `RENDER_GIT_COMMIT` hexadecimal válido de 40 caracteres se expone completo; ausencia o valor inválido producen `unknown` sin afectar disponibilidad.
+- El arranque registra la misma revisión normalizada como `runtime_revision`, sin volcar el entorno ni secretos.
+- Cobertura añadida para SHA válido, ausencia, valor inválido y normalización compartida.
+- Commit técnico: `b532e86`.
 
 Blockers:
-Render sirve todavía 124a347, no el SHA actual de `main`. Para datos reales siguen bloqueados el ciclo de vida durable de PostgreSQL, el almacenamiento documental persistente y la información de privacidad revisada.
+Para datos reales siguen pendientes el lifecycle durable de PostgreSQL, el almacenamiento documental persistente y la privacidad real revisada. Ninguno queda resuelto por este bloque de observabilidad.
 
 Cost blockers:
 Datastore durable y proveedor de almacenamiento persistente definitivos pueden requerir contratación; no activar sin autorización.
@@ -40,7 +42,4 @@ External/user decisions needed:
 Datos empresariales reales y revisión formal de privacidad; elección y autorización de proveedores o planes con coste.
 
 Next executable task:
-WORK debe revisar/integrar el PR #207, esperar CI verde y comprobar Render LIVE, logs y readiness sobre el SHA resultante.
-
-Do not touch:
-No usar datos reales, inventar información legal/empresarial, activar costes, habilitar uploads reales o indexación pública. No editar simultáneamente una rama cuyo `Active owner` sea otro entorno.
+WORK revisa PR, espera CI verde, integra si procede y verifica Render LIVE.
