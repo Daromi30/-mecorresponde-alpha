@@ -126,6 +126,7 @@ def test_future_fulfillment_date_is_rejected_without_closing_case(client, db):
             "result_type": "FAVORABLE",
             "amount_recovered": 8.99,
             "verified_by_user": True,
+            "remaining_material_commitments": "none",
             "resolved_on": tomorrow.isoformat(),
             "resolution_channel": "bank_or_card_refund",
             "non_monetary_result": None,

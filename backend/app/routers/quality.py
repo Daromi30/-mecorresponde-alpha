@@ -42,6 +42,7 @@ class OutcomeEvidenceInput(BaseModel):
     resolved_on: date | None = None
     non_monetary_result: str | None = Field(default=None, max_length=2000)
     resolution_channel: str | None = Field(default=None, max_length=80)
+    remaining_material_commitments: Literal["none", "pending", "unknown"] | None = None
 
 
 def _audit_calendar_date(db: Session, case_id: str, event_type: str, field: str) -> date | None:
@@ -116,6 +117,11 @@ def _validate_response_chronology(db: Session, case: Case, received_on: date | N
 
 def _validate_outcome_evidence(db: Session, case: Case, payload: OutcomeEvidenceInput) -> None:
     if payload.verified_by_user:
+        if payload.remaining_material_commitments != "none":
+            raise HTTPException(
+                status_code=422,
+                detail="Confirm explicitly that no material commitment remains before closing the case",
+            )
         if not (payload.resolution_channel or "").strip():
             raise HTTPException(
                 status_code=422,
@@ -127,6 +133,19 @@ def _validate_outcome_evidence(db: Session, case: Case, payload: OutcomeEvidence
                 status_code=422,
                 detail="Verified non-monetary outcomes must describe what was fulfilled",
             )
+    elif payload.remaining_material_commitments == "none":
+        raise HTTPException(
+            status_code=422,
+            detail="A fully fulfilled response must be explicitly verified",
+        )
+    elif (
+        payload.remaining_material_commitments == "pending"
+        and len((payload.non_monetary_result or "").strip()) < 3
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Describe what has been fulfilled and what remains pending",
+        )
     elif payload.resolved_on is not None:
         raise HTTPException(
             status_code=422,
@@ -273,6 +292,23 @@ def case_timeline(case_id: str, db: Session = Depends(get_db)):
             }
         )
 
+    partial_verifications = db.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.case_id == case.id, AuditEvent.event_type == "OUTCOME_EVIDENCE_RECORDED")
+        .order_by(AuditEvent.created_at.asc())
+    ).all()
+    for audit in partial_verifications:
+        if (audit.payload_json or {}).get("verified"):
+            continue
+        events.append(
+            {
+                "type": "EXECUTION_PARTIALLY_VERIFIED",
+                "label": "Cumplimiento pendiente de completar",
+                "detail": "Se registró lo comprobado, pero queda una parte material pendiente o desconocida.",
+                "at": audit.created_at,
+            }
+        )
+
     outcome = db.scalar(select(Outcome).where(Outcome.case_id == case.id))
     if outcome and outcome.verified_by_user and outcome.resolved_at is not None:
         events.append(
@@ -333,10 +369,43 @@ def evidenced_outcome(
     _require_pending_execution_verification(db, case)
     _validate_outcome_evidence(db, case, payload)
 
+    remaining = payload.remaining_material_commitments or "unknown"
+    if not payload.verified_by_user:
+        previous_outcome = db.scalar(select(Outcome).where(Outcome.case_id == case.id))
+        previous = db.scalar(
+            select(AuditEvent)
+            .where(AuditEvent.case_id == case.id, AuditEvent.event_type == "OUTCOME_EVIDENCE_RECORDED")
+            .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+        )
+
+        prior = previous.payload_json if previous is not None else {}
+        if (
+            prior
+            and previous_outcome is not None
+            and previous_outcome.non_monetary_result == payload.non_monetary_result
+            and all(
+                prior.get(key) == value for key, value in {
+                    "verified": False,
+                    "remaining_material_commitments": remaining,
+                    "resolution_channel": payload.resolution_channel,
+                    "amount_recovered": payload.amount_recovered,
+                }.items()
+            )
+        ):
+            return {
+                "case_status": case.status,
+                "verified": False,
+                "resolved_on": None,
+                "resolution_channel": payload.resolution_channel,
+                "non_monetary_result": payload.non_monetary_result,
+                "remaining_material_commitments": remaining,
+            }
+
     with outcome_evidence_context(
         resolved_on=payload.resolved_on,
         non_monetary_result=payload.non_monetary_result,
         resolution_channel=payload.resolution_channel,
+        remaining_material_commitments=remaining,
     ), atomic_workflow_transaction(db) as commit:
         result = process_outcome(
             case_id,
@@ -354,6 +423,7 @@ def evidenced_outcome(
         "resolved_on": payload.resolved_on.isoformat() if payload.resolved_on else None,
         "resolution_channel": payload.resolution_channel,
         "non_monetary_result": payload.non_monetary_result,
+        "remaining_material_commitments": remaining,
     }
 
 

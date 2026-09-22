@@ -184,6 +184,7 @@ def test_verified_outcome_closes_execution_action_and_leaves_no_pending_step(cli
             "result_type": "FAVORABLE",
             "amount_recovered": 20.0,
             "verified_by_user": True,
+            "remaining_material_commitments": "none",
             "resolved_on": "2026-09-13",
             "resolution_channel": "bank_or_card_refund",
         },

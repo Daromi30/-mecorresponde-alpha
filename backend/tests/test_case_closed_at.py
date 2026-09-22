@@ -117,6 +117,7 @@ def test_verified_outcome_closes_case_and_handoff_exposes_technical_close_time(c
             "result_type": "FAVORABLE",
             "amount_recovered": 8.99,
             "verified_by_user": True,
+            "remaining_material_commitments": "none",
             "resolved_on": "2026-09-15",
             "resolution_channel": "bank_or_card_refund",
             "non_monetary_result": None,

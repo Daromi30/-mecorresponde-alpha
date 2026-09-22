@@ -91,7 +91,7 @@ def test_outcome_requires_user_verification_to_close(client):
     assert accepted.status_code==200; assert accepted.json()["case_status"]=="RESOLVED_PENDING_EXECUTION"
     r=client.post(f"/api/cases/{cid}/outcome/evidenced",json={"result_type":"FAVORABLE","amount_recovered":26.97,"verified_by_user":False})
     assert r.status_code==200; assert r.json()["case_status"]=="RESOLVED_PENDING_EXECUTION"
-    r=client.post(f"/api/cases/{cid}/outcome/evidenced",json={"result_type":"FAVORABLE","amount_recovered":26.97,"verified_by_user":True,"resolved_on":"2026-09-03","resolution_channel":"bank_or_card_refund"})
+    r=client.post(f"/api/cases/{cid}/outcome/evidenced",json={"result_type":"FAVORABLE","amount_recovered":26.97,"verified_by_user":True,"remaining_material_commitments":"none","resolved_on":"2026-09-03","resolution_channel":"bank_or_card_refund"})
     assert r.status_code==200; assert r.json()["case_status"]=="RESOLVED"
 
 

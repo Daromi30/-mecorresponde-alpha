@@ -210,6 +210,7 @@ def install_evidenced_recovery_policy() -> None:
                         "resolution_channel": evidence.resolution_channel,
                         "amount_recovered": outcome.amount_recovered,
                         "has_non_monetary_result": bool(evidence.non_monetary_result),
+                        "remaining_material_commitments": evidence.remaining_material_commitments,
                     },
                 )
             )

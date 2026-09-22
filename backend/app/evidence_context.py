@@ -21,6 +21,7 @@ class OutcomeEvidence:
     resolved_on: date | None
     non_monetary_result: str | None
     resolution_channel: str | None
+    remaining_material_commitments: str
 
 
 _COMPANY_RESPONSE_EVIDENCE: ContextVar[CompanyResponseEvidence | None] = ContextVar(
@@ -67,12 +68,14 @@ def outcome_evidence_context(
     resolved_on: date | None,
     non_monetary_result: str | None,
     resolution_channel: str | None,
+    remaining_material_commitments: str,
 ) -> Iterator[None]:
     token = _OUTCOME_EVIDENCE.set(
         OutcomeEvidence(
             resolved_on=resolved_on,
             non_monetary_result=non_monetary_result,
             resolution_channel=resolution_channel,
+            remaining_material_commitments=remaining_material_commitments,
         )
     )
     try:

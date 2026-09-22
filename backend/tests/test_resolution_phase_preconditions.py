@@ -104,6 +104,7 @@ def test_outcome_requires_favorable_response_pending_execution(client, db):
             "result_type": "FAVORABLE",
             "amount_recovered": 25,
             "verified_by_user": True,
+            "remaining_material_commitments": "none",
             "resolution_channel": "bank_or_card_refund",
         },
     )
@@ -120,6 +121,7 @@ def test_verified_outcome_requires_execution_evidence_and_valid_chronology(clien
             "result_type": "FAVORABLE",
             "amount_recovered": 0,
             "verified_by_user": True,
+            "remaining_material_commitments": "none",
             "resolved_on": "2026-09-13",
         },
     )
@@ -131,6 +133,7 @@ def test_verified_outcome_requires_execution_evidence_and_valid_chronology(clien
             "result_type": "FAVORABLE",
             "amount_recovered": 25,
             "verified_by_user": True,
+            "remaining_material_commitments": "none",
             "resolved_on": "2026-09-11",
             "resolution_channel": "bank_or_card_refund",
         },
@@ -143,6 +146,7 @@ def test_verified_outcome_requires_execution_evidence_and_valid_chronology(clien
             "result_type": "FAVORABLE",
             "amount_recovered": 25,
             "verified_by_user": True,
+            "remaining_material_commitments": "none",
             "resolved_on": "2026-09-13",
             "resolution_channel": "bank_or_card_refund",
         },

@@ -34,6 +34,14 @@
         </select></div>
       </div>
       <div style="margin-top:10px"><label for="outcomeDetail">Qué ocurrió <span class="muted">(especialmente si no hubo devolución de dinero)</span></label><textarea id="outcomeDetail" rows="3" maxlength="2000" placeholder="Ej.: cancelaron el servicio y dejaron de cobrarlo; repararon el producto; corrigieron el contrato…"></textarea></div>`;
+    fields.innerHTML += `
+      <div style="margin-top:10px"><label for="outcomeRemaining">¿Queda alguna parte material de la respuesta favorable por cumplir?</label>
+        <select id="outcomeRemaining">
+          <option value="unknown">No lo sé todavía</option>
+          <option value="pending">Sí, queda pendiente</option>
+          <option value="none">No, he comprobado todas las partes</option>
+        </select>
+      </div>`;
 
     const dateInput = fields.querySelector('#outcomeResolvedOn');
     dateInput.max = mcrSpainDateIso();
@@ -49,15 +57,20 @@
     const resolvedOn = fields?.querySelector('#outcomeResolvedOn')?.value || '';
     const channel = fields?.querySelector('#outcomeChannel')?.value || '';
     const detail = (fields?.querySelector('#outcomeDetail')?.value || '').trim();
+    const remaining = fields?.querySelector('#outcomeRemaining')?.value || 'unknown';
+    const complete = verified && remaining === 'none';
 
     if (resolvedOn && resolvedOn > mcrSpainDateIso()) {
       return message('La fecha de cumplimiento no puede estar en el futuro.', 'error');
     }
-    if (verified && !channel) {
+    if (complete && !channel) {
       return message('Indica cómo se materializó el resultado, o selecciona que no lo sabes.', 'error');
     }
-    if (verified && amount <= 0 && detail.length < 3) {
+    if (complete && amount <= 0 && detail.length < 3) {
       return message('Describe brevemente qué se cumplió cuando no hubo una devolución de dinero.', 'error');
+    }
+    if (remaining === 'pending' && detail.length < 3) {
+      return message('Explica qué se ha cumplido y qué sigue pendiente.', 'error');
     }
 
     const buttons = [...document.querySelectorAll('#outcomeCard .actions button')];
@@ -68,19 +81,20 @@
         body: JSON.stringify({
           result_type: 'FAVORABLE',
           amount_recovered: amount,
-          verified_by_user: verified,
-          resolved_on: verified && resolvedOn ? resolvedOn : null,
-          resolution_channel: verified ? (channel || null) : null,
-          non_monetary_result: verified && detail ? detail : null,
+          verified_by_user: complete,
+          remaining_material_commitments: remaining,
+          resolved_on: complete && resolvedOn ? resolvedOn : null,
+          resolution_channel: channel || null,
+          non_monetary_result: detail || null,
         }),
       });
-      $('outcome').innerHTML = `<div class="${verified ? 'successBox' : 'notice'}">${
-        verified
+      $('outcome').innerHTML = `<div class="${complete ? 'successBox' : 'notice'}">${
+        complete
           ? 'Resultado verificado. El expediente puede cerrarse como resuelto.'
-          : 'La empresa ha aceptado, pero el expediente sigue abierto hasta comprobar que cumple.'
+          : 'Queda cumplimiento pendiente o desconocido. El expediente sigue abierto: vuelve a esta verificación cuando puedas comprobarlo.'
       }</div>`;
       await refresh();
-      if (verified && result.resolved_on) {
+      if (complete && result.resolved_on) {
         message(`Resolución registrada para el ${escapeHtml(result.resolved_on)} con los datos que has confirmado.`, 'success');
       }
     } catch (error) {
@@ -96,11 +110,37 @@
     const date = document.getElementById('outcomeResolvedOn');
     const channel = document.getElementById('outcomeChannel');
     const detail = document.getElementById('outcomeDetail');
+    const remaining = document.getElementById('outcomeRemaining');
     if (date) date.value = '';
     if (channel) channel.value = '';
     if (detail) detail.value = '';
+    if (remaining) remaining.value = 'unknown';
     return result;
   };
 
   ensureOutcomeEvidenceFields();
+
+  const previousRefresh = refresh;
+  refresh = async function (...args) {
+    const result = await previousRefresh(...args);
+    const fields = ensureOutcomeEvidenceFields();
+    const evidence = caseData?.execution_verification;
+    if (caseData?.status === 'RESOLVED_PENDING_EXECUTION' && evidence && !evidence.verified) {
+      const remaining = fields?.querySelector('#outcomeRemaining');
+      const detail = fields?.querySelector('#outcomeDetail');
+      const amount = document.getElementById('recoveredAmount');
+      const channel = fields?.querySelector('#outcomeChannel');
+      if (remaining) remaining.value = evidence.remaining_material_commitments || 'unknown';
+      if (detail) detail.value = evidence.non_monetary_result || '';
+      if (amount) amount.value = evidence.amount_recovered ?? 0;
+      if (channel) channel.value = evidence.resolution_channel || '';
+      const explanation = evidence.remaining_material_commitments === 'pending'
+        ? 'Hay una parte material pendiente de cumplir.'
+        : 'Hay una parte material cuyo cumplimiento aún no se conoce.';
+      const recorded = evidence.non_monetary_result
+        ? `<p>Lo registrado: ${escapeHtml(evidence.non_monetary_result)}</p>` : '';
+      document.getElementById('outcome').innerHTML = `<div class="notice">${explanation}${recorded} Continúa esta verificación cuando dispongas de la confirmación.</div>`;
+    }
+    return result;
+  };
 })();
