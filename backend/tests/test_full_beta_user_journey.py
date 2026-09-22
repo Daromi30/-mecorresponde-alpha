@@ -175,6 +175,7 @@ def test_complete_saved_account_beta_resolution_journey(client):
             "result_type": "FAVORABLE",
             "amount_recovered": 17.98,
             "verified_by_user": True,
+            "remaining_material_commitments": "none",
             "resolved_on": "2026-09-16",
             "resolution_channel": "bank_or_card_refund",
             "non_monetary_result": None,

@@ -71,6 +71,7 @@ def test_timeline_tracks_resolution_milestones_without_internal_payloads(client)
             "result_type": "FAVORABLE",
             "amount_recovered": 8.99,
             "verified_by_user": True,
+            "remaining_material_commitments": "none",
             "resolved_on": "2026-09-16",
             "resolution_channel": "bank_or_card_refund",
             "non_monetary_result": None,

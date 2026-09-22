@@ -4,42 +4,51 @@ Last updated:
 2026-09-22
 
 Main SHA:
-7a28bdf402f0167b4ada08c17d2996e690d3adf6
+5663d8b28a35817355f38b6c55ecd231916a0fa2
 
 Render LIVE SHA:
-7a28bdf402f0167b4ada08c17d2996e690d3adf6
+5663d8b28a35817355f38b6c55ecd231916a0fa2
+
+Current milestone:
+Beta interna sintética: resolver el P1 y reanudar el recorrido adversarial antes de congelar un candidato.
 
 Active owner:
 WORK
 
 Active task:
-Revisar e integrar el PR de runtime revision health.
+Revisar e integrar PR de partial outcome confirmation y reanudar prueba adversarial.
 
 Branch:
-feat/runtime-revision-health
+fix/partial-outcome-confirmation
 
 PR:
-#208 — https://github.com/Daromi30/-mecorresponde-alpha/pull/208
+#209 — https://github.com/Daromi30/-mecorresponde-alpha/pull/209
 
 CI:
-Verde en PR #208: legal-engine-regression, postgres-persistence, postgres-backup-restore y postgres-migrations.
+SUCCESS en PR #209: legal-engine-regression, postgres-persistence, postgres-backup-restore y postgres-migrations (commit técnico `f18f139`).
 
 Completed in this block:
 
-- `/health` conserva sus campos y añade `runtime_revision`.
-- Un `RENDER_GIT_COMMIT` hexadecimal válido de 40 caracteres se expone completo; ausencia o valor inválido producen `unknown` sin afectar disponibilidad.
-- El arranque registra la misma revisión normalizada como `runtime_revision`, sin volcar el entorno ni secretos.
-- Cobertura añadida para SHA válido, ausencia, valor inválido y normalización compartida.
-- Commit técnico: `b532e86`.
+- Causa raíz: `verified_by_user=true` cerraba el caso sin confirmar que todos los compromisos materiales de la respuesta favorable estuvieran cumplidos.
+- La API exige `remaining_material_commitments=none` para cerrar. `pending`, `unknown` o ausencia del dato conservan `RESOLVED_PENDING_EXECUTION` y `VERIFY_EXECUTION` abierta.
+- La UI permite registrar lo parcial, muestra lo pendiente al volver y ofrece completar la verificación. El timeline distingue verificación parcial de resolución.
+- La repetición idéntica de un parcial no duplica outcome, acción, reclamación ni eventos. El cierre posterior ocurre una sola vez.
+- La ruta de recuperación comparte metadatos del nuevo contrato; la resolución terminal C05 se revisó y sigue basada en hechos confirmados.
+
+Regression coverage:
+Pruebas sintéticas de corrección contractual con devolución pendiente/desconocida, cierre monetario y no monetario de 0 €, llamada directa inválida, rollback, idempotencia, refresh/reentrada, auditoría/timeline, recuperación y todas las familias. Local Windows: 666 passed, 1 test POSIX `0600` excluido; suite Linux del PR verde.
+
+Follow-up findings:
+FOLLOW_UP_FINDING — El runbook `docs/internal-beta-runbook.md` aún describe 14 familias mientras el manifiesto y runtime muestran 26. Gravedad operativa baja; reproducible comparando ese documento con `/health`. WORK debe actualizar la matriz antes del freeze. Fuera del contrato de outcomes de este PR.
 
 Blockers:
-Para datos reales siguen pendientes el lifecycle durable de PostgreSQL, el almacenamiento documental persistente y la privacidad real revisada. Ninguno queda resuelto por este bloque de observabilidad.
+No congelar beta hasta integrar y repetir el recorrido A–H/matriz afectado. Para datos reales siguen pendientes el ciclo de vida durable de PostgreSQL, el almacenamiento documental persistente y la privacidad real revisada.
 
 Cost blockers:
 Datastore durable y proveedor de almacenamiento persistente definitivos pueden requerir contratación; no activar sin autorización.
 
 External/user decisions needed:
-Datos empresariales reales y revisión formal de privacidad; elección y autorización de proveedores o planes con coste.
+Datos empresariales reales y revisión formal de privacidad; elección y autorización de proveedores o planes con coste. Ninguna es necesaria para este arreglo sintético.
 
 Next executable task:
-WORK revisa PR, espera CI verde, integra si procede y verifica Render LIVE.
+WORK integra si procede, verifica LIVE y reanuda recorrido manual A–H/matriz desde el punto afectado.

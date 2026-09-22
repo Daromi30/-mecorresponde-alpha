@@ -49,6 +49,12 @@ def case_for_update_or_404(db: Session, case_id: str) -> Case:
 
 
 def serialize_case(db: Session, case: Case):
+    execution_outcome = db.scalar(select(Outcome).where(Outcome.case_id == case.id))
+    latest_execution = db.scalar(
+        select(AuditEvent)
+        .where(AuditEvent.case_id == case.id, AuditEvent.event_type == "OUTCOME_EVIDENCE_RECORDED")
+        .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+    )
     facts = db.scalars(select(Fact).where(Fact.case_id == case.id).order_by(Fact.created_at.asc())).all()
     decisions = db.scalars(select(Decision).where(Decision.case_id == case.id).order_by(Decision.created_at.desc())).all()
     actions = db.scalars(select(Action).where(Action.case_id == case.id).order_by(Action.id.desc())).all()
@@ -64,6 +70,13 @@ def serialize_case(db: Session, case: Case):
         "raw_intake": case.raw_intake,
         "current_decision_id": case.current_decision_id,
         "current_action_id": case.current_action_id,
+        "execution_verification": (
+            {
+                **latest_execution.payload_json,
+                "non_monetary_result": execution_outcome.non_monetary_result if execution_outcome else None,
+            }
+            if latest_execution is not None else None
+        ),
         "opened_at": case.opened_at,
         "facts": [
             {
@@ -505,6 +518,7 @@ def outcome(case_id: str, payload: OutcomeInput, db: Session = Depends(get_db)):
                 "resolution_channel": evidence.resolution_channel,
                 "amount_recovered": payload.amount_recovered,
                 "has_non_monetary_result": bool(evidence.non_monetary_result),
+                "remaining_material_commitments": evidence.remaining_material_commitments,
             },
         )
     db.commit()

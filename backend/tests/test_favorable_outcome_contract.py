@@ -82,6 +82,7 @@ def test_evidenced_outcome_rejects_incompatible_result_type_without_mutation(cli
             "result_type": "DENIED",
             "amount_recovered": 8.99,
             "verified_by_user": True,
+            "remaining_material_commitments": "none",
             "resolved_on": "2026-09-13",
             "resolution_channel": "bank_or_card_refund",
         },

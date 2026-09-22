@@ -114,6 +114,7 @@ def test_every_beta_family_can_complete_favorable_response_and_verified_executio
                 "result_type": "FAVORABLE",
                 "amount_recovered": 0,
                 "verified_by_user": True,
+                "remaining_material_commitments": "none",
                 "resolved_on": "2026-09-13",
                 "resolution_channel": "other",
                 "non_monetary_result": "Cumplimiento sintético confirmado para prueba interna.",
