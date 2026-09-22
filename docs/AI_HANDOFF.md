@@ -1,7 +1,7 @@
 # MECORRESPONDE AI HANDOFF
 
 Last updated:
-2026-09-22 19:02:23 +02:00
+2026-09-22 19:04:00 +02:00
 
 Main SHA:
 6cb62f07a019260377b39fca187b345a23c55b33
@@ -22,7 +22,7 @@ Branch:
 docs/ai-handoff-protocol
 
 PR:
-pending
+#207
 
 CI:
 `main` 6cb62f0: Database Migrations y MECORRESPONDE CI correctos. CI de esta rama pendiente.
@@ -40,7 +40,7 @@ External/user decisions needed:
 Datos empresariales reales y revisión formal de privacidad; elección y autorización de proveedores o planes con coste.
 
 Next executable task:
-WORK debe revisar/integrar el PR de `docs/ai-handoff-protocol`, esperar CI verde y comprobar Render LIVE, logs y readiness sobre el SHA resultante.
+WORK debe revisar/integrar el PR #207, esperar CI verde y comprobar Render LIVE, logs y readiness sobre el SHA resultante.
 
 Do not touch:
 No usar datos reales, inventar información legal/empresarial, activar costes, habilitar uploads reales o indexación pública. No editar simultáneamente una rama cuyo `Active owner` sea otro entorno.
