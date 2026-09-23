@@ -60,7 +60,7 @@ PR:
 [#212](https://github.com/Daromi30/-mecorresponde-alpha/pull/212) abierto contra `main`; no fusionado. PR #211 `MERGED` en el `main` de arriba.
 
 CI:
-Los cuatro checks del PR #212 (`legal-engine-regression`, `postgres-backup-restore`, `postgres-persistence`, `postgres-migrations`) finalizaron `SUCCESS` sobre el commit de implementación `398343e`. Consultar los checks del último commit del PR antes de integrar; este handoff añade solo guardas UI vecinas y documentación. El `main` base conserva checks verdes.
+Los cuatro checks obligatorios del PR #212 (`legal-engine-regression`, `postgres-backup-restore`, `postgres-persistence`, `postgres-migrations`) finalizaron `SUCCESS` en `68857db`, que incluye implementación, guardas UI y handoff. Consultar los checks del último SHA del PR antes de integrar. El `main` base conserva checks verdes.
 
 A–H progress:
 A: PASS visual sintético E02-A, incluyendo corrección parcial, devolución pendiente, cierre y recarga. B: conclusión informativa visible, pero corrección de hecho bloqueada por P1 de UI. C: pendiente visual. D: C02 seguimiento reproduce P1 de decisión obsoleta; E06 pendiente visual. E: revisión humana parcial, sin flujo estructurado completo. F: pendiente visual. G: pendiente visual de cuenta/reentrada. H: resolución y solo lectura verificadas para E02-A/E04-B; mutaciones terminales y `CLOSED_UNSUPPORTED` no recorridos completamente en UI.
