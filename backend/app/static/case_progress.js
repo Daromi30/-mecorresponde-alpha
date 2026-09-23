@@ -28,12 +28,13 @@
     // but before a claim is sent, or after a company response. Never move the progress bar
     // forward merely because the status string says HUMAN_REVIEW/REANALYZING.
     if (hasAction('WAIT_FOR_RESPONSE') || hasAction('VERIFY_EXECUTION')) return 3;
-    if (Array.isArray(caseData?.decisions) && caseData.decisions.length) return 1;
+    if (caseData?.current_decision_id && Array.isArray(caseData.decisions) && caseData.decisions.some(item => item.id === caseData.current_decision_id)) return 1;
     if (caseData?.family) return 1;
     return 0;
   }
 
   function stageForStatus(status) {
+    if (status === 'DIAGNOSED' && (!caseData?.current_decision_id || !Array.isArray(caseData.decisions) || !caseData.decisions.some(item => item.id === caseData.current_decision_id))) return 0;
     if (status === 'HUMAN_REVIEW' || status === 'REANALYZING') return reviewStage();
     return stageByStatus[status] ?? 0;
   }
@@ -75,7 +76,7 @@
     const status = caseData.status || 'INTAKE';
     const current = stageForStatus(status);
     const resolved = status === 'RESOLVED';
-    const diagnosedWithoutPendingAction = status === 'DIAGNOSED' && !caseData.current_action_id;
+    const diagnosedWithoutPendingAction = status === 'DIAGNOSED' && !!caseData.current_decision_id && !caseData.current_action_id;
     panel.classList.remove('hidden');
     panel.innerHTML = `
       <div class="label">Dónde estás</div>
@@ -92,7 +93,7 @@
           </div>`;
         }).join('')}
       </div>
-      <div class="tiny muted">${escapeHtml(statusCopy(status))}</div>`;
+      <div class="tiny muted">${escapeHtml(status === 'DIAGNOSED' && current === 0 ? 'No hay un diagnóstico vigente verificable.' : statusCopy(status))}</div>`;
   }
 
   const baseRefresh = refresh;

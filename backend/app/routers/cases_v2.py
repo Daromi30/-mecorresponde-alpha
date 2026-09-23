@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from math import isfinite
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -178,6 +179,33 @@ def question(case_id: str, db: Session = Depends(get_db)):
 def fact(case_id: str, payload: FactUpsert, db: Session = Depends(get_db)):
     case = case_for_update_or_404(db, case_id)
     value = payload.value
+    if payload.correction:
+        # The first correction surface is deliberately limited to a confirmed E02-A
+        # amount. It reuses the normal fact lifecycle, evidence and audit trail.
+        if case.family != "E02-A" or payload.key != "electricity.billing.correct_amount":
+            raise HTTPException(422, "This fact cannot be corrected here")
+        if (payload.state != "confirmed" or not payload.user_confirmed
+                or payload.materiality != "critical" or payload.confidence is not None
+                or isinstance(value, bool) or not isinstance(value, (int, float))
+                or value < 0 or value > 1_000_000_000_000 or not isfinite(value)):
+            raise HTTPException(422, "A confirmed non-negative amount is required")
+        previous = db.scalars(
+            select(Fact).where(Fact.case_id == case.id, Fact.key == payload.key)
+            .order_by(Fact.created_at.desc(), Fact.id.desc())
+        ).first()
+        if (previous is None or previous.state != "confirmed"
+                or not previous.user_confirmed or previous.created_by != "user"):
+            raise HTTPException(409, "No confirmed fact to correct")
+        if case.status in {"RESOLVED", "CLOSED_UNSUPPORTED"}:
+            raise HTTPException(409, "Terminal case cannot be corrected")
+        current = db.get(Decision, case.current_decision_id) if case.current_decision_id else None
+        if case.status == "INTAKE" and case.current_decision_id is None and case.current_action_id is None and previous.value_json.get("value") == value:
+            return {"fact_id": previous.id, "next_question": get_next_question(db, case)}
+        if (case.status != "DIAGNOSED" or case.current_action_id is not None
+                or current is None or current.case_id != case.id):
+            raise HTTPException(409, "Current diagnosis is not editable")
+        if previous.value_json.get("value") == value:
+            return {"fact_id": previous.id, "next_question": get_next_question(db, case)}
     if payload.key.endswith("_date") and isinstance(value, str):
         try:
             date.fromisoformat(value)

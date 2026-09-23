@@ -16,14 +16,19 @@
   }
 
   function decision() {
-    return Array.isArray(caseData?.decisions) && caseData.decisions.length
-      ? caseData.decisions[0]
-      : null;
+    if (!caseData?.current_decision_id || !Array.isArray(caseData.decisions)) return null;
+    return caseData.decisions.find(item => item.id === caseData.current_decision_id) || null;
   }
 
   function currentAction() {
     if (!caseData?.current_action_id || !Array.isArray(caseData.actions)) return null;
     return caseData.actions.find(item => item.id === caseData.current_action_id) || null;
+  }
+
+  function correctableAmount() {
+    if (caseData?.family !== 'E02-A' || !Array.isArray(caseData.facts)) return null;
+    const latest = caseData.facts.filter(f => f.key === 'electricity.billing.correct_amount').at(-1);
+    return latest?.state === 'confirmed' && latest.user_confirmed && latest.created_by === 'user' ? latest : null;
   }
 
   function isPreparableAction(type) {
@@ -84,11 +89,13 @@
     const type = current?.type || '';
 
     if (!current) {
+      const canCorrect = !!correctableAmount();
       return {
         title: 'Análisis concluido · no hay una acción adicional',
-        body: 'Con los hechos actuales, el Motor ha terminado el análisis sin dejar una reclamación, espera o revisión pendiente. Si aparece un hecho nuevo verificable, el expediente puede volver a analizarse.',
+        body: canCorrect ? 'Con los hechos actuales, el Motor ha terminado el análisis sin dejar una reclamación, espera o revisión pendiente. Si detectas un dato incorrecto, puedes corregirlo en este mismo expediente.' : 'Con los hechos actuales, el Motor ha terminado el análisis sin dejar una reclamación, espera o revisión pendiente.',
         button: 'Ver diagnóstico',
         action: () => document.getElementById('diagnosisCard')?.scrollIntoView({behavior: 'smooth', block: 'start'}),
+        correction: canCorrect,
       };
     }
 
@@ -165,6 +172,10 @@
         action: () => document.getElementById('questionArea')?.scrollIntoView({behavior: 'smooth', block: 'center'}),
       };
     }
+    if (['DIAGNOSED', 'READY_TO_SUBMIT', 'WAITING_RESPONSE', 'RESPONSE_RECEIVED', 'RESOLVED_PENDING_EXECUTION'].includes(status) && !currentDecision) return {
+      title: 'Diagnóstico no disponible',
+      body: 'No hay una decisión vigente verificable. Actualiza el expediente antes de seguir.',
+    };
     if (status === 'DIAGNOSED') {
       return diagnosedActionGuidance(currentDecision, current);
     }
@@ -248,12 +259,38 @@
       <div class="label">Qué hago ahora</div>
       <h3 style="margin:6px 0">${escapeHtml(guidance.title)}</h3>
       <p class="muted" style="margin:0">${escapeHtml(guidance.body)}</p>
-      ${guidance.button ? '<div class="actions"><button type="button" id="caseNextStepAction"></button></div>' : ''}`;
+      ${guidance.button ? `<div class="actions"><button type="button" id="caseNextStepAction"></button>${guidance.correction ? '<button type="button" class="secondary" id="caseCorrectFact">Corregir datos</button>' : ''}</div>` : ''}
+      ${guidance.correction ? '<div id="caseCorrectionForm"></div>' : ''}`;
     if (guidance.button) {
       const button = document.getElementById('caseNextStepAction');
       button.textContent = guidance.button;
       button.addEventListener('click', guidance.action);
     }
+    if (guidance.correction) document.getElementById('caseCorrectFact').addEventListener('click', showCorrectionForm);
+  }
+
+  function showCorrectionForm() {
+    const previous = correctableAmount();
+    const form = document.getElementById('caseCorrectionForm');
+    if (!form || !previous) return;
+    form.innerHTML = '<label for="correctAmount">Importe que debería haberse facturado (€)</label><input id="correctAmount" type="number" min="0" step="0.01" inputmode="decimal" required><p class="tiny muted">Confirma el importe según los datos de tu factura. La conclusión anterior quedará en el historial y podrás volver a analizar este expediente.</p><div class="actions"><button type="button" id="saveCorrectAmount">Guardar corrección</button></div>';
+    const input = document.getElementById('correctAmount');
+    input.value = previous.value ?? '';
+    input.focus();
+    document.getElementById('saveCorrectAmount').addEventListener('click', async () => {
+      if (!input.reportValidity() || input.value === '' || !Number.isFinite(Number(input.value))) return;
+      const button = document.getElementById('saveCorrectAmount');
+      setBusy(button, true, 'Guardando…');
+      try {
+        await req(`/api/cases/${caseId}/facts`, {method:'POST', body:JSON.stringify({key:'electricity.billing.correct_amount', value:Number(input.value), state:'confirmed', user_confirmed:true, correction:true})});
+        await refresh();
+        message('Dato corregido. La conclusión anterior ya no está vigente; completa los datos que falten y vuelve a analizar este expediente.', 'success');
+      } catch (error) {
+        message(escapeHtml(error.message), 'error');
+      } finally {
+        if (button?.isConnected) setBusy(button, false);
+      }
+    });
   }
 
   const baseRefresh = refresh;

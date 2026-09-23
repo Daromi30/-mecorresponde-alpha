@@ -35,6 +35,11 @@
     return (caseData.actions || []).find(action => action.id === caseData.current_action_id) || null;
   }
 
+  function hasCurrentDecision() {
+    return !!caseData?.current_decision_id && Array.isArray(caseData.decisions) &&
+      caseData.decisions.some(decision => decision.id === caseData.current_decision_id);
+  }
+
   function setCardVisible(id, visible) {
     const card = document.getElementById(id);
     if (!card) return;
@@ -42,7 +47,7 @@
   }
 
   function restorePreparedClaim() {
-    if (caseData?.status !== 'READY_TO_SUBMIT') return;
+    if (caseData?.status !== 'READY_TO_SUBMIT' || !hasCurrentDecision()) return;
     const action = currentAction();
     if (
       action?.type !== 'SUBMIT_INITIAL_CLAIM' ||
@@ -58,9 +63,9 @@
 
     // A card is actionable only in its exact lifecycle phase. This prevents stale
     // controls from remaining visible after refreshes and producing predictable 409s.
-    setCardVisible('claimCard', status === 'READY_TO_SUBMIT');
-    setCardVisible('responseCard', status === 'WAITING_RESPONSE');
-    setCardVisible('outcomeCard', status === 'RESOLVED_PENDING_EXECUTION');
+    setCardVisible('claimCard', status === 'READY_TO_SUBMIT' && hasCurrentDecision());
+    setCardVisible('responseCard', status === 'WAITING_RESPONSE' && hasCurrentDecision());
+    setCardVisible('outcomeCard', status === 'RESOLVED_PENDING_EXECUTION' && hasCurrentDecision());
 
     // READY_TO_SUBMIT must survive login/re-entry without asking the user to
     // "prepare" an already prepared action again. The persisted current action
