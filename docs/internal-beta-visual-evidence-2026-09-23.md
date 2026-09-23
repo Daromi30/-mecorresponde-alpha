@@ -10,7 +10,7 @@ Esta prueba se hizo en un navegador sobre Render LIVE `25f10b4566e1b8d809e3660e6
 
 ## Recorrido visual efectuado
 
-En el navegador integrado se abrió la portada: aviso visible de pruebas sintéticas y enlaces a 26 guías, agrupadas por vertical. Se abrió la guía E02-A: título y explicación legibles, CTA «Analizar mi caso», referencia oficial y cautela expresa de no decidir automáticamente. Esto no constituye una prueba manual del expediente E02-A.
+En el navegador integrado se abrió la portada: aviso visible de pruebas sintéticas y enlaces a 26 guías, agrupadas por vertical. Se abrió la guía E02-A: título y explicación legibles, CTA «Analizar mi caso», referencia oficial y cautela expresa de no decidir automáticamente. Desde esa CTA se abrió un expediente E02-A ficticio con factura de 150 € y cantidad debida de 100 €. Las preguntas guiadas pidieron fecha y ambos importes; el diagnóstico mostró base alta y 50 € reclamables. Sin embargo, no mostró ningún siguiente paso. Por ello el escenario A no se puede dar por completado en LIVE.
 
 Un relato ad hoc ambiguo sobre una factura de luz entró en `HUMAN_REVIEW` en vez de producir una conclusión automática. Se observó el bloqueo de uploads. La clasificación concreta de ese relato no se considera error sin una revisión de los hechos que el Motor interpretó.
 
@@ -29,16 +29,17 @@ Resultado: PASS visual para el lifecycle favorable, cumplimiento parcial, cierre
 
 Las pruebas automatizadas `test_beta_acceptance_matrix.py`, `test_guided_question_acceptance.py`, `test_all_family_response_loop.py` y `test_all_claim_provenance.py` recorren las 26 familias registradas para intake/diagnóstico, preguntas guiadas, acción y fuente jurídica, respuesta favorable y resolución; la respuesta parcial no duplica la reclamación inicial. Las rutas de alcance no admitido no están cubiertas manualmente para las 26 familias: existe prueba automatizada específica para cinco familias de compras fuera del ámbito de consumo. Las 26 páginas de guía se verificaron como enlaces visibles en la portada, pero solo E02-A se inspeccionó visualmente en detalle.
 
-Estado del runbook manual: A pendiente (se usó E04-B, no E02-A); B, C, D, F y G pendientes; E parcial (se observó `HUMAN_REVIEW` de un relato ambiguo, no el flujo completo tras respuesta); H parcial (cierre y lectura, no todas las mutaciones terminales ni `CLOSED_UNSUPPORTED`). No hay evidencia para afirmar que toda la matriz visual esté superada.
+Estado del runbook manual: A parcial y bloqueado en LIVE tras diagnóstico E02-A; B, C, D, F y G pendientes; E parcial (se observó `HUMAN_REVIEW` de un relato ambiguo, no el flujo completo tras respuesta); H parcial (cierre y lectura, no todas las mutaciones terminales ni `CLOSED_UNSUPPORTED`). No hay evidencia para afirmar que toda la matriz visual esté superada.
 
 ## Hallazgos y corrección preparada
 
 - P2 corregido en la rama de este documento: «¿Me compensa?» mostraba `YES_IF_LOW_COST` en el diagnóstico LIVE. Se añadieron etiquetas legibles para todos los códigos existentes y un fallback conservador para los desconocidos.
 - P2 corregido en la rama de este documento: el formulario de cargos mostraba tres controles de fecha sin etiquetas visibles. Ahora distingue fecha del cargo, inicio y fin del periodo; se conservan los nombres y semántica de la API.
+- P1 corregido en la rama de este documento, pendiente de CI y despliegue: las guías enlazan a `/demo/`, que servía el HTML estático sin el cargador de módulos seguros. El Motor diagnosticó E02-A correctamente, pero no apareció la acción «Qué hago ahora» ni el botón para preparar la reclamación. La raíz `/` sí cargaba esos módulos, ocultando el defecto en la primera prueba E04-B. `/demo/` y `/demo/index.html` se sirven ahora con el mismo cargador y la primera capa de privacidad fail-closed, conservando `noindex`.
 - P2 pendiente: «Ver base jurídica aplicada» muestra identificadores y resultados internos (`ELEC_ADDON_END_WITH_SUPPLY / APPLIES`) en vez de explicación de cara al usuario. El borrador sí muestra una fuente oficial, pero la sección de diagnóstico necesita copy contextual revisado antes de usarla como explicación jurídica pública.
-- P0/P1: ninguno nuevo demostrado en esta prueba parcial. Tampoco se declara su ausencia en los escenarios sin ejecutar.
+- P0: ninguno nuevo demostrado en esta prueba parcial. Tampoco se declara su ausencia en los escenarios sin ejecutar.
 
-La tanda dirigida tras los dos cambios: 26 tests aprobados. La suite amplia local dio 668 aprobados y tres fallos ambientales: dos tests de integración PostgreSQL ejecutados con `sqlite:///:memory:` por falta de base efímera local, y la aserción POSIX `0600` sobre NTFS. No se sustituyen por una afirmación de suite local totalmente verde; CI Linux del PR debe decidir la integración.
+La tanda dirigida tras los dos primeros cambios: 26 tests aprobados. Tras el arreglo P1, la tanda de navegación, privacidad, cargador y matriz de familias: 33 aprobados. La suite amplia local previa dio 668 aprobados y tres fallos ambientales: dos tests de integración PostgreSQL ejecutados con `sqlite:///:memory:` por falta de base efímera local, y la aserción POSIX `0600` sobre NTFS. No se sustituyen por una afirmación de suite local totalmente verde; CI Linux del PR debe decidir la integración.
 
 ## Siguiente bloque ejecutable
 
