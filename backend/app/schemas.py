@@ -21,6 +21,7 @@ class FactUpsert(BaseModel):
     materiality: Literal["critical", "relevant", "context"] = "critical"
     confidence: float | None = Field(default=None, ge=0, le=1)
     user_confirmed: bool = True
+    correction: bool = False
 
     @field_validator("key")
     @classmethod

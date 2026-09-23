@@ -78,5 +78,5 @@ def test_no_action_diagnosis_is_explicit_in_claimant_ui():
     progress = (STATIC / "case_progress.js").read_text(encoding="utf-8")
     assert "if (!current)" in next_step
     assert "Análisis concluido · no hay una acción adicional" in next_step
-    assert "status === 'DIAGNOSED' && !caseData.current_action_id" in progress
+    assert "status === 'DIAGNOSED' && hasCurrentDecision() && !caseData.current_action_id" in progress
     assert "diagnosedWithoutPendingAction" in progress

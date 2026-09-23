@@ -70,9 +70,9 @@ def test_phase_ui_restores_prepared_claim_and_hides_stale_action_cards():
     assert "action?.type !== 'SUBMIT_INITIAL_CLAIM'" in script
     assert "action?.status !== 'READY'" in script
     assert "renderClaim(action.payload)" in script
-    assert "setCardVisible('claimCard', status === 'READY_TO_SUBMIT')" in script
-    assert "setCardVisible('responseCard', status === 'WAITING_RESPONSE')" in script
-    assert "setCardVisible('outcomeCard', status === 'RESOLVED_PENDING_EXECUTION')" in script
+    assert "setCardVisible('claimCard', status === 'READY_TO_SUBMIT' && hasCurrentDecision())" in script
+    assert "setCardVisible('responseCard', status === 'WAITING_RESPONSE' && hasCurrentDecision())" in script
+    assert "setCardVisible('outcomeCard', status === 'RESOLVED_PENDING_EXECUTION' && hasCurrentDecision())" in script
 
 
 def test_reanalyzing_phase_replaces_stale_question_controls_with_locked_copy():
