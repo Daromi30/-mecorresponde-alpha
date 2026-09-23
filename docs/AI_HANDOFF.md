@@ -13,7 +13,10 @@ Current milestone:
 Beta interna sintética en ejecución. La CI de `main` está verde y hay evidencia visual end-to-end favorable/parcial/cierre para E04-B y E02-A, pero A–H y la inspección visual dirigida de las 26 familias no están completos. No congelar ni declarar superada la beta.
 
 Active owner:
-CODEX
+WORK
+
+Active task:
+Revisar/integrar PR de beta reentry visual guard y repetir C02/E02-A visualmente.
 
 Base SHA:
 8279211c5eec1a02fb8d87d7db64ca2e4996dda8
@@ -22,7 +25,22 @@ Branch:
 fix/beta-reentry-visual-guard
 
 Objective:
-Corregir dos P1 de reentrada en la UI de expedientes: (1) nunca presentar un diagnóstico histórico como vigente cuando `current_decision_id` es nulo o apunta a otra decisión; (2) permitir al usuario corregir de forma segura un hecho material existente desde la conclusión informativa sin acción, de modo que el backend invalide la decisión y vuelva a intake. Conservar historial sin convertirlo en recomendación activa.
+Los dos P1 de reentrada tienen corrección técnica en PR #212. WORK revisa la integración y repite los recorridos C02/E02-A visualmente; la beta no está completada.
+
+Completed:
+La UI usa únicamente `current_decision_id` para presentar el diagnóstico vigente y limpia tarjetas obsoletas en refresh/reentrada. E02-A informativo ofrece «Corregir datos» para el importe debido existente; la API reutiliza `/facts` con validación acotada, invalida la decisión, conserva historial/auditoría y permite reanalizar 100/80 como 20 € reclamables sin nuevo expediente.
+
+Root causes:
+`index.html` y `case_next_step.js` tomaban `decisions[0]` como vigente aunque el backend hubiera anulado `current_decision_id`; refresh tampoco ocultaba el diagnóstico anterior. El hecho E02-A era corregible por API, pero la conclusión sin acción no tenía un control visible. La ruta genérica de hechos carecía de un contrato específico de corrección acotada/idempotente.
+
+Regression coverage:
+Pruebas de C02/intake/refresh/reentrada; decisión A histórica frente a B vigente, ID nulo e inválido; conclusión E02-A 100/100, corrección 80, nueva decisión de 20 €; mismo case ID, rechazo de campo/tipo/estado/evidencia/ID incoherente y reenvío sin eventos duplicados. Pruebas UI/JS y lifecycle existentes conservadas. Pase backend completo Windows: 672 verdes y 1 fallo ambiental POSIX `0600` sobre NTFS; el pase final de CI Linux se consigna abajo.
+
+Additional same-domain fixes:
+El progreso, la tarjeta de reclamación preparada y las tarjetas de respuesta/resultado ya no usan una decisión o acción histórica como vigente si falta la decisión actual. La guía «Qué hago ahora» falla cerrado en fases accionables con `current_decision_id` incoherente.
+
+Follow-up findings:
+P2 previo: la base jurídica desplegable aún expone IDs/resultados internos; no se alteraron reglas, fuentes ni contenido jurídico. La corrección visible nueva está acotada al importe debido E02-A de una conclusión informativa sin acción; otros campos/familias requieren diseño propio, no edición arbitraria.
 
 Acceptance criteria:
 
@@ -39,10 +57,10 @@ Do not touch:
 Reglas jurídicas, fuentes, importes del Motor, esquema/migraciones destructivas, secretos, planes/costes, datos reales, uploads reales, almacenamiento documental, indexación pública, privacidad fail-closed ni configuración de producción. No hacer merge ni deploy manual para este handoff. Datos empresariales y jurídicos reales quedan pendientes; no inventarlos.
 
 PR:
-Ninguna todavía para esta rama. PR #211 `MERGED` en el `main` de arriba.
+[#212](https://github.com/Daromi30/-mecorresponde-alpha/pull/212) abierto contra `main`; no fusionado. PR #211 `MERGED` en el `main` de arriba.
 
 CI:
-`MECORRESPONDE CI` y `Database Migrations` `SUCCESS` sobre `8279211c5eec1a02fb8d87d7db64ca2e4996dda8`. La rama del relevo aún no contiene corrección técnica ni CI propia.
+Los cuatro checks del PR #212 (`legal-engine-regression`, `postgres-backup-restore`, `postgres-persistence`, `postgres-migrations`) finalizaron `SUCCESS` sobre el commit de implementación `398343e`. Consultar los checks del último commit del PR antes de integrar; este handoff añade solo guardas UI vecinas y documentación. El `main` base conserva checks verdes.
 
 A–H progress:
 A: PASS visual sintético E02-A, incluyendo corrección parcial, devolución pendiente, cierre y recarga. B: conclusión informativa visible, pero corrección de hecho bloqueada por P1 de UI. C: pendiente visual. D: C02 seguimiento reproduce P1 de decisión obsoleta; E06 pendiente visual. E: revisión humana parcial, sin flujo estructurado completo. F: pendiente visual. G: pendiente visual de cuenta/reentrada. H: resolución y solo lectura verificadas para E02-A/E04-B; mutaciones terminales y `CLOSED_UNSUPPORTED` no recorridos completamente en UI.
@@ -54,7 +72,7 @@ Open P0:
 Ninguno demostrado; la cobertura manual pendiente impide afirmar ausencia absoluta.
 
 Open P1:
-Diagnóstico histórico C02 mostrado como vigente tras cambiar hecho y volver a intake. Reentrada sin control visible para corregir hecho material desde conclusión sin acción E02-A. Reproducciones y evidencias en `docs/internal-beta-visual-evidence-2026-09-23.md`.
+Los dos P1 reproducidos tienen corrección técnica en PR #212, todavía pendiente de integración y repetición visual LIVE por WORK. Evidencias originales en `docs/internal-beta-visual-evidence-2026-09-23.md`; no declarar cierre visual desde Codex.
 
 P2/P3:
 Base jurídica desplegable todavía expone IDs/resultados internos sin explicación humana; el borrador de acción sí enlaza fuente oficial. Etiqueta «¿Me compensa?» y campos de fecha se corrigieron con PR #211.
@@ -66,6 +84,6 @@ External/user decisions needed:
 Para datos reales: información empresarial y privacidad formalmente revisada, recuperación/continuidad operativa durable de PostgreSQL y almacenamiento documental persistente. No inventar valores ni activar servicios de pago. La elección de workspace Render sigue pendiente para consultar directamente deploy/logs.
 
 NEXT_EXECUTABLE_TASK:
-CODEX implementa y prueba los dos P1 de reentrada de este handoff en la rama indicada. WORK puede avanzar en paralelo el runbook sintético independiente (C, E, F, G, H y matriz visual dirigida) sin tocar esa rama ni declarar beta lista. Tras PR con CI obligatorio verde y revisión sin cambios inesperados, la autorización ordinaria de integración permite merge y auto-deploy, nunca deploy manual; después comparar SHA exacto `main`/LIVE y repetir C02/E02-A en pantalla. No entregar beta interna mientras haya P1 o huecos A–H.
+WORK revisa PR #212 y, si procede, integra con checks obligatorios verdes; verifica LIVE y repite visualmente C02/E02-A. Después continúa C/E/F/G/H y la matriz visual dirigida. No declarar beta lista mientras haya P1 visual pendiente o huecos A–H.
 
-CODEX READY
+WORK READY

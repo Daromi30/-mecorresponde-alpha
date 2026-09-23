@@ -23,18 +23,23 @@
     return Array.isArray(caseData?.actions) && caseData.actions.some(action => action?.type === type);
   }
 
+  function hasCurrentDecision() {
+    return !!caseData?.current_decision_id && Array.isArray(caseData.decisions) &&
+      caseData.decisions.some(item => item.id === caseData.current_decision_id);
+  }
+
   function reviewStage() {
     // A review may happen before any legal diagnosis (unsupported intake), after diagnosis
     // but before a claim is sent, or after a company response. Never move the progress bar
     // forward merely because the status string says HUMAN_REVIEW/REANALYZING.
     if (hasAction('WAIT_FOR_RESPONSE') || hasAction('VERIFY_EXECUTION')) return 3;
-    if (caseData?.current_decision_id && Array.isArray(caseData.decisions) && caseData.decisions.some(item => item.id === caseData.current_decision_id)) return 1;
+    if (hasCurrentDecision()) return 1;
     if (caseData?.family) return 1;
     return 0;
   }
 
   function stageForStatus(status) {
-    if (status === 'DIAGNOSED' && (!caseData?.current_decision_id || !Array.isArray(caseData.decisions) || !caseData.decisions.some(item => item.id === caseData.current_decision_id))) return 0;
+    if (status === 'DIAGNOSED' && !hasCurrentDecision()) return 0;
     if (status === 'HUMAN_REVIEW' || status === 'REANALYZING') return reviewStage();
     return stageByStatus[status] ?? 0;
   }
@@ -76,7 +81,7 @@
     const status = caseData.status || 'INTAKE';
     const current = stageForStatus(status);
     const resolved = status === 'RESOLVED';
-    const diagnosedWithoutPendingAction = status === 'DIAGNOSED' && !!caseData.current_decision_id && !caseData.current_action_id;
+    const diagnosedWithoutPendingAction = status === 'DIAGNOSED' && hasCurrentDecision() && !caseData.current_action_id;
     panel.classList.remove('hidden');
     panel.innerHTML = `
       <div class="label">Dónde estás</div>
