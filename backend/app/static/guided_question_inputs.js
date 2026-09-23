@@ -91,12 +91,22 @@
     box.insertAdjacentHTML('beforeend', `
       <div class="metric chargeRow">
         <b>Cargo ${n}</b>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <input class="chargeAmount" type="number" min="0" step="0.01" placeholder="Importe €">
-          <input class="chargeDate" type="date" title="Fecha del cargo">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
+          <label>Importe del cargo (€)
+            <input class="chargeAmount" type="number" min="0" step="0.01" placeholder="Importe €">
+          </label>
+          <label>Fecha del cargo
+            <input class="chargeDate" type="date">
+          </label>
         </div>
-        <input class="chargeStart" type="date" title="Inicio del periodo de servicio">
-        <input class="chargeEnd" type="date" title="Fin del periodo de servicio">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
+          <label>Inicio del periodo de servicio
+            <input class="chargeStart" type="date">
+          </label>
+          <label>Fin del periodo de servicio
+            <input class="chargeEnd" type="date">
+          </label>
+        </div>
         <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:13px">
           <input class="chargeEvidence" type="checkbox" style="width:auto;margin-top:3px">
           <span>Confirmo que puedo comprobar este cargo y sus datos en una factura, recibo o movimiento bancario que tengo.</span>

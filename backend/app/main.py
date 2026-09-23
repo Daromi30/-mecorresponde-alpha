@@ -167,6 +167,18 @@ def _render_product_home() -> str:
     return html.replace("</head>", f"{metadata}</head>", 1)
 
 
+def _render_product_demo() -> str:
+    # SEO guide CTAs enter /demo/. Serve the same guarded product modules as
+    # the home page, while keeping this internal route permanently noindex.
+    html = (static_dir / "index.html").read_text(encoding="utf-8")
+    html = html.replace(
+        "</body>", '<script src="/demo/dossier_quality.js"></script>\n</body>', 1
+    )
+    return html.replace(
+        '<div id="mcr-privacy-layer"></div>', render_first_layer(settings), 1
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(
@@ -351,6 +363,12 @@ app.include_router(seo_router)
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def product_home():
     return HTMLResponse(_render_product_home())
+
+
+@app.get("/demo/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/demo/index.html", response_class=HTMLResponse, include_in_schema=False)
+def product_demo():
+    return HTMLResponse(_render_product_demo())
 
 
 @app.get("/privacidad", response_class=HTMLResponse, include_in_schema=False)

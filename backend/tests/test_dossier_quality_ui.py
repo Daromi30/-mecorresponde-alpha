@@ -15,6 +15,17 @@ def test_product_home_loads_dossier_quality_layer(client):
     assert '<script src="/demo/dossier_quality.js"></script>' in response.text
 
 
+def test_demo_entrypoints_load_guarded_product_layer(client):
+    for path in ("/demo/", "/demo/index.html"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert '<script src="/demo/dossier_quality.js"></script>' in response.text
+        assert response.headers["x-robots-tag"] == "noindex, nofollow"
+        # The unresolved placeholder is replaced with the reviewed first
+        # layer, or with nothing while business/legal details are incomplete.
+        assert '<div id="mcr-privacy-layer"></div>' not in response.text
+
+
 def test_quality_layer_explains_evidence_not_success_score():
     script = _quality_js()
     assert "/api/cases/${caseId}/quality" in script

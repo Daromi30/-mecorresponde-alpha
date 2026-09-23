@@ -63,6 +63,16 @@ def test_consumer_ui_does_not_claim_unsupported_document_upload():
     assert "type=\"file\"" not in html
 
 
+def test_worth_pursuing_codes_have_readable_fail_closed_labels():
+    html = _ui()
+    for code in [
+        "YES_IF_LOW_COST", "NEEDS_INFORMATION", "NEEDS_REANALYSIS",
+        "NO_PAID_MANAGEMENT", "PROFESSIONAL_REVIEW", "NO_FURTHER_ACTION", "WAIT",
+    ]:
+        assert f"{code}:'" in html
+    assert "[v]||'Pendiente de revisión'" in html
+
+
 def test_consumer_ui_javascript_parses_when_node_is_available():
     node = shutil.which("node")
     if not node:
