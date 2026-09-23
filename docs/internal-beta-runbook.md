@@ -50,9 +50,10 @@ Comprobar, en orden:
 7. respuesta empresarial ficticia favorable;
 8. estado `RESOLVED_PENDING_EXECUTION`;
 9. verificación ficticia del cumplimiento;
-10. estado `RESOLVED`;
-11. timeline y dossier conservan fechas reales introducidas como fechas de calendario, separadas de timestamps técnicos;
-12. tras refrescar o volver mediante `#case=<uuid>`, el expediente sigue en el mismo estado.
+10. si la respuesta promete corrección y devolución, registrar primero solo la corrección y la devolución como pendiente: conservar `RESOLVED_PENDING_EXECUTION` y `VERIFY_EXECUTION` abierta, incluso con 0 € recuperados;
+11. confirmar después, con datos sintéticos, que no queda ningún compromiso material pendiente y comprobar `RESOLVED`;
+12. timeline y dossier conservan las fechas ficticias introducidas como fechas de calendario, separadas de timestamps técnicos;
+13. tras refrescar o volver mediante `#case=<uuid>`, el expediente sigue en el mismo estado.
 
 **PASS:** no hay saltos de fase, reclamaciones duplicadas, preguntas antiguas ni acciones abiertas después de la resolución.
 
@@ -146,10 +147,16 @@ Probar un expediente `RESOLVED` y, cuando exista un fixture histórico, `CLOSED_
 
 ## Matriz de familias
 
-Además de los escenarios anteriores, recorrer el intake y el diagnóstico de las 14 familias registradas:
+Además de los escenarios anteriores, recorrer el intake y el diagnóstico de todas las familias de `backend/app/family_manifest.py`. Contrastar la lista con el manifiesto y el recuento de `/health` antes de empezar; si difieren, detenerse y actualizar la matriz. Lista vigente:
 
+- A01;
+- B01, B02, B03;
 - C01, C02, C03, C04, C05;
-- E01, E02-A, E02-B, E03, E04-A, E04-B, E05, E06, E07.
+- E01, E02-A, E02-B, E03, E04-A, E04-B, E05, E06, E07;
+- R01;
+- S01, S02;
+- T01, T02;
+- V01, V02, V03.
 
 La prueba manual no sustituye la matriz automática de CI. Su objetivo es detectar problemas de comprensión, navegación, reentrada y controles visibles que una prueba de API no percibe.
 
@@ -167,7 +174,7 @@ La beta interna sintética puede considerarse superada cuando:
 
 - preflight desplegado está verde;
 - ningún escenario A–H tiene P0/P1 abierto;
-- la matriz de 14 familias no presenta dead-ends visibles;
+- la matriz de todas las familias registradas no presenta dead-ends visibles;
 - refresh, login/reentry y timeline preservan el lifecycle;
 - no se han utilizado datos reales.
 
