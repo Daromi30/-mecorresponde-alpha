@@ -67,3 +67,8 @@ def test_browser_charge_editor_uses_schema_field_and_explicit_evidence_confirmat
     assert "chargeEvidence" in script
     assert "evidence_verified: Boolean" in script
     assert "factura, recibo o movimiento bancario" in script
+    for label in [
+        "Importe del cargo (€)", "Fecha del cargo",
+        "Inicio del periodo de servicio", "Fin del periodo de servicio",
+    ]:
+        assert f"<label>{label}" in script
