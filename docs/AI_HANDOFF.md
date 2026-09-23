@@ -3,52 +3,69 @@
 Last updated:
 2026-09-23
 
-Main SHA at branch point:
-25f10b4566e1b8d809e3660e69528c0bae6454a0
+Main SHA:
+8279211c5eec1a02fb8d87d7db64ca2e4996dda8
 
-Render LIVE SHA at branch point:
-25f10b4566e1b8d809e3660e69528c0bae6454a0
+Render LIVE SHA (public `/health` verification):
+8279211c5eec1a02fb8d87d7db64ca2e4996dda8
 
 Current milestone:
-Beta interna sintética en ejecución. El lifecycle favorable con cumplimiento parcial y cierre está verificado visualmente para un expediente E04-B; no están completos A–H ni la matriz visual manual de las 26 familias. No declarar beta superada.
+Beta interna sintética en ejecución. La CI de `main` está verde y hay evidencia visual end-to-end favorable/parcial/cierre para E04-B y E02-A, pero A–H y la inspección visual dirigida de las 26 familias no están completos. No congelar ni declarar superada la beta.
 
 Active owner:
-WORK
+CODEX
 
-Active task:
-Integrar el arreglo P1 del entrypoint `/demo/` y las correcciones de claridad visual, verificar LIVE y seguir las pruebas adversariales sintéticas pendientes del runbook.
+Base SHA:
+8279211c5eec1a02fb8d87d7db64ca2e4996dda8
 
 Branch:
-fix/beta-visual-clarity
+fix/beta-reentry-visual-guard
+
+Objective:
+Corregir dos P1 de reentrada en la UI de expedientes: (1) nunca presentar un diagnóstico histórico como vigente cuando `current_decision_id` es nulo o apunta a otra decisión; (2) permitir al usuario corregir de forma segura un hecho material existente desde la conclusión informativa sin acción, de modo que el backend invalide la decisión y vuelva a intake. Conservar historial sin convertirlo en recomendación activa.
+
+Acceptance criteria:
+
+1. En C02 `MONITOR_CONFORMITY`, tras contestar que reapareció el defecto, la pantalla deja de mostrar el diagnóstico bajo anterior y pregunta por el defecto; lo mismo tras refrescar. El siguiente diagnóstico nuevo solo se muestra después de completar hechos y reanalizar.
+2. La vista de siguiente paso y cualquier módulo que lea `decisions[0]` seleccionan por `current_decision_id`; si no existe decisión vigente, no muestran recomendaciones, importes, acciones ni fuentes históricas como actuales. El historial puede consultarse si se etiqueta inequívocamente como histórico.
+3. En E02-A sin sobrecobro (100 € facturados, 100 € debidos), existe un control visible y comprensible para corregir un hecho ya registrado. Cambiar el importe debido a 80 € mediante la UI invalida el diagnóstico anterior, vuelve a intake y permite calcular 20 € reclamables sin crear un expediente nuevo.
+4. La corrección valida tipos y campos admitidos, no permite alterar casos terminales ni saltar controles de evidencia, conserva trazabilidad y mantiene respuestas fail-closed ante errores. No se habilitan uploads reales ni indexación pública.
+5. Pruebas de regresión para reentrada C02, conclusión sin acción E02-A, decisión vigente frente a historial y recarga/navegación; suite y compilación pertinentes verdes. Documentar cualquier escenario no cubierto, sin confundir prueba API con prueba visual.
+
+Tests:
+`backend/tests/test_c02_monitor_followup.py`, `backend/tests/test_informational_action_completion.py`, pruebas de UI existentes para `index.html`, `case_next_step.js` y `case_progress.js`; añadir regresiones específicas. Ejecutar la batería backend y compilación/validación estática aplicable. En Windows hay tres límites ambientales conocidos: dos tests PostgreSQL sin base efímera y una aserción POSIX de permisos sobre NTFS; la CI Linux de PR decide el verde de integración. No afirmar que una suite local con esos límites está totalmente verde.
+
+Do not touch:
+Reglas jurídicas, fuentes, importes del Motor, esquema/migraciones destructivas, secretos, planes/costes, datos reales, uploads reales, almacenamiento documental, indexación pública, privacidad fail-closed ni configuración de producción. No hacer merge ni deploy manual para este handoff. Datos empresariales y jurídicos reales quedan pendientes; no inventarlos.
 
 PR:
-#211 OPEN, pendiente de actualizar con el arreglo P1 y de CI verde; PR #210 y anteriores fusionados.
+Ninguna todavía para esta rama. PR #211 `MERGED` en el `main` de arriba.
 
 CI:
-En `main` de partida, Database Migrations y MECORRESPONDE CI `SUCCESS`. En esta rama, tanda dirigida final 33 passed. Suite amplia Windows previa al arreglo P1: 668 passed, 3 fallos ambientales conocidos (dos tests PostgreSQL con SQLite local por falta de base efímera y un test de modo POSIX `0600` sobre NTFS). La CI Linux del head actualizado de PR #211 sigue pendiente; no integrar si no está verde.
+`MECORRESPONDE CI` y `Database Migrations` `SUCCESS` sobre `8279211c5eec1a02fb8d87d7db64ca2e4996dda8`. La rama del relevo aún no contiene corrección técnica ni CI propia.
 
-Completed in this block:
+A–H progress:
+A: PASS visual sintético E02-A, incluyendo corrección parcial, devolución pendiente, cierre y recarga. B: conclusión informativa visible, pero corrección de hecho bloqueada por P1 de UI. C: pendiente visual. D: C02 seguimiento reproduce P1 de decisión obsoleta; E06 pendiente visual. E: revisión humana parcial, sin flujo estructurado completo. F: pendiente visual. G: pendiente visual de cuenta/reentrada. H: resolución y solo lectura verificadas para E02-A/E04-B; mutaciones terminales y `CLOSED_UNSUPPORTED` no recorridos completamente en UI.
 
-- GitHub `main`, Render LIVE y `/health` coincidían en `25f10b4566e1b8d809e3660e69528c0bae6454a0`; `status=ok`, `families=26`. Deploy `dep-dapm753m8hqs73ag34rg` `live`.
-- Navegador real sobre LIVE: portada, guía E02-A y un ciclo completo E04-B ficticio desde preguntas hasta respuesta favorable, cumplimiento parcial, cierre y recarga. La respuesta y el envío solo se registraron como simulaciones internas. Desde la CTA de E02-A se reprodujo un dead-end P1 después de un diagnóstico correcto: `/demo/` omitía el cargador de módulos que sí tiene `/`.
-- Documentada la cobertura automática de las 26 familias y el límite de la prueba manual en `docs/internal-beta-visual-evidence-2026-09-23.md`.
-- Corregida la etiqueta técnica visible de `worth_pursuing` y añadidas etiquetas visibles a importe y fechas de los cargos, con regresiones estáticas. Sin alterar motor, reglas ni esquema.
-- `/demo/` y `/demo/index.html` cargan ahora los módulos seguros y la primera capa de privacidad; el demo permanece `noindex`. La corrección del P1 aún no está verificada en LIVE.
+26-family matrix:
+26 familias registradas y verificadas por cobertura automatizada de manifest, preguntas, diagnóstico, procedencia jurídica, acción, respuesta y resultado; CI verde. Las 26 guías eran visibles desde la portada, pero solo E02-A se inspeccionó visualmente en detalle y C02/E04-B se recorrieron manualmente. No declarar matriz visual completa ni rutas no soportadas comprobadas manualmente para todas.
 
-Regression coverage:
-Tanda de UI, frontera de evidencia, manifiesto, matriz beta, preguntas guiadas, respuesta de todas las familias, procedencia jurídica y fallback fuera de ámbito: 26 passed. Tanda tras P1 de navegación, privacidad, cargador y matriz: 33 passed. Batería amplia previa al P1: 668 passed, 3 fallos ambientales detallados arriba. CI Linux del head actualizado por verificar.
+Open P0:
+Ninguno demostrado; la cobertura manual pendiente impide afirmar ausencia absoluta.
 
-Follow-up findings:
-P1 del acceso desde las guías corregido en rama, pendiente de CI y prueba visual tras deploy. P2 pendiente: la sección desplegable de base jurídica del diagnóstico aún muestra IDs y resultados internos sin explicación comprensible. El borrador sí muestra fuente oficial. Los demás escenarios no están cerrados.
+Open P1:
+Diagnóstico histórico C02 mostrado como vigente tras cambiar hecho y volver a intake. Reentrada sin control visible para corregir hecho material desde conclusión sin acción E02-A. Reproducciones y evidencias en `docs/internal-beta-visual-evidence-2026-09-23.md`.
 
-Blockers:
-No congelar beta interna hasta que A–H y el recorrido manual visual de las 26 familias terminen sin P0/P1. Escenarios A, B, C, D, F, G y partes de E/H siguen sin evidencia visual completa. No extrapolar tests de API a experiencia visual.
+P2/P3:
+Base jurídica desplegable todavía expone IDs/resultados internos sin explicación humana; el borrador de acción sí enlaza fuente oficial. Etiqueta «¿Me compensa?» y campos de fecha se corrigieron con PR #211.
 
-Cost blockers:
-Ningún coste autorizado. Para datos reales siguen pendientes decisiones sobre ciclo operativo durable de PostgreSQL y almacenamiento documental persistente; no activar proveedores/planes de pago.
+Visual QA:
+Parcial, no bloqueada por herramienta. El navegador permitió probar LIVE; el estado de sus pestañas no se conserva entre tareas. Render MCP pidió elegir workspace antes de consultar registro de deploy y logs, y no se ha confirmado esa selección. No extrapolar `runtime_revision` y endpoints HTTP a verificación de logs de arranque.
 
 External/user decisions needed:
-Datos empresariales reales y revisión formal de privacidad para uso real. No inventarlos ni abrir datos reales por haber superado una prueba sintética.
+Para datos reales: información empresarial y privacidad formalmente revisada, recuperación/continuidad operativa durable de PostgreSQL y almacenamiento documental persistente. No inventar valores ni activar servicios de pago. La elección de workspace Render sigue pendiente para consultar directamente deploy/logs.
 
 NEXT_EXECUTABLE_TASK:
-Actualizar PR #211 con el arreglo P1, esperar CI obligatorio verde y, si no hay cambios inesperados ni otra restricción de seguridad, integrar con el auto-deploy ordinario ya autorizado. Verificar SHA exacto de `main`/LIVE, `/health`, arranque, privacidad, uploads e indexación. Repetir visualmente E02-A entrando desde la guía y comprobar que «Qué hago ahora» permite preparar la acción. Después continuar A–H y matriz visual con datos ficticios; abordar G y seguimientos sin afirmar cobertura manual no realizada. Mantener `Active owner: WORK` mientras este bloque sea QA integrada, no handoff a CODEX.
+CODEX implementa y prueba los dos P1 de reentrada de este handoff en la rama indicada. WORK puede avanzar en paralelo el runbook sintético independiente (C, E, F, G, H y matriz visual dirigida) sin tocar esa rama ni declarar beta lista. Tras PR con CI obligatorio verde y revisión sin cambios inesperados, la autorización ordinaria de integración permite merge y auto-deploy, nunca deploy manual; después comparar SHA exacto `main`/LIVE y repetir C02/E02-A en pantalla. No entregar beta interna mientras haya P1 o huecos A–H.
+
+CODEX READY
