@@ -1,89 +1,48 @@
 # MECORRESPONDE AI HANDOFF
 
-Last updated:
-2026-09-23
+Last updated: 2026-09-23
 
-Main SHA:
-8279211c5eec1a02fb8d87d7db64ca2e4996dda8
+Main SHA: `a02ec013275877255e7135a8869df60a9f6faf27`
 
-Render LIVE SHA (public `/health` verification):
-8279211c5eec1a02fb8d87d7db64ca2e4996dda8
+Render LIVE SHA: `a02ec013275877255e7135a8869df60a9f6faf27`
 
-Current milestone:
-Beta interna sintética en ejecución. La CI de `main` está verde y hay evidencia visual end-to-end favorable/parcial/cierre para E04-B y E02-A, pero A–H y la inspección visual dirigida de las 26 familias no están completos. No congelar ni declarar superada la beta.
+Current milestone: beta interna **sintética**, todavía no apta para congelar. PR #212 fue fusionada; los dos P1 de reentrada principales pasaron la repetición visual, pero se descubrieron un P0 de clasificación de respuesta desfavorable y un P1 residual de calidad del expediente. Los recorridos A–H y 26 expedientes visuales no están completos.
 
-Active owner:
-WORK
+Active owner: CODEX
 
-Active task:
-Revisar/integrar PR de beta reentry visual guard y repetir C02/E02-A visualmente.
+Base SHA: `a02ec013275877255e7135a8869df60a9f6faf27`
 
-Base SHA:
-8279211c5eec1a02fb8d87d7db64ca2e4996dda8
+Branch: `fix/response-negation-quality-current`
 
-Branch:
-fix/beta-reentry-visual-guard
+Objective: corregir de forma conservadora el falso positivo de aceptación ante una respuesta que niega la reclamación y eliminar el uso de decisiones históricas como vigentes en la calidad del expediente. Trabajar solo en esta rama y entregar PR para revisión de WORK; no hacer merge ni deploy manual desde este handoff.
 
-Objective:
-Los dos P1 de reentrada tienen corrección técnica en PR #212. WORK revisa la integración y repite los recorridos C02/E02-A visualmente; la beta no está completada.
+Evidence and root causes:
 
-Completed:
-La UI usa únicamente `current_decision_id` para presentar el diagnóstico vigente y limpia tarjetas obsoletas en refresh/reentrada. E02-A informativo ofrece «Corregir datos» para el importe debido existente; la API reutiliza `/facts` con validación acotada, invalida la decisión, conserva historial/auditoría y permite reanalizar 100/80 como 20 € reclamables sin nuevo expediente.
-
-Root causes:
-`index.html` y `case_next_step.js` tomaban `decisions[0]` como vigente aunque el backend hubiera anulado `current_decision_id`; refresh tampoco ocultaba el diagnóstico anterior. El hecho E02-A era corregible por API, pero la conclusión sin acción no tenía un control visible. La ruta genérica de hechos carecía de un contrato específico de corrección acotada/idempotente.
-
-Regression coverage:
-Pruebas de C02/intake/refresh/reentrada; decisión A histórica frente a B vigente, ID nulo e inválido; conclusión E02-A 100/100, corrección 80, nueva decisión de 20 €; mismo case ID, rechazo de campo/tipo/estado/evidencia/ID incoherente y reenvío sin eventos duplicados. Pruebas UI/JS y lifecycle existentes conservadas. Pase backend completo Windows: 672 verdes y 1 fallo ambiental POSIX `0600` sobre NTFS; el pase final de CI Linux se consigna abajo.
-
-Additional same-domain fixes:
-El progreso, la tarjeta de reclamación preparada y las tarjetas de respuesta/resultado ya no usan una decisión o acción histórica como vigente si falta la decisión actual. La guía «Qué hago ahora» falla cerrado en fases accionables con `current_decision_id` incoherente.
-
-Follow-up findings:
-P2 previo: la base jurídica desplegable aún expone IDs/resultados internos; no se alteraron reglas, fuentes ni contenido jurídico. La corrección visible nueva está acotada al importe debido E02-A de una conclusión informativa sin acción; otros campos/familias requieren diseño propio, no edición arbitraria.
+- En LIVE, una respuesta ficticia «Rechazamos su reclamación y no devolveremos los 50 euros solicitados» para un E02-A pasó a `ACCEPTANCE`, `RESOLVED_PENDING_EXECUTION` y «Verificar cumplimiento». También reproducen `ACCEPTANCE` localmente «No aceptamos su reclamación» y «No procedemos a devolver el importe». `backend/app/engine/gateway.py`, `DeterministicAlphaGateway.analyze_response()`, detecta subcadenas afirmativas antes de la negación. Es P0 para beta por resultado favorable falso. El expediente de prueba fue `3e6d097c-5d28-48d1-bc44-f36a6d6d2285`; no hubo envío externo ni dinero real.
+- Tras invalidar `current_decision_id` y volver a `INTAKE`, la tarjeta «Calidad del expediente» sigue diciendo «Diagnóstico disponible» y «Reglas evaluadas en la decisión actual: 1», incluso tras refresh. `backend/app/case_quality.py`, `build_dossier_quality()`, utiliza `decision_rows[0]` como fallback histórico. Se reprodujo visualmente en C02, E02-A y E06. Es P1 residual; las tarjetas principales y de siguiente paso sí ocultaron correctamente el diagnóstico viejo tras PR #212.
 
 Acceptance criteria:
 
-1. En C02 `MONITOR_CONFORMITY`, tras contestar que reapareció el defecto, la pantalla deja de mostrar el diagnóstico bajo anterior y pregunta por el defecto; lo mismo tras refrescar. El siguiente diagnóstico nuevo solo se muestra después de completar hechos y reanalizar.
-2. La vista de siguiente paso y cualquier módulo que lea `decisions[0]` seleccionan por `current_decision_id`; si no existe decisión vigente, no muestran recomendaciones, importes, acciones ni fuentes históricas como actuales. El historial puede consultarse si se etiqueta inequívocamente como histórico.
-3. En E02-A sin sobrecobro (100 € facturados, 100 € debidos), existe un control visible y comprensible para corregir un hecho ya registrado. Cambiar el importe debido a 80 € mediante la UI invalida el diagnóstico anterior, vuelve a intake y permite calcular 20 € reclamables sin crear un expediente nuevo.
-4. La corrección valida tipos y campos admitidos, no permite alterar casos terminales ni saltar controles de evidencia, conserva trazabilidad y mantiene respuestas fail-closed ante errores. No se habilitan uploads reales ni indexación pública.
-5. Pruebas de regresión para reentrada C02, conclusión sin acción E02-A, decisión vigente frente a historial y recarga/navegación; suite y compilación pertinentes verdes. Documentar cualquier escenario no cubierto, sin confundir prueba API con prueba visual.
+1. Negaciones explícitas de aceptación, devolución, reembolso o ejecución nunca clasifican como `ACCEPTANCE`, incluso con otras palabras positivas en la misma frase. Una respuesta desfavorable clara puede ser `DENIAL`; cualquier caso semánticamente incierto debe ir a `UNKNOWN`/revisión humana. No inferir hechos jurídicos ni promesas de ejecución.
+2. La respuesta desfavorable no crea estado favorable, hito de verificación de cumplimiento ni cierre automático. Comprobar ciclo de respuesta y resultado, incluida posible respuesta mixta/parcial; preservar la aceptación auténtica y evitar duplicar reclamación inicial o eventos ante reintento.
+3. `build_dossier_quality()` solo computa diagnóstico/reglas de la decisión identificada por `current_decision_id` si existe y pertenece al caso. Con ID nulo o inválido, debe reflejar intake/sin decisión vigente, cero reglas actuales y conservar el historial sin etiquetarlo como actual. Revisar los tres escenarios C02, E02-A y E06, con recarga.
+4. Añadir regresiones dirigidas de clasificación afirmativa, negativa, mixta y ambigua; cubrir API/estado, tarjeta de calidad y contratos UI pertinentes. Mantener verdes pruebas completas, compilación y CI obligatoria. Documentar límites ambientales Windows sin presentarlos como verde total.
+5. Mantener bloqueados uploads reales, almacenamiento local no persistente, privacidad sin datos empresariales reales e indexación pública. Sin migraciones destructivas, costes, secretos ni datos personales reales.
 
-Tests:
-`backend/tests/test_c02_monitor_followup.py`, `backend/tests/test_informational_action_completion.py`, pruebas de UI existentes para `index.html`, `case_next_step.js` y `case_progress.js`; añadir regresiones específicas. Ejecutar la batería backend y compilación/validación estática aplicable. En Windows hay tres límites ambientales conocidos: dos tests PostgreSQL sin base efímera y una aserción POSIX de permisos sobre NTFS; la CI Linux de PR decide el verde de integración. No afirmar que una suite local con esos límites está totalmente verde.
+Tests: ampliar los tests del gateway y ciclo de respuesta (buscar `analyze_response`, `ACCEPTANCE`, `DENIAL`, `VERIFY_EXECUTION`), los de `case_quality.py` y reentrada C02/E02-A/E06. Ejecutar batería backend, pruebas UI/JS y compilación aplicable; comprobar CI en el head del PR antes de cualquier integración. Tras un merge ordinario autorizado y auto-deploy, WORK repetirá en LIVE la negación y la tarjeta de calidad con datos ficticios.
 
-Do not touch:
-Reglas jurídicas, fuentes, importes del Motor, esquema/migraciones destructivas, secretos, planes/costes, datos reales, uploads reales, almacenamiento documental, indexación pública, privacidad fail-closed ni configuración de producción. No hacer merge ni deploy manual para este handoff. Datos empresariales y jurídicos reales quedan pendientes; no inventarlos.
+Do not touch: reglas ni fuentes jurídicas, importes del Motor, esquemas/migraciones destructivas, secretos, configuración sensible, servicios o planes de pago, datos reales, uploads reales, almacenamiento documental, indexación pública, privacidad fail-closed ni producción manual. No inventar datos empresariales o jurídicos. No hacer merge a `main` ni disparar deploy manual desde esta tarea.
 
-PR:
-[#212](https://github.com/Daromi30/-mecorresponde-alpha/pull/212) abierto contra `main`; no fusionado. PR #211 `MERGED` en el `main` de arriba.
+PR/CI/Render: PR #212 `MERGED`. `main` y LIVE coinciden en el SHA indicado. `MECORRESPONDE CI` y `Database Migrations` de `main` finalizaron `SUCCESS`. Render auto-deploy `dep-daq0p0ugekts73cr42tg` terminó `live` por `new_commit`. `/health` devolvió 200, `status=ok`, `families=26` y revisión exacta; logs de arranque mostraron PostgreSQL persistente, `synthetic_internal_beta_ready=True`, `internal_beta_blockers=none` y ningún error en la ventana revisada. `/health/storage`: local no persistente, uploads bloqueados; `/privacidad`: 503/noindex; sitemap: 404; `/demo/`: noindex. Workspace Render confirmado: `My Workspace`.
 
-CI:
-Los cuatro checks obligatorios del PR #212 (`legal-engine-regression`, `postgres-backup-restore`, `postgres-persistence`, `postgres-migrations`) finalizaron `SUCCESS` en `68857db`, que incluye implementación, guardas UI y handoff. Consultar los checks del último SHA del PR antes de integrar. El `main` base conserva checks verdes.
+A–H progress: A PASS sintético previo; B corrección E02-A PASS salvo calidad P1; C espera pre-hito PASS parcial, sin simular vencimiento; D C02/E06 PASS salvo calidad P1; E respuesta ambigua pasa a revisión humana, backoffice pendiente; F FAIL por falso `ACCEPTANCE` P0; G cuenta/reentrada pendiente (creación por UI requiere confirmación puntual); H resolución y solo lectura parcial previa, sin inspección exhaustiva de mutaciones terminales ni `CLOSED_UNSUPPORTED`.
 
-A–H progress:
-A: PASS visual sintético E02-A, incluyendo corrección parcial, devolución pendiente, cierre y recarga. B: conclusión informativa visible, pero corrección de hecho bloqueada por P1 de UI. C: pendiente visual. D: C02 seguimiento reproduce P1 de decisión obsoleta; E06 pendiente visual. E: revisión humana parcial, sin flujo estructurado completo. F: pendiente visual. G: pendiente visual de cuenta/reentrada. H: resolución y solo lectura verificadas para E02-A/E04-B; mutaciones terminales y `CLOSED_UNSUPPORTED` no recorridos completamente en UI.
+26-family matrix: cobertura automatizada verde de 26 familias; inspección visual de guías de ocho verticales (energía, telecom, compras, viajes, banca, alquiler, seguros, automoción) y recorridos dirigidos de C01/C02/C04/E02-A/E06. No afirmar 26 expedientes manuales ni beta completa.
 
-26-family matrix:
-26 familias registradas y verificadas por cobertura automatizada de manifest, preguntas, diagnóstico, procedencia jurídica, acción, respuesta y resultado; CI verde. Las 26 guías eran visibles desde la portada, pero solo E02-A se inspeccionó visualmente en detalle y C02/E04-B se recorrieron manualmente. No declarar matriz visual completa ni rutas no soportadas comprobadas manualmente para todas.
+P2: códigos internos visibles en base jurídica y copy (`ELEC_OVERBILL_REFUND / APPLIES`, `PRICE REDUCTION REQUIRES PROPORTIONAL VALUATION`, `OUT_OF_SCOPE`). Corregir en bloque separado con copy verificable; no improvisar explicaciones legales. Los datos empresariales y de privacidad formal, continuidad/recuperación durable de PostgreSQL y almacenamiento documental persistente requieren decisión o información real antes de beta con usuarios reales.
 
-Open P0:
-Ninguno demostrado; la cobertura manual pendiente impide afirmar ausencia absoluta.
+Detailed visual evidence: `docs/internal-beta-visual-evidence-2026-09-23.md`.
 
-Open P1:
-Los dos P1 reproducidos tienen corrección técnica en PR #212, todavía pendiente de integración y repetición visual LIVE por WORK. Evidencias originales en `docs/internal-beta-visual-evidence-2026-09-23.md`; no declarar cierre visual desde Codex.
+NEXT_EXECUTABLE_TASK: CODEX implementa y prueba en `fix/response-negation-quality-current` los P0/P1 descritos, abre PR y comunica head SHA, CI y límites. WORK revisa PR, integra solo si está verde y fusionable, verifica auto-deploy/LIVE y repite F y calidad visualmente; después continúa E/G/H y la matriz dirigida. No congelar beta con el P0 abierto.
 
-P2/P3:
-Base jurídica desplegable todavía expone IDs/resultados internos sin explicación humana; el borrador de acción sí enlaza fuente oficial. Etiqueta «¿Me compensa?» y campos de fecha se corrigieron con PR #211.
-
-Visual QA:
-Parcial, no bloqueada por herramienta. El navegador permitió probar LIVE; el estado de sus pestañas no se conserva entre tareas. Render MCP pidió elegir workspace antes de consultar registro de deploy y logs, y no se ha confirmado esa selección. No extrapolar `runtime_revision` y endpoints HTTP a verificación de logs de arranque.
-
-External/user decisions needed:
-Para datos reales: información empresarial y privacidad formalmente revisada, recuperación/continuidad operativa durable de PostgreSQL y almacenamiento documental persistente. No inventar valores ni activar servicios de pago. La elección de workspace Render sigue pendiente para consultar directamente deploy/logs.
-
-NEXT_EXECUTABLE_TASK:
-WORK revisa PR #212 y, si procede, integra con checks obligatorios verdes; verifica LIVE y repite visualmente C02/E02-A. Después continúa C/E/F/G/H y la matriz visual dirigida. No declarar beta lista mientras haya P1 visual pendiente o huecos A–H.
-
-WORK READY
+CODEX READY
