@@ -1,20 +1,20 @@
 # MECORRESPONDE AI HANDOFF
 
-Last updated: 2026-09-23
+Last updated: 2026-09-24
 
 Main SHA: `a02ec013275877255e7135a8869df60a9f6faf27`
 
 Render LIVE SHA: `a02ec013275877255e7135a8869df60a9f6faf27`
 
-Current milestone: beta interna **sintética**, todavía no apta para congelar. PR #212 fue fusionada; los dos P1 de reentrada principales pasaron la repetición visual, pero se descubrieron un P0 de clasificación de respuesta desfavorable y un P1 residual de calidad del expediente. Los recorridos A–H y 26 expedientes visuales no están completos.
+Current milestone: beta interna **sintética**, todavía no apta para congelar. PR #212 fue fusionada; PR #213 contiene correcciones y pruebas locales del P0 de clasificación desfavorable y P1 residual de calidad, pero CI, integración y repetición visual LIVE aún están pendientes. Los recorridos A–H y 26 expedientes visuales no están completos.
 
-Active owner: CODEX
+Active owner: WORK
 
 Base SHA: `a02ec013275877255e7135a8869df60a9f6faf27`
 
 Branch: `fix/response-negation-quality-current`
 
-Objective: corregir de forma conservadora el falso positivo de aceptación ante una respuesta que niega la reclamación y eliminar el uso de decisiones históricas como vigentes en la calidad del expediente. Trabajar solo en esta rama y entregar PR para revisión de WORK; no hacer merge ni deploy manual desde este handoff.
+Objective: revisar PR #213, exigir los cuatro checks obligatorios verdes, integrar solo si sigue fusionable y sin cambios inesperados; seguir el auto-deploy de Render y repetir F y calidad de C02/E02-A/E06 en LIVE con datos ficticios. No disparar deploy manual.
 
 Evidence and root causes:
 
@@ -29,11 +29,11 @@ Acceptance criteria:
 4. Añadir regresiones dirigidas de clasificación afirmativa, negativa, mixta y ambigua; cubrir API/estado, tarjeta de calidad y contratos UI pertinentes. Mantener verdes pruebas completas, compilación y CI obligatoria. Documentar límites ambientales Windows sin presentarlos como verde total.
 5. Mantener bloqueados uploads reales, almacenamiento local no persistente, privacidad sin datos empresariales reales e indexación pública. Sin migraciones destructivas, costes, secretos ni datos personales reales.
 
-Tests: ampliar los tests del gateway y ciclo de respuesta (buscar `analyze_response`, `ACCEPTANCE`, `DENIAL`, `VERIFY_EXECUTION`), los de `case_quality.py` y reentrada C02/E02-A/E06. Ejecutar batería backend, pruebas UI/JS y compilación aplicable; comprobar CI en el head del PR antes de cualquier integración. Tras un merge ordinario autorizado y auto-deploy, WORK repetirá en LIVE la negación y la tarjeta de calidad con datos ficticios.
+Tests: la rama añade `test_response_negation_guard.py` (negación, acuse, contradicción, concesión parcial y API sin `VERIFY_EXECUTION` ni duplicados), regresiones de calidad C02/E02-A/ID inválido o ajeno y mantiene la matriz de respuestas de 26 familias. Suite Windows: 685 aprobadas; 1 aserción POSIX `0600` no aplicable a NTFS (no fingir verde total). `compileall` Python, sintaxis de todos los JS estáticos y `git diff --check` pasaron. Los tres fallos funcionales de la primera pasada se corrigieron y repitieron. CI Linux del head final decide integración. Tras auto-deploy, WORK repetirá la negación y calidad visualmente.
 
-Do not touch: reglas ni fuentes jurídicas, importes del Motor, esquemas/migraciones destructivas, secretos, configuración sensible, servicios o planes de pago, datos reales, uploads reales, almacenamiento documental, indexación pública, privacidad fail-closed ni producción manual. No inventar datos empresariales o jurídicos. No hacer merge a `main` ni disparar deploy manual desde esta tarea.
+Do not touch: reglas ni fuentes jurídicas, importes del Motor, esquemas/migraciones destructivas, secretos, configuración sensible, servicios o planes de pago, datos reales, uploads reales, almacenamiento documental, indexación pública, privacidad fail-closed ni producción manual. No inventar datos empresariales o jurídicos. Un merge ordinario de PR #213 está sujeto a revisión, CI verde y autorización previa del usuario; nunca push directo a `main` ni deploy manual.
 
-PR/CI/Render: PR #212 `MERGED`. `main` y LIVE coinciden en el SHA indicado. `MECORRESPONDE CI` y `Database Migrations` de `main` finalizaron `SUCCESS`. Render auto-deploy `dep-daq0p0ugekts73cr42tg` terminó `live` por `new_commit`. `/health` devolvió 200, `status=ok`, `families=26` y revisión exacta; logs de arranque mostraron PostgreSQL persistente, `synthetic_internal_beta_ready=True`, `internal_beta_blockers=none` y ningún error en la ventana revisada. `/health/storage`: local no persistente, uploads bloqueados; `/privacidad`: 503/noindex; sitemap: 404; `/demo/`: noindex. Workspace Render confirmado: `My Workspace`.
+PR/CI/Render: PR #212 `MERGED`. PR #213 `OPEN`, no draft y fusionable al abrirse; head inicial `07906d793e7662ebeac16d7534244e6bc286c708`, cuatro checks en curso. Revalidar head, diff y checks tras este handoff. `main` y LIVE aún coinciden en el SHA indicado; la corrección NO está en LIVE. `MECORRESPONDE CI` y `Database Migrations` de ese `main` finalizaron `SUCCESS`. Render auto-deploy `dep-daq0p0ugekts73cr42tg` terminó `live` por `new_commit`. `/health` devolvió 200, `status=ok`, `families=26` y revisión exacta; logs de arranque mostraron PostgreSQL persistente, `synthetic_internal_beta_ready=True`, `internal_beta_blockers=none` y ningún error en la ventana revisada. `/health/storage`: local no persistente, uploads bloqueados; `/privacidad`: 503/noindex; sitemap: 404; `/demo/`: noindex. Workspace Render confirmado: `My Workspace`.
 
 A–H progress: A PASS sintético previo; B corrección E02-A PASS salvo calidad P1; C espera pre-hito PASS parcial, sin simular vencimiento; D C02/E06 PASS salvo calidad P1; E respuesta ambigua pasa a revisión humana, backoffice pendiente; F FAIL por falso `ACCEPTANCE` P0; G cuenta/reentrada pendiente (creación por UI requiere confirmación puntual); H resolución y solo lectura parcial previa, sin inspección exhaustiva de mutaciones terminales ni `CLOSED_UNSUPPORTED`.
 
@@ -43,6 +43,6 @@ P2: códigos internos visibles en base jurídica y copy (`ELEC_OVERBILL_REFUND /
 
 Detailed visual evidence: `docs/internal-beta-visual-evidence-2026-09-23.md`.
 
-NEXT_EXECUTABLE_TASK: CODEX implementa y prueba en `fix/response-negation-quality-current` los P0/P1 descritos, abre PR y comunica head SHA, CI y límites. WORK revisa PR, integra solo si está verde y fusionable, verifica auto-deploy/LIVE y repite F y calidad visualmente; después continúa E/G/H y la matriz dirigida. No congelar beta con el P0 abierto.
+NEXT_EXECUTABLE_TASK: WORK verifica PR #213 y CI en el head definitivo. Si los cuatro checks son `SUCCESS`, revisa diff/mergeability y realiza el merge ordinario autorizado; sigue el auto-deploy sin disparar otro, verifica `main == LIVE` y repite F y calidad C02/E02-A/E06. Después continúa E/G/H y la matriz dirigida. No congelar beta hasta cerrar visualmente el P0/P1.
 
-CODEX READY
+WORK READY
