@@ -35,3 +35,36 @@ def test_claimant_inline_javascript_parses_when_node_is_available():
         path = handle.name
     result = subprocess.run([node, "--check", path], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_loaded_guided_question_module_uses_human_choice_labels():
+    node = shutil.which("node")
+    if not node:
+        return
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    choice = "function choiceLabel(o)" + html.split("function choiceLabel(o)", 1)[1].split("\n", 1)[0]
+    module = (STATIC / "guided_question_inputs.js").read_text(encoding="utf-8")
+    harness = """
+const escapeHtml = value => String(value);
+let inputFor = () => '';
+let renderQuestion = () => {};
+let answer = () => {};
+let addChargeRow = () => {};
+let saveCharges = () => {};
+global.window = {};
+"""
+    checks = """
+const html = inputFor({input_type:'choice', options:[
+  {value:'dwelling',label:'dwelling'},
+  {value:'other_urban_use',label:'other urban use'},
+]});
+if (!html.includes('Vivienda') || !html.includes('Otro uso urbano')) process.exit(1);
+if (!html.includes('value="dwelling"') || !html.includes('value="other_urban_use"')) process.exit(2);
+if (html.includes('>dwelling<') || html.includes('>other urban use<')) process.exit(3);
+"""
+    result = subprocess.run(
+        [node, "-e", harness + choice + "\n" + module + "\n" + checks],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

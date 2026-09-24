@@ -2,9 +2,9 @@
 
 Last updated: 2026-09-24
 
-Main SHA (baseline verificado antes de la rama de copy/QA actual): `dc8fd9e6e821b0101b60520171b49729b3193784`
+Main SHA (baseline verificado antes de la rama de corrección de opciones actual): `b69b7277bbc9719fadd50dab7104dca7e8521097`
 
-Render LIVE SHA (mismo baseline, antes de esta rama): `dc8fd9e6e821b0101b60520171b49729b3193784`
+Render LIVE SHA (mismo baseline, antes de esta rama): `b69b7277bbc9719fadd50dab7104dca7e8521097`
 
 Una PR documental integrada genera otro SHA y su auto-deploy. Al iniciar la siguiente tarea, leer el `main` y LIVE actuales; no tratar el baseline impreso aquí como el HEAD perpetuo.
 
@@ -12,11 +12,15 @@ Current milestone: beta interna **sintética** en validación. Los P0/P1 reprodu
 
 Active owner: WORK
 
-Base SHA: `dc8fd9e6e821b0101b60520171b49729b3193784`
+Base SHA: `b69b7277bbc9719fadd50dab7104dca7e8521097`
 
-Branch: `fix/beta-readable-internal-copy` (P2 de texto visible y evidencia visual; no cambia reglas, estados, privacidad ni almacenamiento)
+Branch: `fix/beta-choice-labels` (corrección P2 en el módulo real de preguntas guiadas; no cambia valores de respuesta)
 
-Objective: cerrar evidencia dirigida de E/H y ocho verticales, corregir P2 visibles de copy y continuar beta sin datos reales. No declarar PASS por extrapolación de CI o logs.
+Objective: corregir la traducción visible de opciones de alquiler en el módulo que realmente reemplaza el formulario original, repetirla en LIVE y continuar beta sin datos reales. No declarar PASS por extrapolación de CI o logs.
+
+Most recent reconciliation: PR #215 se fusionó como `b69b7277bbc9719fadd50dab7104dca7e8521097`; sus cuatro checks y los cuatro checks del merge commit terminaron `success`. Render auto-deploy `dep-daqllmrncjis73aol28g` (`new_commit`) terminó `live` en ese SHA sin deploy manual. `/health` devolvió 200, `status=ok`, `families=26` y la revisión exacta; `/health/persistence` confirmó PostgreSQL persistente; `/health/storage` devolvió `blocked`, local no persistente, uploads desactivados; `/privacidad` 503/no-store/noindex, `/demo/` noindex y sitemap 404. Logs de arranque: misma revisión, PostgreSQL, `synthetic_internal_beta_ready=True`, `internal_beta_blockers=none`, `uploads_allowed=False`, indexación `ready=False`, sin logs de nivel error en la ventana revisada. No se observaron secretos en los mensajes de arranque consultados.
+
+Post-deploy visual repeat uncovered one P2 still open: the HTML original translated rental choices, but `guided_question_inputs.js` overwrote `inputFor` and still displayed `dwelling`, `other urban use`, etc. A new branch fixes the override and adds a Node execution test of that loaded module, verifying human labels while preserving raw choice values. Directed tests: 10 passed. The other #215 UI copy did deploy, but this option must not be called closed until the new PR reaches LIVE and is repeated visually.
 
 Current verification (2026-09-24, antes de integrar esta rama): `main` y Render LIVE en `dc8fd9e6e821b0101b60520171b49729b3193784`, deploy automático `dep-daqbo90473hc738mi7ng` live, `/health` 200 con `status=ok`, `families=26` y la revisión exacta. E02-A ambiguo ficticio `633884c6-8ca9-4806-a54b-159013822442` quedó en `HUMAN_REVIEW`; se inspeccionó su exportación JSON y el backoffice rechazó correctamente el acceso sin token (401). No se verificó el panel con credenciales. E02-A favorable ficticio `6bf9db88-344c-4227-8ef1-9a7d6acd6ccd` pasó de aceptación a `RESOLVED_PENDING_EXECUTION` y solo a `RESOLVED` tras registrar cumplimiento ficticio de 50 €; reentrada y solo lectura visibles. Las pruebas locales cubren mutaciones terminales y `CLOSED_UNSUPPORTED`; este último no se alcanzó visualmente porque el fallback de tema desconocido entra en revisión asistida. Ocho verticales muestreadas en intake; compras y alquiler preguntaron datos, las demás muestras no energéticas se detuvieron prudentemente en revisión humana. G sin cuenta creada. Evidencia detallada al final de `docs/internal-beta-visual-evidence-2026-09-23.md`.
 
@@ -50,7 +54,7 @@ External/user decisions: para beta con datos personales reales siguen pendientes
 
 Detailed visual evidence: `docs/internal-beta-visual-evidence-2026-09-23.md`.
 
-NEXT_EXECUTABLE_TASK: pasar esta rama por CI, integrar solo si verde y fusionable, seguir el auto-deploy de Render hasta LIVE exacto y repetir el copy observado. Después WORK debe inspeccionar E en backoffice con acceso legítimo (no buscar ni imprimir secretos), verificar G entre dispositivos solo con autorización de creación de cuenta y sin obligación legal, y ejecutar el caso `CLOSED_UNSUPPORTED` visual mediante un camino soportado o dejar explícita la limitación del fallback asistido. Completar C04 tras el hito real, no adelantar el reloj; profundizar rutas de compras/alquiler y otras familias priorizadas. Mantener uploads y privacidad fail-closed e indexación pública apagada. No declarar `BETA INTERNAL STATUS: PASS` hasta cobertura suficiente y sin P0/P1.
+NEXT_EXECUTABLE_TASK: pasar `fix/beta-choice-labels` por CI, integrar solo si verde y fusionable, seguir el auto-deploy de Render hasta LIVE exacto y repetir **visualmente** las opciones de alquiler. Después WORK debe inspeccionar E en backoffice con acceso legítimo (no buscar ni imprimir secretos), verificar G entre dispositivos solo con autorización de creación de cuenta y sin obligación legal, y ejecutar el caso `CLOSED_UNSUPPORTED` visual mediante un camino soportado o dejar explícita la limitación del fallback asistido. Completar C04 tras el hito real, no adelantar el reloj; profundizar rutas de compras/alquiler y otras familias priorizadas. Mantener uploads y privacidad fail-closed e indexación pública apagada. No declarar `BETA INTERNAL STATUS: PASS` hasta cobertura suficiente y sin P0/P1.
 
 BETA INTERNAL STATUS: NOT YET
 
