@@ -47,7 +47,7 @@
     }
     if (type === 'choice' || type.startsWith('choice:')) {
       const options = choiceOptions(q);
-      return `<select id="answer"><option value="">Selecciona una opción</option>${options.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('')}</select>`;
+      return `<select id="answer"><option value="">Selecciona una opción</option>${options.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(choiceLabel(o))}</option>`).join('')}</select>`;
     }
     return originalInputFor(q);
   };
