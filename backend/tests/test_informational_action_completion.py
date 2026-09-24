@@ -62,6 +62,10 @@ def test_informational_diagnosis_completes_action_without_faking_resolution_and_
     assert reopened["status"] == "INTAKE"
     assert reopened["current_decision_id"] is None
     assert reopened["current_action_id"] is None
+    quality = client.get(f"/api/cases/{case_id}/quality").json()
+    assert quality["readiness"] == "INTAKE"
+    assert quality["gates"]["current_decision_id"] is None
+    assert quality["gates"]["rules_evaluated"] == 0
 
     updated = client.post(f"/api/cases/{case_id}/diagnose")
     assert updated.status_code == 200, updated.text

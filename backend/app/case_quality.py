@@ -80,9 +80,16 @@ def build_dossier_quality(
     }
 
     open_reviews = [r for r in review_rows if r.status == "OPEN"]
+    # An invalidated decision remains in the audit history, but it is not the
+    # current diagnosis. Never revive it merely because it is the newest row.
     current_decision = next(
-        (d for d in decision_rows if d.id == case.current_decision_id),
-        decision_rows[0] if decision_rows else None,
+        (
+            d for d in decision_rows
+            if case.current_decision_id is not None
+            and d.id == case.current_decision_id
+            and d.case_id == case.id
+        ),
+        None,
     )
 
     if case.status == "CLOSED_UNSUPPORTED":
@@ -91,7 +98,7 @@ def build_dossier_quality(
         readiness = "HUMAN_REVIEW_REQUIRED"
     elif case.status == "NEEDS_INFORMATION" or unknown:
         readiness = "NEEDS_INFORMATION"
-    elif case.status == "READY_TO_SUBMIT":
+    elif case.status == "READY_TO_SUBMIT" and current_decision is not None:
         readiness = "ACTION_READY"
     elif current_decision is not None:
         readiness = "DIAGNOSIS_AVAILABLE"

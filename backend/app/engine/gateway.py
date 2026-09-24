@@ -20,6 +20,29 @@ def _normalized(text: str) -> str:
     )
 
 
+_ACCEPTANCE_PHRASES = (
+    "aceptamos su reclamacion", "aceptamos la reclamacion",
+    "aceptamos esta reclamacion", "aceptamos la devolucion",
+    "aceptamos el reembolso", "estimamos su reclamacion", "devolveremos",
+    "procedemos a devolver", "procedemos a reparar", "procedemos a sustituir",
+    "restableceremos su contrato anterior",
+)
+_NEGATED_ACCEPTANCE = re.compile(
+    r"\b(?:no|nunca|tampoco|ni)\s+(?:(?:le|les|se|podemos|vamos|hemos|a)\s+){0,3}"
+    r"(?:aceptamos|estimamos|devolvemos|devolveremos|reembolsamos|reembolsaremos|"
+    r"procedemos\s+a\s+(?:devolver|reparar|sustituir)|"
+    r"restableceremos)\b"
+)
+_EXPLICIT_REJECTION = re.compile(
+    r"\b(?:rechazamos|desestimamos|denegamos)\s+(?:su|la|el|esta|este)\s+"
+    r"(?:reclamacion|solicitud|peticion|reembolso|devolucion)\b"
+)
+_REMEDY_REFUSAL = re.compile(
+    r"\b(?:no|ni)\s+(?:la|el|su|los|las)\s+"
+    r"(?:devolucion|reembolso|reparacion|sustitucion|compensacion|importe|pago)\b"
+)
+
+
 @dataclass
 class DeterministicAlphaGateway:
     """No LLM. Validates routing/rules/workflow before a model provider is added."""
@@ -242,9 +265,22 @@ class DeterministicAlphaGateway:
         # Mixed concessions must be classified before broad acceptance keywords. This is
         # deliberately conservative: "aceptamos una parte" or "devolvemos una parte"
         # cannot close the whole expediente as if every requested remedy had been accepted.
-        if any(x in t for x in ["parcial", "parte del importe", "devolvemos una", "aceptamos una parte", "aceptamos parte"]):
+        negated = bool(_NEGATED_ACCEPTANCE.search(t))
+        rejected = bool(_EXPLICIT_REJECTION.search(t))
+        refused_remedy = bool(_REMEDY_REFUSAL.search(t))
+        affirmative_text = _NEGATED_ACCEPTANCE.sub(" ", t)
+        if any(x in affirmative_text for x in [
+            "aceptamos una parte", "aceptamos parte", "aceptamos parcialmente",
+            "devolvemos una parte", "devolvemos parte", "estimamos parcialmente",
+        ]):
             return {"type": "PARTIAL", "arguments": []}
-        if any(x in t for x in ["aceptamos", "estimamos su reclamacion", "devolveremos", "procedemos a devolver", "procedemos a reparar", "procedemos a sustituir", "restableceremos su contrato anterior"]):
+        # A substring match on a promise is unsafe in a negated sentence. Strip
+        # the negated spans before looking for a genuine affirmative promise;
+        # contradictory responses require a human instead of a favorable state.
+        affirmative = any(x in affirmative_text for x in _ACCEPTANCE_PHRASES)
+        if (negated or rejected or refused_remedy) and affirmative:
+            return {"type": "UNKNOWN", "arguments": []}
+        if affirmative:
             return {"type": "ACCEPTANCE", "arguments": []}
         if "independiente" in t and any(x in t for x in ["contrato", "servicio", "mantenimiento"]):
             return {"type": "DENIAL", "arguments": ["INDEPENDENT_ADDON_CONTRACT"]}
@@ -326,4 +362,6 @@ class DeterministicAlphaGateway:
             return {"type": "DENIAL", "arguments": ["WITHDRAWAL_LATE_ASSERTED"]}
         if any(x in t for x in ["excluido del desistimiento", "no admite desistimiento", "producto personalizado", "por razones de higiene"]):
             return {"type": "DENIAL", "arguments": ["WITHDRAWAL_EXCEPTION_ASSERTED"]}
+        if negated or rejected or refused_remedy:
+            return {"type": "DENIAL", "arguments": []}
         return {"type": "UNKNOWN", "arguments": []}

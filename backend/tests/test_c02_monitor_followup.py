@@ -42,6 +42,8 @@ def test_monitor_conformity_reopens_the_changed_fact_and_resumes_c02(client, db)
     assert diagnosis.status_code == 200, diagnosis.text
     assert diagnosis.json()["next_action"] == "MONITOR_CONFORMITY"
     old_action_id = diagnosis.json()["action_id"]
+    before_quality = client.get(f"/api/cases/{case_id}/quality").json()
+    assert before_quality["gates"]["current_decision_id"] is not None
 
     question = client.get(f"/api/cases/{case_id}/next-question")
     assert question.status_code == 200, question.text
@@ -56,6 +58,10 @@ def test_monitor_conformity_reopens_the_changed_fact_and_resumes_c02(client, db)
     # The extended C02 questionnaire first asks what the renewed defect is, then continues
     # through the ordinary origin/remedy questions. Re-entry must preserve that real order.
     assert changed["next_question"]["field"] == "purchase.defect_description"
+    reentry_quality = client.get(f"/api/cases/{case_id}/quality").json()
+    assert reentry_quality["readiness"] == "INTAKE"
+    assert reentry_quality["gates"]["current_decision_id"] is None
+    assert reentry_quality["gates"]["rules_evaluated"] == 0
 
     db.expire_all()
     case = db.get(Case, case_id)
@@ -83,6 +89,8 @@ def test_monitor_conformity_reopens_the_changed_fact_and_resumes_c02(client, db)
     assert rediagnosis.status_code == 200, rediagnosis.text
     assert rediagnosis.json()["next_action"] == "PREPARE_C02_PRICE_REDUCTION"
     assert rediagnosis.json()["viability"] in {"HIGH", "MEDIUM"}
+    new_quality = client.get(f"/api/cases/{case_id}/quality").json()
+    assert new_quality["gates"]["current_decision_id"] is not None
 
     db.expire_all()
     current = db.get(Action, db.get(Case, case_id).current_action_id)
