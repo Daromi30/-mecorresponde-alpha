@@ -2,9 +2,11 @@
 
 Last updated: 2026-09-24
 
-Main SHA: `be7a970de9ed0ff13da7fa9decedb69794abddc7`
+Main SHA (baseline verificado antes del merge documental #214): `be7a970de9ed0ff13da7fa9decedb69794abddc7`
 
-Render LIVE SHA: `be7a970de9ed0ff13da7fa9decedb69794abddc7`
+Render LIVE SHA (mismo baseline, antes de #214): `be7a970de9ed0ff13da7fa9decedb69794abddc7`
+
+Una PR documental integrada genera otro SHA y su auto-deploy. Al iniciar la siguiente tarea, leer el `main` y LIVE actuales; no tratar el baseline impreso aquí como el HEAD perpetuo.
 
 Current milestone: beta interna **sintética** en validación. PR #213 integró la corrección de negación de respuestas y calidad de decisiones vigentes. Sus P0/P1 reproducidos pasaron la repetición visual LIVE, pero la beta **NO** está completa: faltan partes de E/G/H y la matriz visual dirigida de 26 familias. `synthetic_internal_beta_ready=True` es un chequeo técnico de arranque, no la aceptación end-to-end.
 
@@ -44,7 +46,7 @@ External/user decisions: para beta con datos personales reales siguen pendientes
 
 Detailed visual evidence: `docs/internal-beta-visual-evidence-2026-09-23.md`.
 
-NEXT_EXECUTABLE_TASK: WORK continúa la beta sintética empezando por E (revisión estructurada/backoffice sin usar datos reales) y H (guardas de mutación terminal y `CLOSED_UNSUPPORTED` en UI), amplía la matriz dirigida de familias y registra cualquier nuevo P0/P1. G requiere decisión/confirmación puntual si el flujo de cuenta obliga a aceptar términos. Si aparece un bloque técnico aislable, preparar nuevo handoff CODEX con Base SHA, rama, objetivo, criterios, pruebas y exclusiones. No declarar `BETA INTERNAL STATUS: PASS` hasta cobertura suficiente y sin P0/P1.
+NEXT_EXECUTABLE_TASK: si #214 se integra, verificar primero su nuevo SHA en `main`, auto-deploy, LIVE y CI. Después WORK continúa la beta sintética empezando por E (revisión estructurada/backoffice sin usar datos reales) y H (guardas de mutación terminal y `CLOSED_UNSUPPORTED` en UI), amplía la matriz dirigida de familias y registra cualquier nuevo P0/P1. G requiere decisión/confirmación puntual si el flujo de cuenta obliga a aceptar términos. Si aparece un bloque técnico aislable, preparar nuevo handoff CODEX con Base SHA, rama, objetivo, criterios, pruebas y exclusiones. No declarar `BETA INTERNAL STATUS: PASS` hasta cobertura suficiente y sin P0/P1.
 
 BETA INTERNAL STATUS: NOT YET
 
