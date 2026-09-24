@@ -2,21 +2,23 @@
 
 Last updated: 2026-09-24
 
-Main SHA (baseline verificado antes del merge de esta PR documental): `eacf36a2826a268eea0b139126dd9fcc899c7b17`
+Main SHA (baseline verificado antes del merge de esta PR documental): `af61aa5dde1c7564511819d5e62b25228e8e5490`
 
-Render LIVE SHA (mismo baseline, antes de esta PR documental): `eacf36a2826a268eea0b139126dd9fcc899c7b17`
+Render LIVE SHA (mismo baseline, antes de esta PR documental): `af61aa5dde1c7564511819d5e62b25228e8e5490`
 
 Una PR documental integrada genera otro SHA y su auto-deploy. Al iniciar la siguiente tarea, leer el `main` y LIVE actuales; no tratar el baseline impreso aquí como el HEAD perpetuo.
 
-Current milestone: beta interna **sintética** en validación. Los P0/P1 reproducidos tras #213 pasaron la repetición visual LIVE. Esta continuación verificó E ambiguo y H resuelto, pero la beta **NO** está completa: falta inspección visual del backoffice protegido de E, G entre dispositivos, `CLOSED_UNSUPPORTED` visual y más profundidad en la matriz dirigida. `synthetic_internal_beta_ready=True` es un chequeo técnico de arranque, no la aceptación end-to-end.
+Current milestone: beta interna **sintética** en validación. Los P0/P1 reproducidos tras #213 pasaron la repetición visual LIVE; E ambiguo, H resuelto y rutas dirigidas C01/R01 también se verificaron parcialmente. La beta **NO** está completa: falta inspección visual del backoffice protegido de E, G entre dispositivos, `CLOSED_UNSUPPORTED` visual y más profundidad en la matriz dirigida. `synthetic_internal_beta_ready=True` es un chequeo técnico de arranque, no la aceptación end-to-end.
 
 Active owner: WORK
 
-Base SHA: `eacf36a2826a268eea0b139126dd9fcc899c7b17`
+Base SHA: `af61aa5dde1c7564511819d5e62b25228e8e5490`
 
-Branch: `docs/beta-post-217-live` (solo evidencia de verificación LIVE y siguiente tarea)
+Branch: `docs/beta-post-219-live` (solo evidencia de verificación LIVE y siguiente tarea)
 
-Objective: registrar que #217 ya está integrada y verificada en LIVE, cerrar el hallazgo P2 de etiquetas en el recorrido observado y recalcular el siguiente bloque seguro de beta. No declarar PASS por extrapolación de CI o logs.
+Objective: registrar la repetición visual post-#219 de compras/alquiler, actualizar el estado beta y recalcular el siguiente bloque seguro. No declarar PASS por extrapolación de CI o logs.
+
+Post-#219 LIVE verification: PR #219 se fusionó como `af61aa5dde1c7564511819d5e62b25228e8e5490`; sus cuatro checks y los cuatro del merge commit concluyeron `success`. Render auto-deploy `dep-daqmci6q1p3s73an07qg` (`new_commit`) terminó `live` en el mismo SHA sin deploy manual. `/health` devolvió 200, `status=ok`, `families=26` y `runtime_revision` exacta. Logs de arranque: mismo SHA, PostgreSQL persistente, `synthetic_internal_beta_ready=True`, `internal_beta_blockers=none`, uploads locales no persistentes desactivados, indexación pública desactivada; cero logs de nivel error en la ventana revisada. En C01 ficticio `e9437c5b-5c94-4ca1-915f-d6ab9f2410f6`, compra particular de cafetera nueva por 80 €, el Motor preguntó hechos, calculó base alta, 0 € reclamables inmediatamente y 80 € de valor protegido, y preparó solo una solicitud de puesta en conformidad sin coste, con fuente BOE. No se marcó como enviada. La repetición LIVE mostró el encabezado neutral «Aspectos que pueden influir...», la posible excepción de presunción como posible y la negativa del vendedor como confirmada **según datos declarados**. En R01 ficticio `180ca2f6-19cf-4c4b-ac2d-88bb3dbb1413`, sin prueba de fecha de entrega de llaves, el Motor pasó a `HUMAN_REVIEW` sin acción automática ni cuantía inventada. La reentrada en otro R01 ficticio `fb85289c-19bf-45d5-afb4-8d6e04bd56aa` mostró traducidas las opciones adicionales de tipo de depósito y saldo, conservando `statutory_cash_deposit`, `additional_guarantee`, `mixed_or_unknown`, `confirmed_amount` y `deductions_or_amount_disputed` como valores internos. P2 de copy cerrados **en estas rutas observadas**; no implica revisión manual de las 26 familias.
 
 Post-#217 LIVE verification: PR #217 se fusionó como `eacf36a2826a268eea0b139126dd9fcc899c7b17`; sus cuatro checks y los cuatro del merge commit terminaron `success`. Render auto-deploy `dep-daqm0mmgekts73e5t9kg` (`new_commit`) terminó `live` en el mismo SHA sin despliegue manual. `/health` 200, `status=ok`, `families=26`, `runtime_revision` exacta. `/health/persistence` indicó PostgreSQL persistente; `/health/storage` siguió `blocked`, local no persistente, `uploads_allowed=false`; `/privacidad` siguió 503/no-store/noindex; `/demo/` siguió noindex. Logs de arranque: misma revisión, `synthetic_internal_beta_ready=True`, `internal_beta_blockers=none`, PostgreSQL persistente, uploads e indexación pública desactivados; ningún log de nivel error en la ventana revisada ni secretos visibles en los mensajes inspeccionados. En el expediente ficticio de alquiler `180ca2f6-19cf-4c4b-ac2d-88bb3dbb1413`, navegador y logs confirmaron cargador y módulos con `?v=<SHA LIVE>`; el selector mostró «Vivienda», «Otro uso urbano», «Solo una habitación», «Alquiler turístico u hospedaje» y «No lo sé», conservando valores internos `dwelling`, `other_urban_use`, `room_only`, `tourist_or_hospitality`, `unknown`. **P2 de opciones cerrada en este recorrido visual.**
 
@@ -54,13 +56,13 @@ Open P0: ninguno conocido tras corregir y repetir el rechazo de F; la cobertura 
 
 Open P1: ninguno conocido en los recorridos repetidos; E/G/H y la matriz dirigida siguen sin cobertura suficiente para cierre de beta.
 
-P2/P3: los códigos internos visibles en el diagnóstico, el canal de resultado, la etiqueta monetaria histórica y las opciones de alquiler observadas se corrigieron en #215–#217; estas últimas se repitieron visualmente en LIVE. Otras etiquetas no muestreadas no se declaran verificadas. La exportación estructurada de E sí se leyó: conserva hechos, versiones, decisión, fuente, comunicaciones y revisión abierta, pero carece de un campo explícito de cronología permitida. El circuito backoffice de LIVE continúa sin inspección autenticada.
+P2/P3: los códigos internos visibles en el diagnóstico, el canal de resultado, la etiqueta monetaria histórica, las opciones de alquiler observadas y la semántica de los aspectos C01 se corrigieron en #215–#219. Se repitieron visualmente las opciones R01 y los dos aspectos C01 descritos arriba; otras etiquetas no muestreadas no se declaran verificadas. La exportación estructurada de E sí se leyó: conserva hechos, versiones, decisión, fuente, comunicaciones y revisión abierta, pero carece de un campo explícito de cronología permitida. El circuito backoffice de LIVE continúa sin inspección autenticada.
 
 External/user decisions: para beta con datos personales reales siguen pendientes información empresarial y privacidad formalmente revisada, continuidad/recuperación durable de PostgreSQL y almacenamiento documental persistente. No inventar valores, contratar servicios, cambiar plan ni activar uploads o indexación pública. Datos sintéticos únicamente y coste cero.
 
 Detailed visual evidence: `docs/internal-beta-visual-evidence-2026-09-23.md`.
 
-NEXT_EXECUTABLE_TASK: tras integrar esta PR documental y reconciliar de nuevo `main`/LIVE, WORK continúa con E: revisión visual del backoffice usando acceso legítimo facilitado por su responsable, sin buscar ni imprimir secretos. Si ese acceso no está disponible, ejecutar primero la cobertura de compras/alquiler y guardas de temas no soportados, dejando E claramente pendiente. Verificar G entre dispositivos solo con autorización expresa de creación de cuenta y sin aceptación legal u obligación externa. `CLOSED_UNSUPPORTED` no se alcanzó por UI porque el fallback de tema desconocido se detiene en revisión asistida: usar un camino soportado o registrar el límite. Completar C04 solo después de su hito real, sin adelantar reloj. Mantener uploads y privacidad fail-closed, indexación pública apagada y datos sintéticos. No declarar `BETA INTERNAL STATUS: PASS` hasta cobertura suficiente y sin P0/P1.
+NEXT_EXECUTABLE_TASK: tras integrar esta PR documental y reconciliar de nuevo `main`/LIVE, WORK continúa con E: revisión visual del backoffice usando acceso legítimo facilitado por su responsable, sin buscar ni imprimir secretos. Si ese acceso no está disponible, profundizar otras rutas dirigidas de las ocho verticales y las guardas de temas no soportados, dejando E claramente pendiente. Verificar G entre dispositivos solo con autorización expresa de creación de cuenta y sin aceptación legal u obligación externa. `CLOSED_UNSUPPORTED` no se alcanzó por UI porque el fallback de tema desconocido se detiene en revisión asistida: usar un camino soportado o registrar el límite. Completar C04 solo después de su hito real, sin adelantar reloj. Mantener uploads y privacidad fail-closed, indexación pública apagada y datos sintéticos. No declarar `BETA INTERNAL STATUS: PASS` hasta cobertura suficiente y sin P0/P1.
 
 BETA INTERNAL STATUS: NOT YET
 
