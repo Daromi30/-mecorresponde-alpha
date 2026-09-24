@@ -2,9 +2,9 @@
 
 Last updated: 2026-09-24
 
-Main SHA (baseline verificado antes de la rama de versionado de assets actual): `872329b6f4fd55b1959523b7e367b27cea67d78e`
+Main SHA (baseline verificado antes del merge de esta PR documental): `eacf36a2826a268eea0b139126dd9fcc899c7b17`
 
-Render LIVE SHA (mismo baseline, antes de esta rama): `872329b6f4fd55b1959523b7e367b27cea67d78e`
+Render LIVE SHA (mismo baseline, antes de esta PR documental): `eacf36a2826a268eea0b139126dd9fcc899c7b17`
 
 Una PR documental integrada genera otro SHA y su auto-deploy. Al iniciar la siguiente tarea, leer el `main` y LIVE actuales; no tratar el baseline impreso aquí como el HEAD perpetuo.
 
@@ -12,11 +12,15 @@ Current milestone: beta interna **sintética** en validación. Los P0/P1 reprodu
 
 Active owner: WORK
 
-Base SHA: `872329b6f4fd55b1959523b7e367b27cea67d78e`
+Base SHA: `eacf36a2826a268eea0b139126dd9fcc899c7b17`
 
-Branch: `fix/beta-runtime-asset-revision` (versionar scripts de producto por SHA de runtime para evitar módulos obsoletos en navegador)
+Branch: `docs/beta-post-217-live` (solo evidencia de verificación LIVE y siguiente tarea)
 
-Objective: hacer que cada despliegue cargue sus módulos JavaScript correspondientes, repetir la traducción visible de alquiler en LIVE y continuar beta sin datos reales. No declarar PASS por extrapolación de CI o logs.
+Objective: registrar que #217 ya está integrada y verificada en LIVE, cerrar el hallazgo P2 de etiquetas en el recorrido observado y recalcular el siguiente bloque seguro de beta. No declarar PASS por extrapolación de CI o logs.
+
+Post-#217 LIVE verification: PR #217 se fusionó como `eacf36a2826a268eea0b139126dd9fcc899c7b17`; sus cuatro checks y los cuatro del merge commit terminaron `success`. Render auto-deploy `dep-daqm0mmgekts73e5t9kg` (`new_commit`) terminó `live` en el mismo SHA sin despliegue manual. `/health` 200, `status=ok`, `families=26`, `runtime_revision` exacta. `/health/persistence` indicó PostgreSQL persistente; `/health/storage` siguió `blocked`, local no persistente, `uploads_allowed=false`; `/privacidad` siguió 503/no-store/noindex; `/demo/` siguió noindex. Logs de arranque: misma revisión, `synthetic_internal_beta_ready=True`, `internal_beta_blockers=none`, PostgreSQL persistente, uploads e indexación pública desactivados; ningún log de nivel error en la ventana revisada ni secretos visibles en los mensajes inspeccionados. En el expediente ficticio de alquiler `180ca2f6-19cf-4c4b-ac2d-88bb3dbb1413`, navegador y logs confirmaron cargador y módulos con `?v=<SHA LIVE>`; el selector mostró «Vivienda», «Otro uso urbano», «Solo una habitación», «Alquiler turístico u hospedaje» y «No lo sé», conservando valores internos `dwelling`, `other_urban_use`, `room_only`, `tourist_or_hospitality`, `unknown`. **P2 de opciones cerrada en este recorrido visual.**
+
+Las notas de #215/#216 y del baseline anterior que siguen a continuación son historial de diagnóstico, no el estado vigente ni la tarea a ejecutar.
 
 Latest state after #216: PR #216 se fusionó como `872329b6f4fd55b1959523b7e367b27cea67d78e`, con cuatro checks obligatorios verdes. Render auto-deploy `dep-daqlqfrncjis73aotbbg` (`new_commit`) terminó `live` en ese SHA; `/health` devolvió 200, `status=ok`, `families=26`, revisión exacta. La URL pública del módulo `guided_question_inputs.js` ya contiene la traducción. **Sin embargo**, la repetición visual de alquiler, incluso en un expediente nuevo, aún mostró opciones inglesas. No se declara cerrado el P2. La hipótesis verificable es caché de scripts: las URL del cargador y módulos permanecían idénticas entre despliegues. Esta rama añade `?v=<runtime SHA>` al cargador y propaga la misma revisión a cada módulo; tests dirigidos 18/18 pasaron, incluido un test Node que ejecuta el cargador y comprueba todas las URL. Falta CI, merge, LIVE y repetición visual antes de validar la hipótesis. Si persiste, investigar otra causa; no atribuir éxito por el test solamente.
 
@@ -50,13 +54,13 @@ Open P0: ninguno conocido tras corregir y repetir el rechazo de F; la cobertura 
 
 Open P1: ninguno conocido en los recorridos repetidos; E/G/H y la matriz dirigida siguen sin cobertura suficiente para cierre de beta.
 
-P2/P3: la rama actual corrige códigos internos visibles en el diagnóstico, opciones de alquiler en inglés, canal de resultado en código y la etiqueta monetaria de diagnóstico previo mientras el caso está en revisión/cierre. La exportación estructurada de E sí se leyó: conserva hechos, versiones, decisión, fuente, comunicaciones y revisión abierta, pero carece de un campo explícito de cronología permitida. El circuito backoffice de LIVE continúa sin inspección autenticada.
+P2/P3: los códigos internos visibles en el diagnóstico, el canal de resultado, la etiqueta monetaria histórica y las opciones de alquiler observadas se corrigieron en #215–#217; estas últimas se repitieron visualmente en LIVE. Otras etiquetas no muestreadas no se declaran verificadas. La exportación estructurada de E sí se leyó: conserva hechos, versiones, decisión, fuente, comunicaciones y revisión abierta, pero carece de un campo explícito de cronología permitida. El circuito backoffice de LIVE continúa sin inspección autenticada.
 
 External/user decisions: para beta con datos personales reales siguen pendientes información empresarial y privacidad formalmente revisada, continuidad/recuperación durable de PostgreSQL y almacenamiento documental persistente. No inventar valores, contratar servicios, cambiar plan ni activar uploads o indexación pública. Datos sintéticos únicamente y coste cero.
 
 Detailed visual evidence: `docs/internal-beta-visual-evidence-2026-09-23.md`.
 
-NEXT_EXECUTABLE_TASK: pasar `fix/beta-runtime-asset-revision` por CI, integrar solo si verde y fusionable, seguir el auto-deploy de Render hasta LIVE exacto y repetir **visualmente** las opciones de alquiler; si persisten en inglés, investigar el runtime real del navegador antes de otra corrección. Después WORK debe inspeccionar E en backoffice con acceso legítimo (no buscar ni imprimir secretos), verificar G entre dispositivos solo con autorización de creación de cuenta y sin obligación legal, y ejecutar el caso `CLOSED_UNSUPPORTED` visual mediante un camino soportado o dejar explícita la limitación del fallback asistido. Completar C04 tras el hito real, no adelantar el reloj; profundizar rutas de compras/alquiler y otras familias priorizadas. Mantener uploads y privacidad fail-closed e indexación pública apagada. No declarar `BETA INTERNAL STATUS: PASS` hasta cobertura suficiente y sin P0/P1.
+NEXT_EXECUTABLE_TASK: tras integrar esta PR documental y reconciliar de nuevo `main`/LIVE, WORK continúa con E: revisión visual del backoffice usando acceso legítimo facilitado por su responsable, sin buscar ni imprimir secretos. Si ese acceso no está disponible, ejecutar primero la cobertura de compras/alquiler y guardas de temas no soportados, dejando E claramente pendiente. Verificar G entre dispositivos solo con autorización expresa de creación de cuenta y sin aceptación legal u obligación externa. `CLOSED_UNSUPPORTED` no se alcanzó por UI porque el fallback de tema desconocido se detiene en revisión asistida: usar un camino soportado o registrar el límite. Completar C04 solo después de su hito real, sin adelantar reloj. Mantener uploads y privacidad fail-closed, indexación pública apagada y datos sintéticos. No declarar `BETA INTERNAL STATUS: PASS` hasta cobertura suficiente y sin P0/P1.
 
 BETA INTERNAL STATUS: NOT YET
 
