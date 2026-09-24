@@ -1,4 +1,5 @@
 (() => {
+  const assetRevision = new URL(document.currentScript.src).searchParams.get('v');
   const labels = {
     INTAKE: 'Recopilando hechos',
     NEEDS_INFORMATION: 'Falta información',
@@ -74,7 +75,7 @@
     const selector = `script[data-${datasetKey}]`;
     if (document.querySelector(selector)) return;
     const script = document.createElement('script');
-    script.src = src;
+    script.src = assetRevision ? `${src}?v=${encodeURIComponent(assetRevision)}` : src;
     script.async = false;
     script.setAttribute(`data-${datasetKey}`, 'true');
     document.body.appendChild(script);

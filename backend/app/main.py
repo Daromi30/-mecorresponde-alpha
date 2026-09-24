@@ -155,7 +155,7 @@ def _render_product_home() -> str:
         )
     html = html.replace(
         "</body>",
-        f'{_problem_library_html()}\n<script src="/demo/dossier_quality.js"></script>\n</body>',
+        f'{_problem_library_html()}\n{_versioned_product_loader()}\n</body>',
         1,
     )
     # The notice is injected at the collection point only when the complete,
@@ -172,11 +172,17 @@ def _render_product_demo() -> str:
     # the home page, while keeping this internal route permanently noindex.
     html = (static_dir / "index.html").read_text(encoding="utf-8")
     html = html.replace(
-        "</body>", '<script src="/demo/dossier_quality.js"></script>\n</body>', 1
+        "</body>", f'{_versioned_product_loader()}\n</body>', 1
     )
     return html.replace(
         '<div id="mcr-privacy-layer"></div>', render_first_layer(settings), 1
     )
+
+
+def _versioned_product_loader() -> str:
+    # A new deploy must not silently reuse an older cached browser module.
+    # get_runtime_revision() is either a verified 40-character SHA or "unknown".
+    return f'<script src="/demo/dossier_quality.js?v={get_runtime_revision()}"></script>'
 
 
 @asynccontextmanager
