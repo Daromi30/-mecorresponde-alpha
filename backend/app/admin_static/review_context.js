@@ -11,9 +11,13 @@
     const labels = {
       bank_or_card_refund: 'Reembolso bancario o en tarjeta',
       invoice_credit: 'Abono en factura',
+      invoice_credit_or_rebilling: 'Abono o refacturación',
       service_restored: 'Servicio restablecido',
       replacement: 'Sustitución',
       repair: 'Reparación',
+      cancellation: 'Cancelación',
+      delivery: 'Entrega',
+      contract_restoration: 'Restitución o corrección contractual',
       unknown: 'No indicado',
     };
     return labels[value] || value || 'No indicado';

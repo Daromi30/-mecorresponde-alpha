@@ -28,10 +28,14 @@
   function channelLabel(value) {
     return ({
       bank_or_card_refund: 'Reembolso bancario o en tarjeta',
+      invoice_credit_or_rebilling: 'Abono o refacturación',
       cancellation: 'Cancelación',
       repair: 'Reparación',
       replacement: 'Sustitución',
+      delivery: 'Entrega',
+      contract_restoration: 'Restitución o corrección contractual',
       invoice_correction: 'Corrección de factura',
+      unknown: 'No indicado',
       other: 'Otro medio',
     })[value] || value || 'No indicado';
   }

@@ -27,6 +27,14 @@ def test_resolved_case_reentry_restores_verified_outcome_details():
     assert "No consta una fecha exacta" in script
     assert "localStorage" not in script
     assert "sessionStorage" not in script
+    assert "invoice_credit_or_rebilling: 'Abono o refacturación'" in script
+    assert "contract_restoration: 'Restitución o corrección contractual'" in script
+
+
+def test_backoffice_uses_same_human_outcome_channel_labels():
+    script = (STATIC.parent / "admin_static" / "review_context.js").read_text(encoding="utf-8")
+    assert "invoice_credit_or_rebilling: 'Abono o refacturación'" in script
+    assert "contract_restoration: 'Restitución o corrección contractual'" in script
 
 
 def test_resolved_case_summary_javascript_parses_when_node_is_available():

@@ -2,21 +2,25 @@
 
 Last updated: 2026-09-24
 
-Main SHA (baseline verificado antes del merge documental #214): `be7a970de9ed0ff13da7fa9decedb69794abddc7`
+Main SHA (baseline verificado antes de la rama de copy/QA actual): `dc8fd9e6e821b0101b60520171b49729b3193784`
 
-Render LIVE SHA (mismo baseline, antes de #214): `be7a970de9ed0ff13da7fa9decedb69794abddc7`
+Render LIVE SHA (mismo baseline, antes de esta rama): `dc8fd9e6e821b0101b60520171b49729b3193784`
 
 Una PR documental integrada genera otro SHA y su auto-deploy. Al iniciar la siguiente tarea, leer el `main` y LIVE actuales; no tratar el baseline impreso aquí como el HEAD perpetuo.
 
-Current milestone: beta interna **sintética** en validación. PR #213 integró la corrección de negación de respuestas y calidad de decisiones vigentes. Sus P0/P1 reproducidos pasaron la repetición visual LIVE, pero la beta **NO** está completa: faltan partes de E/G/H y la matriz visual dirigida de 26 familias. `synthetic_internal_beta_ready=True` es un chequeo técnico de arranque, no la aceptación end-to-end.
+Current milestone: beta interna **sintética** en validación. Los P0/P1 reproducidos tras #213 pasaron la repetición visual LIVE. Esta continuación verificó E ambiguo y H resuelto, pero la beta **NO** está completa: falta inspección visual del backoffice protegido de E, G entre dispositivos, `CLOSED_UNSUPPORTED` visual y más profundidad en la matriz dirigida. `synthetic_internal_beta_ready=True` es un chequeo técnico de arranque, no la aceptación end-to-end.
 
 Active owner: WORK
 
-Base SHA: `be7a970de9ed0ff13da7fa9decedb69794abddc7`
+Base SHA: `dc8fd9e6e821b0101b60520171b49729b3193784`
 
-Branch: `docs/beta-post-213-live` (solo registro de esta verificación; siguiente bloque técnico aún sin rama asignada)
+Branch: `fix/beta-readable-internal-copy` (P2 de texto visible y evidencia visual; no cambia reglas, estados, privacidad ni almacenamiento)
 
-Objective: cerrar la evidencia post-merge de #213 y continuar la beta sintética por escenarios E/G/H y familias no inspeccionadas. No usar datos reales ni declarar PASS por extrapolación de CI o logs.
+Objective: cerrar evidencia dirigida de E/H y ocho verticales, corregir P2 visibles de copy y continuar beta sin datos reales. No declarar PASS por extrapolación de CI o logs.
+
+Current verification (2026-09-24, antes de integrar esta rama): `main` y Render LIVE en `dc8fd9e6e821b0101b60520171b49729b3193784`, deploy automático `dep-daqbo90473hc738mi7ng` live, `/health` 200 con `status=ok`, `families=26` y la revisión exacta. E02-A ambiguo ficticio `633884c6-8ca9-4806-a54b-159013822442` quedó en `HUMAN_REVIEW`; se inspeccionó su exportación JSON y el backoffice rechazó correctamente el acceso sin token (401). No se verificó el panel con credenciales. E02-A favorable ficticio `6bf9db88-344c-4227-8ef1-9a7d6acd6ccd` pasó de aceptación a `RESOLVED_PENDING_EXECUTION` y solo a `RESOLVED` tras registrar cumplimiento ficticio de 50 €; reentrada y solo lectura visibles. Las pruebas locales cubren mutaciones terminales y `CLOSED_UNSUPPORTED`; este último no se alcanzó visualmente porque el fallback de tema desconocido entra en revisión asistida. Ocho verticales muestreadas en intake; compras y alquiler preguntaron datos, las demás muestras no energéticas se detuvieron prudentemente en revisión humana. G sin cuenta creada. Evidencia detallada al final de `docs/internal-beta-visual-evidence-2026-09-23.md`.
+
+Local verification of current branch: 18 UI tests directed passed; 29 E/H guard tests directed passed. Full Windows suite first revealed a DOM-harness regression caused by a new `querySelector`, corrected with a stable label ID; second full run: **688 passed, 1 deselected**, excluding only the known POSIX `0600` assertion on Windows NTFS. CI Linux es la prueba decisiva. No se atribuye a LIVE la corrección local hasta integrar y verificar auto-deploy.
 
 PR/CI/deploy:
 
@@ -40,13 +44,13 @@ Open P0: ninguno conocido tras corregir y repetir el rechazo de F; la cobertura 
 
 Open P1: ninguno conocido en los recorridos repetidos; E/G/H y la matriz dirigida siguen sin cobertura suficiente para cierre de beta.
 
-P2/P3: UI todavía expone códigos internos (`ELEC_OVERBILL_REFUND / APPLIES`, `PRICE REDUCTION REQUIRES PROPORTIONAL VALUATION`, `OUT_OF_SCOPE`). Diseñar copy comprensible basado en fuentes existentes, sin inventar efectos jurídicos; tratarlo en bloque separado. La exportación estructurada confirmó visualmente «Expediente preparado», pero no se verificó su contenido ni el circuito backoffice.
+P2/P3: la rama actual corrige códigos internos visibles en el diagnóstico, opciones de alquiler en inglés, canal de resultado en código y la etiqueta monetaria de diagnóstico previo mientras el caso está en revisión/cierre. La exportación estructurada de E sí se leyó: conserva hechos, versiones, decisión, fuente, comunicaciones y revisión abierta, pero carece de un campo explícito de cronología permitida. El circuito backoffice de LIVE continúa sin inspección autenticada.
 
 External/user decisions: para beta con datos personales reales siguen pendientes información empresarial y privacidad formalmente revisada, continuidad/recuperación durable de PostgreSQL y almacenamiento documental persistente. No inventar valores, contratar servicios, cambiar plan ni activar uploads o indexación pública. Datos sintéticos únicamente y coste cero.
 
 Detailed visual evidence: `docs/internal-beta-visual-evidence-2026-09-23.md`.
 
-NEXT_EXECUTABLE_TASK: si #214 se integra, verificar primero su nuevo SHA en `main`, auto-deploy, LIVE y CI. Después WORK continúa la beta sintética empezando por E (revisión estructurada/backoffice sin usar datos reales) y H (guardas de mutación terminal y `CLOSED_UNSUPPORTED` en UI), amplía la matriz dirigida de familias y registra cualquier nuevo P0/P1. G requiere decisión/confirmación puntual si el flujo de cuenta obliga a aceptar términos. Si aparece un bloque técnico aislable, preparar nuevo handoff CODEX con Base SHA, rama, objetivo, criterios, pruebas y exclusiones. No declarar `BETA INTERNAL STATUS: PASS` hasta cobertura suficiente y sin P0/P1.
+NEXT_EXECUTABLE_TASK: pasar esta rama por CI, integrar solo si verde y fusionable, seguir el auto-deploy de Render hasta LIVE exacto y repetir el copy observado. Después WORK debe inspeccionar E en backoffice con acceso legítimo (no buscar ni imprimir secretos), verificar G entre dispositivos solo con autorización de creación de cuenta y sin obligación legal, y ejecutar el caso `CLOSED_UNSUPPORTED` visual mediante un camino soportado o dejar explícita la limitación del fallback asistido. Completar C04 tras el hito real, no adelantar el reloj; profundizar rutas de compras/alquiler y otras familias priorizadas. Mantener uploads y privacidad fail-closed e indexación pública apagada. No declarar `BETA INTERNAL STATUS: PASS` hasta cobertura suficiente y sin P0/P1.
 
 BETA INTERNAL STATUS: NOT YET
 
