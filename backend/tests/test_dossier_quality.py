@@ -1,6 +1,9 @@
 import json
 
-from app.models import Case, Evidence, Fact
+from sqlalchemy import select
+
+from app.case_quality import build_dossier_quality
+from app.models import Case, Decision, Evidence, Fact
 from app.services_v2 import create_human_review
 
 
@@ -178,6 +181,45 @@ def test_quality_endpoint_uses_same_undiscoverable_case_access(client):
     )
     case_id = created.json()["id"]
     assert client.get(f"/api/cases/{case_id}/quality").status_code == 200
+
+
+def test_quality_does_not_revive_historical_or_foreign_decision(client, db):
+    first = client.post("/api/cases", json={"message": "La factura eléctrica me ha cobrado de más"})
+    case_id = first.json()["id"]
+    for key, value in {
+        "electricity.billing.invoice_date": "2026-07-01",
+        "electricity.billing.billed_amount": 150,
+        "electricity.billing.correct_amount": 100,
+    }.items():
+        response = client.post(
+            f"/api/cases/{case_id}/facts",
+            json={"key": key, "value": value, "state": "confirmed", "user_confirmed": True},
+        )
+        assert response.status_code == 200, response.text
+    assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 200
+    db.expire_all()
+    case = db.get(Case, case_id)
+    historical = db.scalars(select(Decision).where(Decision.case_id == case_id)).all()
+    assert historical
+
+    case.current_decision_id = None
+    profile = build_dossier_quality(case, [], [], historical, [])
+    assert profile["readiness"] == "INTAKE"
+    assert profile["gates"]["current_decision_id"] is None
+    assert profile["gates"]["rules_evaluated"] == 0
+
+    case.current_decision_id = "nonexistent-decision"
+    profile = build_dossier_quality(case, [], [], historical, [])
+    assert profile["readiness"] == "INTAKE"
+    assert profile["gates"]["current_decision_id"] is None
+    assert profile["gates"]["rules_evaluated"] == 0
+
+    case.current_decision_id = historical[0].id
+    second = client.post("/api/cases", json={"message": "La factura eléctrica me ha cobrado de más"})
+    other_case = db.get(Case, second.json()["id"])
+    case.current_decision_id = historical[0].id
+    profile = build_dossier_quality(other_case, [], [], historical, [])
+    assert profile["gates"]["current_decision_id"] is None
 
     client.cookies.clear()
     denied = client.get(f"/api/cases/{case_id}/quality")
