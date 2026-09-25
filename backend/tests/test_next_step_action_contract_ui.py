@@ -78,6 +78,13 @@ def test_next_step_ui_gates_prepare_button_by_current_action_not_viability_alone
     assert "RETURN_GOODS_WITH_PROOF" in script
 
 
+def test_wait_recheck_shows_the_known_not_elapsed_error_in_spanish():
+    script = (STATIC / "case_next_step.js").read_text(encoding="utf-8")
+    assert "response.status === 409 && payload.detail === 'The waiting milestone has not elapsed yet'" in script
+    assert "El plazo de espera todavía no ha vencido. El expediente permanece sin cambios." in script
+    assert "(payload.detail || 'El hito temporal todavía no permite continuar.')" in script
+
+
 def test_next_step_action_contract_javascript_parses_when_node_is_available():
     node = shutil.which("node")
     if not node:
