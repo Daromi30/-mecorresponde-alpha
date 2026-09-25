@@ -79,7 +79,10 @@
       payload = {};
     }
     if (!response.ok) {
-      window.alert(payload.detail || 'El hito temporal todavía no permite continuar.');
+      const detail = response.status === 409 && payload.detail === 'The waiting milestone has not elapsed yet'
+        ? 'El plazo de espera todavía no ha vencido. El expediente permanece sin cambios.'
+        : (payload.detail || 'El hito temporal todavía no permite continuar.');
+      window.alert(detail);
       return;
     }
     await refresh();
