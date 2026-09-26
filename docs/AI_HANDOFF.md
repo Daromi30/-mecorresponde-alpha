@@ -1,6 +1,12 @@
 # MECORRESPONDE AI HANDOFF
 
-Last updated: 2026-09-25
+Last updated: 2026-09-26
+
+## Preparación de beta real, sin activarla (rama documental)
+
+`SYNTHETIC_BETA_FREEZE_SHA=549a71a8235560fe298f5ee7556d4d44954f3a8c`. En el corte del 2026-09-26, GitHub `main`, Render LIVE y `/health.runtime_revision` coincidían en ese SHA, sin PR funcional abierta y con cuatro checks verdes. `/health` respondió `status=ok`, `families=26`; PostgreSQL persistente, storage local no persistente y uploads bloqueados; `/privacidad` 503/no-store/noindex, demo noindex, sitemap 404 y email transaccional/recovery/verificación no operativos. La base Render Free de Frankfurt está disponible, pero expira `2026-10-15T06:35:48.46081Z`. **REAL BETA READINESS: NOT READY; PASS solo sintético.** Matriz de 15 gates, fuentes oficiales, arquitectura mínima, beta privada propuesta, runbook y decisiones en [`real-beta-readiness-2026-09-26.md`](real-beta-readiness-2026-09-26.md). La rama documental no habilita datos reales ni gasto.
+
+El primer bloque técnico propuesto tras integrar esta documentación es una admisión de beta real cerrada por defecto, con allowlist individual y de familias validada en servidor, sin activar la cohorte. Base y rama exactas para CODEX se fijarán tras reconciliar el merge documental con GitHub/Render; no usar el SHA congelado como permiso para desplegar ni como HEAD perpetuo. El control de identidad individual del backoffice se hará en un PR separado. No crear usuarios reales, contratar infraestructura, enviar correos ni levantar privacidad/indexación/uploads.
 
 Main SHA (baseline verificado antes de integrar esta actualización de handoff): `9ac4b4523d655ce8219a502271a0f49c008ee8f3`
 
