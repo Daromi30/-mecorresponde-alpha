@@ -63,7 +63,9 @@ def downgrade() -> None:
     if "assigned_reviewer_id" in {column["name"] for column in inspector.get_columns("human_reviews")}:
         op.drop_index("ix_human_reviews_assigned_reviewer_id", table_name="human_reviews")
         if bind.dialect.name == "postgresql":
-            op.drop_constraint("fk_human_reviews_assigned_reviewer_id", "human_reviews", type_="foreignkey")
+            for constraint in inspector.get_foreign_keys("human_reviews"):
+                if constraint["constrained_columns"] == ["assigned_reviewer_id"]:
+                    op.drop_constraint(constraint["name"], "human_reviews", type_="foreignkey")
         if bind.dialect.name == "sqlite":
             with op.batch_alter_table("human_reviews", recreate="always") as batch:
                 batch.drop_column("assigned_reviewer_id")
@@ -72,7 +74,9 @@ def downgrade() -> None:
     if "actor_reviewer_id" in {column["name"] for column in inspector.get_columns("audit_events")}:
         op.drop_index("ix_audit_events_actor_reviewer_id", table_name="audit_events")
         if bind.dialect.name == "postgresql":
-            op.drop_constraint("fk_audit_events_actor_reviewer_id", "audit_events", type_="foreignkey")
+            for constraint in inspector.get_foreign_keys("audit_events"):
+                if constraint["constrained_columns"] == ["actor_reviewer_id"]:
+                    op.drop_constraint(constraint["name"], "audit_events", type_="foreignkey")
         if bind.dialect.name == "sqlite":
             with op.batch_alter_table("audit_events", recreate="always") as batch:
                 batch.drop_column("actor_reviewer_id")
