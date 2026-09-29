@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     public_indexing_enabled: bool = False
     public_base_url: str = ""
 
+    # Private real-beta admission is a separate, server-owned lane. Invalid values
+    # are not truthy; an absent allowlist never inherits the synthetic family set.
+    real_beta_enabled: str = "false"
+    real_beta_allowlist: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
