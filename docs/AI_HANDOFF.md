@@ -1,12 +1,67 @@
 # MECORRESPONDE AI HANDOFF
 
+## Estado vigente y handoff a WORK (2026-09-29)
+
+Active owner: **WORK**. Main/base verificado: `cde8b0e5048ee9d4afc59816f2a1416f3b3b700a`. Branch: `feat/real-beta-admission-gate`. PR: [#224](https://github.com/Daromi30/-mecorresponde-alpha/pull/224), abierta contra `main`, **sin merge ni deploy**. Head SHA funcional anterior a este commit documental: `e734d088b9dd422363c486dd3b83c15b6cda6da4`; consultar el head de la PR para el SHA final de rama tras este handoff.
+
+Root cause / architecture: el endpoint público `/api/cases` y las cuentas opcionales no distinguían procedencia sintética de una cohorte real ni exigían admisión. Ahora `Case.mode` es propiedad del servidor: histórico y entrada pública `SYNTHETIC`; únicamente `/api/real-beta/cases` puede establecer `PRIVATE_REAL_BETA`. **Esto no clasifica el contenido textual**: la entrada sintética pública aún puede recibir texto libre real. Por esa razón no se afirma que exista un perímetro integral seguro para datos personales reales y el interlock de lanzamiento permanece fijo en `False` en este PR.
+
+What was implemented: `REAL_BETA_ENABLED=false` y `REAL_BETA_ALLOWLIST` vacía por defecto, validación estricta de familias, interlock de lanzamiento no configurable desde Render, invitaciones de 256 bits con solo digest SHA-256 persistido, expiración, canje atómico por una única cuenta, revocación y eventos de auditoría sin secretos ni raw intake. La creación de casos reales exige sesión y admisión activa, clasifica antes de persistir el caso, rechaza familias no elegibles y no crea capacidad anónima. Acceso posterior exige propiedad de la cuenta; cada mutación de usuario/backoffice revalida estado, familia y admisión. Reclasificaciones fuera de allowlist quedan en revisión humana sin decisión material vigente, conservando expediente e historial. Lectura/exportación del titular permanece tras revocación/expiración para continuidad y derechos. Detalles y amenazas: [`private-real-beta-admission-gate.md`](private-real-beta-admission-gate.md).
+
+Migration: `0008_real_beta_admission` añade `cases.mode` con default seguro `SYNTHETIC` y `real_beta_invitations`; no transforma ningún caso a real. Upgrade/downgrade local en SQLite preservó un caso histórico. La prueba PostgreSQL de Database Migrations CI es la referencia de integración.
+
+Security guarantees: flag OFF + allowlist vacía + interlock fijo implican denegación aun con env configurado; token secreto nunca se guarda ni se vuelve a serializar; canje SQL condicional evita doble cuenta; sesión de propietario, no cookie de capacidad sintética, controla el carril real; respuesta de invitación inválida/revocada/expirada es no enumerante; no-store/noindex y protección Origin/Sec-Fetch-Site existente aplican. El token administrativo compartido sigue siendo un límite: atribución individual de backoffice es el siguiente bloque.
+
+Tests: 10 pruebas nuevas de admisión, aislamiento, revocación, expiración en el instante límite, allowlist, reclasificación y carrera concurrente, todas verdes en Windows; 2 pruebas de migración SQLite verdes; `compileall` verde. Suite backend Windows: **700 passed, 1 failed** por aserción POSIX `0600` que devuelve `0o666` en NTFS, sin otro fallo funcional; CI Linux decide. Sin JS/UI modificados.
+
+CI: los cuatro checks del head funcional `e734d088b9dd422363c486dd3b83c15b6cda6da4` terminaron **SUCCESS**: `legal-engine-regression`, `postgres-persistence`, `postgres-backup-restore` y `postgres-migrations`. Tras publicar este handoff, verificar de nuevo el head final de PR; no confundir este verde previo con una aprobación de lanzamiento real.
+
+Known limitations: interlock fijo hasta revisión posterior; el intake público sintético libre no previene que alguien introduzca datos reales; identidad empresarial, privacidad e información revisadas, análisis de riesgo, revisión jurídica, continuidad/backup/restore PostgreSQL, storage documental persistente, identidad individual backoffice y recuperación/email siguen pendientes. No se cambió Render, proveedores, costes, uploads, indexación ni readiness. Tras revocación se preservan casos y se bloquea trabajo nuevo; su gestión posterior requiere protocolo operativo, no borrado o cierre automático.
+
+FOLLOW_UP_FINDINGS: cierre/encauzamiento seguro del texto libre público sintético antes de cualquier lanzamiento real; identidad y atribución individual del backoffice; protocolo de expedientes tras revocación; deduplicación concurrente de eventos de denegación (la aceptación sí es atómica). Ninguno autoriza abrir la beta ahora.
+
+REAL BETA READINESS: **NOT READY**. Beta interna sintética: **PASS** previo, sin ampliación a datos reales.
+
+Next owner: **WORK**. Next WORK task: revisar diff y migración de #224; verificar CI del último head y merge solo si scope correcto; verificar después auto-deploy, que `REAL_BETA` permanece OFF en LIVE, beta sintética y readiness. Luego preparar el bloque separado de identidad + atribución individual de backoffice. No tratar privacidad/storage/database/revisión jurídica como resueltas.
+
+## Historial anterior (no define el owner ni la readiness vigente)
+
 Last updated: 2026-09-26
 
-## Preparación de beta real, sin activarla (rama documental)
+## Estado vigente y handoff a CODEX (2026-09-26)
 
 `SYNTHETIC_BETA_FREEZE_SHA=549a71a8235560fe298f5ee7556d4d44954f3a8c`. En el corte del 2026-09-26, GitHub `main`, Render LIVE y `/health.runtime_revision` coincidían en ese SHA, sin PR funcional abierta y con cuatro checks verdes. `/health` respondió `status=ok`, `families=26`; PostgreSQL persistente, storage local no persistente y uploads bloqueados; `/privacidad` 503/no-store/noindex, demo noindex, sitemap 404 y email transaccional/recovery/verificación no operativos. La base Render Free de Frankfurt está disponible, pero expira `2026-10-15T06:35:48.46081Z`. **REAL BETA READINESS: NOT READY; PASS solo sintético.** Matriz de 15 gates, fuentes oficiales, arquitectura mínima, beta privada propuesta, runbook y decisiones en [`real-beta-readiness-2026-09-26.md`](real-beta-readiness-2026-09-26.md). La rama documental no habilita datos reales ni gasto.
 
-El primer bloque técnico propuesto tras integrar esta documentación es una admisión de beta real cerrada por defecto, con allowlist individual y de familias validada en servidor, sin activar la cohorte. Base y rama exactas para CODEX se fijarán tras reconciliar el merge documental con GitHub/Render; no usar el SHA congelado como permiso para desplegar ni como HEAD perpetuo. El control de identidad individual del backoffice se hará en un PR separado. No crear usuarios reales, contratar infraestructura, enviar correos ni levantar privacidad/indexación/uploads.
+PR #223 (solo documentación) se fusionó tras cuatro checks verdes. Nuevo `main` exacto `cde8b0e5048ee9d4afc59816f2a1416f3b3b700a`; Render auto-deploy `dep-das0llc9v7es73ejjiu0` terminó `live` en el mismo SHA, sin deploy manual. `/health` 200, `status=ok`, `families=26`, `runtime_revision` exacta; `/health/persistence` PostgreSQL persistente; `/health/storage` bloqueado/local/no persistente; `/privacidad` 503/no-store/noindex, demo noindex, sitemap 404; email transaccional/recuperación/verificación no operativos. Logs de arranque de la revisión: PostgreSQL persistente, `synthetic_internal_beta_ready=True`, `internal_beta_blockers=none`, uploads e indexación desactivados. No se ha habilitado beta real.
+
+Active owner: **CODEX**
+
+Base SHA: `cde8b0e5048ee9d4afc59816f2a1416f3b3b700a` (verificar que sigue siendo `main` antes de editar)
+
+Branch: `feat/real-beta-admission-gate`
+
+Objective: implementar **solo** la barrera de admisión privada de beta real, en servidor y cerrada por defecto, sin activarla ni procesar datos reales. La ruta pública sintética actual no debe confundirse con admisión autorizada a una cohorte real.
+
+Acceptance criteria:
+
+1. Estado/mode de beta real explícito, por defecto `off`; ningún cambio de esta rama debe habilitarlo en Render. Si cualquier gate de seguridad/privacidad indispensable está incompleto, intentar activar modo real debe fallar cerrado y no aceptar un expediente nuevo.
+2. Una invitación individual revocable, con expiración y material secreto no persistido en claro, puede vincularse a **una** cuenta; la admisión se verifica en el servidor, no por ocultar botones o confiar en email declarado. Sin invitación válida, impedir registro/admisión real y creación de caso real, incluidas API directas. Diseñar emisión/entrega sin proveedores ni personas reales; pruebas solo sintéticas.
+3. Allowlist de familias en servidor, inicialmente vacía; solo códigos aprobados explícitamente en una futura operación autorizada. La clasificación no puede derivar a una familia fuera de la allowlist ni continuar una acción/diagnóstico real cuando se invalida la elegibilidad. No usar automáticamente las 26 familias.
+4. Revocación y expiración impiden nuevas acciones admitidas, con errores no filtrantes y eventos auditables sin secretos/PII en logs. No borrar un expediente existente por revocar acceso; documentar respuesta operacional.
+5. Mantener el recorrido sintético actual compatible cuando el modo real siga apagado; ningún endpoint, migración o valor por defecto introduce datos reales, uploads, email, pagos o indexación. La UI debe explicar la indisponibilidad del acceso real sin prometer que está abierto.
+6. Añadir documentación de amenaza/limitaciones: todavía faltan identidad individual de backoffice, privacidad, continuidad DB, storage y recuperación. El nuevo gate es necesario pero **no** suficiente para READY; no marcar readiness real en verde por este PR.
+
+Tests: tests unitarios y de integración FastAPI con cuentas/invitaciones **ficticias** que cubran default-off, acceso sin invitación, reutilización, expiración, revocación, API directa, familia fuera de allowlist, cambio de clasificación, conservación de casos ya creados, auditoría sin secreto y regresión sintética; `pytest` dirigido + suite pertinente, `compileall`, y cuatro checks CI existentes. Probar contra SQLite local; cualquier migración debe pasar el check PostgreSQL de CI. Si la semántica de "modo real off" no puede distinguir sintético de real sin rediseño, documentarlo y resolverlo en la misma barrera, no declarar protección falsa.
+
+Do not touch: reglas/fuentes jurídicas, familias del Motor, identidad de empresa, textos legales finales, configuración/secretos de Render, plan PostgreSQL, storage/uploads, correo transaccional, sitemap/indexación, pagos, expedientes existentes, `main` directamente. No desplegar ni fusionar antes de CI verde y revisión de alcance. La identidad de revisores del backoffice va en un PR separado.
+
+Cost boundary: **CERO COSTE**. Real data: **PROHIBIDO**. No alta externa, usuarios/emails/documentos reales ni decisiones empresariales inventadas.
+
+NEXT_EXECUTABLE_TASK: CODEX implementa esta barrera en la rama indicada y presenta PR con pruebas; WORK puede continuar en paralelo las decisiones de infraestructura/privacidad e inspección documental, pero no debe abrir beta real. Tras ese PR, el siguiente bloque de ingeniería independiente es identidad y atribución individual del backoffice.
+
+CODEX READY
+
+## Historial anterior (no define el owner ni el HEAD vigentes)
 
 Main SHA (baseline verificado antes de integrar esta actualización de handoff): `9ac4b4523d655ce8219a502271a0f49c008ee8f3`
 
@@ -16,13 +71,13 @@ Una PR integrada genera otro SHA y su auto-deploy. Al iniciar la siguiente tarea
 
 Current milestone: **BETA INTERNAL STATUS: PASS** para datos exclusivamente sintéticos, con P0=0 y P1=0 conocidos. Es una aceptación dirigida A–H con límites explícitos, no una aprobación para datos reales, uploads ni indexación. `synthetic_internal_beta_ready=True` es un chequeo técnico separado de esta aceptación end-to-end.
 
-Active owner: WORK
+Active owner histórico: WORK
 
-Base SHA: `9ac4b4523d655ce8219a502271a0f49c008ee8f3`
+Base SHA histórico: `9ac4b4523d655ce8219a502271a0f49c008ee8f3`
 
-Branch: `docs/beta-internal-pass-live` (verificación de #221 LIVE y siguiente etapa)
+Branch histórica: `docs/beta-internal-pass-live` (verificación de #221 LIVE y siguiente etapa)
 
-Objective: registrar la verificación post-#221 de CI/LIVE/copy/fail-closed y definir el siguiente bloque hacia beta real sin abrirla prematuramente.
+Objective histórico: registrar la verificación post-#221 de CI/LIVE/copy/fail-closed y definir el siguiente bloque hacia beta real sin abrirla prematuramente.
 
 Final synthetic acceptance (2026-09-25, sobre el baseline anterior): GitHub `main`, Render deploy `dep-daqmh37f3r2c73ac93h0` LIVE y `/health.runtime_revision` coincidieron en el SHA completo anterior; `/health` 200, `status=ok`, `families=26`; cuatro checks del commit `success`. Logs de la misma revisión: PostgreSQL persistente, `synthetic_internal_beta_ready=True`, `internal_beta_blockers=none`; sin logs de nivel `error` en la ventana revisada. E: expediente ficticio ambiguo `633884c6-8ca9-4806-a54b-159013822442` conservó revisión `OPEN`, hechos, decisión, comunicaciones y fuente en la exportación; la API administrativa sin token devuelve 401. El token configurado en Render no puede usarse de forma segura con las herramientas de lectura disponibles, que no exponen ejecución autenticada dentro del servicio: **BACKOFFICE_ACCESS_TOOLING_BLOCKER**, no defecto demostrado del producto. Las pruebas locales cubren contexto del revisor, revisión estructurada y guardas. G: `/api/auth/capabilities` confirmó `transactional_email_operational=false`; el diálogo de cuenta no exigió aceptación legal. Una única cuenta ficticia `@example.com` guardó C04 `36c52f88-1a70-4e85-a685-a80ce1849f04`; tras logout y nueva pestaña sin enlace al caso, recuperó el mismo expediente, decisión, espera, importe e historial. La lista mostraba solo el caso propio y los tests de aislamiento entre cuentas/capacidades están verdes; una pestaña del mismo navegador no equivale a hardware distinto, pero sí comprobó reentrada sin cookie de capacidad ni enlace de caso. H: aceptación ficticia no cerró antes de ejecución; cumplimiento ficticio verificado sí cerró E02-A, con reentrada solo lectura y guardas terminales automatizadas. Política unsupported: las clasificaciones desconocidas pasan deliberadamente a `HUMAN_REVIEW` sin decisión jurídica, cuantía ni reclamación; los conocidos fuera de alcance también se protegen con revisión. `CLOSED_UNSUPPORTED` permanece como estado terminal interno/histórico y su recorrido visual público es **NOT_PUBLICLY_REACHABLE_BY_CURRENT_DESIGN**; guardas de lectura/mutación están probadas. C04: en LIVE, antes del hito ficticio 2026-10-15, diagnóstico de base alta, 0 € reclamables ahora, 35 € de valor protegido y acción de espera; «Comprobar de nuevo» rechazó el avance prematuro sin modificar historial. La transición posterior y la atomicidad están cubiertas por tests deterministas; el recorrido LIVE posterior al vencimiento es **TIME_DEPENDENT_FOLLOW_UP**, no blocker de esta beta. Matriz dirigida: las ocho verticales tienen intake observado; energía, compras y alquiler profundizaron patrones distintos; CI cubre las 26 familias, sin exigir 26 expedientes visuales completos. Pruebas locales dirigidas de E/G/H/C04/unsupported: 41 aprobadas; tras la corrección P2 de copy, 21 dirigidas aprobadas. La primera suite amplia incluyó dos fallos de integración PostgreSQL por `DATABASE_URL=sqlite:///:memory:` en este entorno; repetida la suite funcional pertinente dio **691 aprobadas y 1 excluida** (solo la comprobación POSIX `0600` en NTFS). Los checks PostgreSQL de CI Linux del baseline están verdes. No se observó P0/P1 nuevo.
 
@@ -76,7 +131,7 @@ External/user decisions: para beta con datos personales reales siguen pendientes
 
 Detailed visual evidence: `docs/internal-beta-visual-evidence-2026-09-23.md`.
 
-NEXT_EXECUTABLE_TASK: después de reconciliar de nuevo main/LIVE por esta actualización documental, WORK prepara la beta con datos reales sin habilitarla: obtener información empresarial auténtica y revisión formal de privacidad; decidir continuidad, backup/restauración y recuperación durable de PostgreSQL antes de su caducidad indicada el 2026-10-15; diseñar almacenamiento documental persistente y sus controles sin contratar ni activar uploads todavía. Si se habilita un método legítimo para usar la credencial administrativa configurada sin exponerla, completar la inspección E en backoffice LIVE; si no, conservar `BACKOFFICE_ACCESS_TOOLING_BLOCKER` como seguimiento, no como P1 inventado. Repetir C04 LIVE después del hito real. P2 de cronología exportada y etiquetas no muestreadas quedan en backlog. No crear una PR únicamente para actualizar SHA. El PASS sintético no autoriza datos reales, coste, cambios de plan, proveedores, indexación ni privacidad ficticia.
+NEXT_EXECUTABLE_TASK histórico (2026-09-25): después de reconciliar de nuevo main/LIVE por esta actualización documental, WORK prepara la beta con datos reales sin habilitarla: obtener información empresarial auténtica y revisión formal de privacidad; decidir continuidad, backup/restauración y recuperación durable de PostgreSQL antes de su caducidad indicada el 2026-10-15; diseñar almacenamiento documental persistente y sus controles sin contratar ni activar uploads todavía. Si se habilita un método legítimo para usar la credencial administrativa configurada sin exponerla, completar la inspección E en backoffice LIVE; si no, conservar `BACKOFFICE_ACCESS_TOOLING_BLOCKER` como seguimiento, no como P1 inventado. Repetir C04 LIVE después del hito real. P2 de cronología exportada y etiquetas no muestreadas quedan en backlog. No crear una PR únicamente para actualizar SHA. El PASS sintético no autoriza datos reales, coste, cambios de plan, proveedores, indexación ni privacidad ficticia.
 
 BETA INTERNAL STATUS: PASS (solo sintética; aceptación dirigida, P0=0 y P1=0 conocidos)
 

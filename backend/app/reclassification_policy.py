@@ -152,6 +152,22 @@ def install_reclassification_policy() -> None:
                 )
                 return result, decision, review_action
 
+            if case.mode == "PRIVATE_REAL_BETA":
+                from .real_beta_gate import allowed_families, audit_once
+
+                if target_family not in allowed_families():
+                    review_action = _route_unregistered_reclassification_to_review(
+                        db, case, source_family=source_family, result=result,
+                        decision_id=decision.id, source_action=action,
+                        reason="real_beta_family_not_allowed",
+                    )
+                    case.current_decision_id = None
+                    audit_once(db, case.id, "REAL_BETA_FAMILY_BLOCKED", {
+                        "from_family": source_family, "target_family": target_family,
+                    })
+                    db.commit()
+                    return result, decision, review_action
+
             _complete_reclassification_action(action)
             target = FAMILY_MANIFEST[target_family]
             visited_families.append(source_family)
