@@ -235,6 +235,15 @@ def require_case_access(request: Request, db: Session = Depends(get_db)) -> None
 
     case = db.get(Case, case_id)
     user = get_user_from_request(request, db)
+    if case and case.mode == "PRIVATE_REAL_BETA":
+        # A synthetic case capability never grants access to a private real case.
+        if user is None or case.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Case not found")
+        if request.method.upper() in {"POST", "PUT", "PATCH"}:
+            from .real_beta_gate import require_real_case_mutation
+            require_real_case_mutation(db, case)
+        _enforce_authorized_case_boundaries(request, db, case)
+        return
     if case and user and case.user_id == user.id:
         _enforce_authorized_case_boundaries(request, db, case)
         return

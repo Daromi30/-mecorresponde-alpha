@@ -9,6 +9,7 @@ from .fact_validation import normalize_user_fact_key
 
 
 class CaseCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     message: str = Field(min_length=3, max_length=10000)
 
 

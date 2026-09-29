@@ -153,6 +153,13 @@ def reclassify_unsupported_review(
     if case.status != "HUMAN_REVIEW":
         raise HTTPException(status_code=409, detail="Case is no longer waiting for assisted classification")
 
+    if case.mode == "PRIVATE_REAL_BETA":
+        from ..real_beta_gate import allowed_families, audit_once
+        if payload.target_family not in allowed_families():
+            audit_once(db, case.id, "REAL_BETA_FAMILY_BLOCKED", {"target_family": payload.target_family})
+            db.commit()
+            raise HTTPException(status_code=409, detail="Private family is unavailable")
+
     with atomic_workflow_transaction(db) as commit:
         entry = FAMILY_MANIFEST[payload.target_family]
         previous_vertical = case.vertical
@@ -366,8 +373,12 @@ def resolve_structured_review(
             "case_id": case.id,
             "case_status": case.status,
             "fact_ids": created_fact_ids,
-            "updated_diagnosis": result.to_dict(),
-            "decision_id": decision.id,
+            "updated_diagnosis": (
+                {"status": "HUMAN_REVIEW", "reason": "Private family review required"}
+                if case.mode == "PRIVATE_REAL_BETA" and case.current_decision_id is None
+                else result.to_dict()
+            ),
+            "decision_id": case.current_decision_id,
             "action_id": action.id,
         }
         commit()

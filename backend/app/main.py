@@ -37,6 +37,7 @@ from .routers.cases_v2 import router as cases_router
 from .routers.handoff import router as handoff_router
 from .routers.quality import router as quality_router
 from .routers.readiness import beta_readiness as compute_beta_readiness, router as readiness_router
+from .routers.real_beta import admin_router as real_beta_admin_router, router as real_beta_router
 from .routers.seo import router as seo_router
 from .routers.sources import router as sources_router
 from .routers.wait_resume import router as wait_resume_router
@@ -304,6 +305,7 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
     sensitive_api = (
         path == "/api/cases"
         or path.startswith("/api/cases/")
+        or path.startswith("/api/real-beta")
         or path.startswith("/api/admin")
         or path.startswith("/api/auth")
         or path.startswith("/backoffice")
@@ -353,6 +355,8 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
 
 
 app.include_router(cases_router)
+app.include_router(real_beta_router)
+app.include_router(real_beta_admin_router)
 app.include_router(wait_resume_router)
 app.include_router(handoff_router)
 app.include_router(case_deletion_router)

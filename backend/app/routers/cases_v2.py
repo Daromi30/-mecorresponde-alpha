@@ -64,6 +64,7 @@ def serialize_case(db: Session, case: Case):
     reviews = db.scalars(select(HumanReview).where(HumanReview.case_id == case.id).order_by(HumanReview.created_at.desc())).all()
     return {
         "id": case.id,
+        "mode": case.mode,
         "status": case.status,
         "vertical": case.vertical,
         "family": case.family,
@@ -317,8 +318,10 @@ def run_diagnosis(case_id: str, db: Session = Depends(get_db)):
             raise HTTPException(422, str(exc)) from exc
 
         response = {
-            **result.to_dict(),
-            "decision_id": decision.id,
+            **({"status": "HUMAN_REVIEW", "reason": "Private family review required"}
+               if case.mode == "PRIVATE_REAL_BETA" and case.current_decision_id is None
+               else result.to_dict()),
+            "decision_id": case.current_decision_id,
             "action_id": action.id,
         }
         commit()
@@ -462,7 +465,11 @@ def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)
     if (case.family or "") in EVALUATORS:
         try:
             diagnosis, _, _ = diagnose(db, case)
-            updated = diagnosis.to_dict()
+            updated = (
+                {"status": "HUMAN_REVIEW", "reason": "Private family review required"}
+                if case.mode == "PRIVATE_REAL_BETA" and case.current_decision_id is None
+                else diagnosis.to_dict()
+            )
         except ValueError:
             updated = None
     return {"analysis": result, "case_status": case.status, "updated_diagnosis": updated}
