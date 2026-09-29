@@ -133,6 +133,7 @@ def serialize_case(db: Session, case: Case):
                 "reason": review.reason,
                 "priority": review.priority,
                 "status": review.status,
+                "assigned_reviewer_id": review.assigned_reviewer_id,
                 "reviewer_decision": review.reviewer_decision,
             }
             for review in reviews

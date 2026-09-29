@@ -1,5 +1,50 @@
 # MECORRESPONDE AI HANDOFF
 
+## Handoff propuesto a WORK — revisión independiente de identidad backoffice (2026-09-29)
+
+Active owner al abrir PR: **WORK**, para revisión independiente; no merge/deploy autorizado por este handoff. Rama existente `feat/backoffice-reviewer-identity`, basada en `2f6e762ddb61d45c28ea841847805a0357992f97` y el commit documental previo de la rama. Este bloque **no activa beta real**.
+
+Implementado: identidad `Reviewer` separada de cuentas `User`, roles `reviewer`/`operator`, sesiones individuales revocables con digest de token, login throttled no enumerante, logout/cambio de contraseña, gestión de revisores solo con operador autenticado y bootstrap inicial local por consola (no ejecutado en LIVE). El guard central de `/api/admin` conserva el token compartido para operación sintética enumerada, pero no lo acepta para leer/mutar casos `PRIVATE_REAL_BETA`, administrar identidades ni emitir/revocar invitaciones. Cola/estadísticas del token compartido excluyen casos privados. Asignaciones privadas usan `assigned_reviewer_id`; `assigned_to` queda solo para compatibilidad sintética/visual. `AuditEvent.actor_reviewer_id` procede del servidor, y lecturas privadas de detalle/handoff/cola fallan cerradas si no se confirma la auditoría. UI mínima de login/logout, sin secretos en URL ni `localStorage`. Detalles y amenazas: [`backoffice-reviewer-identity-threat-plan.md`](backoffice-reviewer-identity-threat-plan.md).
+
+Migración `0009_backoffice_identity`: aditiva, conserva eventos y casos anteriores con actor nulo; prueba local SQLite de upgrade/downgrade y preservación histórica: **3 passed**. Pruebas dirigidas de identidad/admisión/acciones privadas con datos ficticios: **30 passed**. Suite extensa local: **712 passed, 3 failed** antes de la última prueba adicional; los fallos son la aserción POSIX `0600` en NTFS y dos pruebas de integración PostgreSQL ejecutadas sin servidor PG (la matriz CI proporciona PostgreSQL). JS del backoffice pasa `node --check`; `compileall` y comprobación de diff verdes. PR [#226](https://github.com/Daromi30/-mecorresponde-alpha/pull/226) abierta y sin merge. Los cuatro checks CI Linux/PostgreSQL del head funcional `897b703d0748abc1c018609ac45ff44b264a70bc` terminaron **SUCCESS**: `legal-engine-regression`, `postgres-persistence`, `postgres-backup-restore` y `postgres-migrations`. Verificar de nuevo el último head tras este commit documental antes de merge.
+
+FOLLOW_UP_FINDINGS: MFA, entrega/recuperación de credenciales, acceso de emergencia y proceso de altas/bajas requieren decisión operativa; la auditoría SQL no equivale a registro forense inmutable; la reclasificación de un caso privado sin familia permanece correctamente bloqueada por la admisión, incluso para operador; el intake sintético público sigue pudiendo contener texto libre real, por lo que no se debe tratar como perímetro listo para datos personales. Siguen pendientes los gates de privacidad, identidad empresarial, continuidad PostgreSQL, storage y revisión legal. No se han usado datos reales, proveedores, cambios de Render ni gasto.
+
+REAL BETA READINESS: **NOT READY**. `REAL_BETA_LAUNCH_REVIEW_COMPLETE=False`, `real_beta_enabled="false"` y allowlist vacía por defecto, sin modificación. Next owner: **WORK** revisa el PR/diff, migración y CI del último head; merge solo con controles verdes y sin interpretar este bloque como autorización para abrir `PRIVATE_REAL_BETA`.
+
+## Handoff previo a CODEX — identidad individual del backoffice (2026-09-29)
+
+Active owner histórico: **CODEX**
+
+Base SHA: `2f6e762ddb61d45c28ea841847805a0357992f97` (GitHub `main` y Render LIVE exactos al preparar este handoff; verificar de nuevo al comenzar)
+
+Branch: `feat/backoffice-reviewer-identity`
+
+Objective: sustituir, para expedientes `PRIVATE_REAL_BETA`, el uso del `ADMIN_API_TOKEN` compartido como única identidad operativa por **identidad individual de revisor, sesión revocable y atribución servidor-side de lecturas y acciones**. Es un bloque de control de acceso/auditoría, no una activación de beta real.
+
+Contexto: PR #224 `MERGED` como `85cb253bc1818c09e7ce8e0f6dce5bb717122fed`; migración 0008 observada en logs, CI verde, LIVE privado efectivo cerrado y smoke sintético PASS. PR #225 documental `MERGED` como el Base SHA anterior, cuatro checks del merge verdes, Render `dep-datr10vf3r2c73e2npk0` LIVE/`/health.runtime_revision` exacto, logs sanos. Gate I ahora **PARTIAL (implemented but disabled)**; `REAL BETA READINESS: NOT READY`. Diseño y amenazas inspeccionadas: [`backoffice-reviewer-identity-threat-plan.md`](backoffice-reviewer-identity-threat-plan.md). El freeze sintético sigue `549a71a8235560fe298f5ee7556d4d44954f3a8c` y PASS solo sintético.
+
+Acceptance criteria:
+
+1. Crear identidad persistente de revisor separada de `User` auto-registrable, con roles mínimos, alta/baja controlada mediante bootstrap autorizado, contraseña con hash seguro y sin credenciales en claro persistidas/logueadas. `ADMIN_API_TOKEN` puede conservar funciones de bootstrap/sintéticas, pero **no** ser bypass para leer o mutar un caso privado sin actor individual autenticado.
+2. Sesión de backoffice aleatoria, solo digest persistido, cookie HttpOnly/Secure en Render/SameSite Strict, TTL corto y revocación por logout, deshabilitación y cambio de credencial. Login no enumerante, throttling y autorización coherente por rol. No reutilizar una sesión de reclamante como sesión de revisor.
+3. Para toda ruta de `/api/admin` que exponga expediente privado —cola, detalle, handoff/exportación y revisiones— comprobar actor y rol en servidor. Auditar lectura de cola y accesos a expediente; si el registro de una lectura privada falla, no devolver los datos. Las rutas de `review_id` deben resolver el caso igual que las de `case_id`.
+4. Para asignación, reanálisis estructurado, reclasificación, escalado y cualquier cambio privado, registrar actor inmutable derivado de sesión, objetivo, acción, momento y resultado, sin secretos/raw intake/payload completo en el evento. `HumanReview.assigned_to` enviado por cliente no prueba identidad ni puede suplantar al actor; una asignación privada debe apuntar a un revisor existente autorizado. Compatibilidad sintética deliberada, no backfill de actores históricos inventados.
+5. La UI de backoffice debe permitir sesión individual y cierre, mostrar el estado de autenticación y no dejar token/credencial en URL o `localStorage`. Respuestas privadas `no-store` y guardas Origin/Sec-Fetch-Site conservadas. Sin proveedor IAM/correo externo ni coste.
+6. Migración aditiva, sin transformar usuarios ni casos históricos. Mantener `REAL_BETA_LAUNCH_REVIEW_COMPLETE=False`, allowlist cerrada en LIVE, uploads/privacidad/indexación/email apagados. El bloque no cambia `REAL BETA READINESS` a READY. Documentar MFA como pendiente de evaluación de riesgo, no fingir que queda resuelta.
+
+Tests: con dos revisores y casos **ficticios**, probar actor distinto en lectura/escritura, token compartido solo denegado en caso privado, cookie de reclamante denegada, `assigned_to` falsificado incapaz de cambiar actor, rol insuficiente, revocación/deshabilitación/expiración, throttling/no enumeración, fallos de auditoría que cierran lectura, rutas de `case_id` y `review_id`, logs sin secretos, regresión sintética, migración upgrade/downgrade, suite backend pertinente y los cuatro checks CI PostgreSQL/Linux. Nunca usar usuarios, emails o documentos reales.
+
+Do not touch: Motor/familias/fuentes jurídicas, textos legales finales, identidad empresarial, configuración/plan/secretos de Render, storage/uploads, correo externo, pagos, SEO/indexación, el interlock de beta real ni `main` directamente. No desplegar ni fusionar antes de PR revisada y CI verde. No implementar IAM empresarial ni contratar terceros.
+
+Cost boundary: **CERO COSTE**. Real data: **PROHIBIDO**.
+
+NEXT_EXECUTABLE_TASK: CODEX implementa este único bloque en la rama indicada, ejecuta pruebas, prepara PR y devuelve a WORK para revisión/integración. En paralelo, WORK puede preparar decisiones empresariales/privacidad/continuidad DB sin tocar esta rama. Tras identidad individual todavía faltará cerrar el texto libre sintético público y los gates externos; no abrir beta real.
+
+CODEX READY
+
+## Historial anterior (no define owner, base ni tarea vigentes)
+
 ## Verificación post-#224 en WORK (2026-09-29)
 
 Active owner: **WORK** hasta integrar esta actualización documental y crear la rama del siguiente bloque. PR #224 `MERGED`; head revisado `e2e3912467b69afc15d9f3c949ef010d2ccc2ea4`, cuatro checks verdes y 10 pruebas locales dirigidas aprobadas. GitHub `main=85cb253bc1818c09e7ce8e0f6dce5bb717122fed`; Render auto-deploy `dep-datqsqbrjlhs73c0n2kg` terminó `live` en el mismo SHA, sin deploy manual. Los cuatro checks del merge commit también están verdes. `/health` 200/status ok/families 26/revisión exacta; `/health/persistence` PostgreSQL persistente; `/health/storage` `blocked`, local no persistente, uploads false; `/privacidad` 503/no-store/noindex; demo noindex, sitemap 404; email transaccional/recovery/verificación false. Logs de esa revisión: Alembic `0007 -> 0008_real_beta_admission`, `synthetic_internal_beta_ready=True`, `internal_beta_blockers=none`, indexación false, sin errores observados. La IP allowlist vacía de Postgres impidió lectura SQL directa de `alembic_version`; no se abrió acceso externo.

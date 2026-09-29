@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..admin_auth import require_admin
+from ..admin_auth import AdminPrincipal, require_admin
 from ..case_lifecycle import complete_current_action, set_current_action
 from ..case_locking import lock_case_for_update
 from ..db import get_db
@@ -132,6 +132,7 @@ def reclassify_unsupported_review(
     review_id: str,
     payload: AssistedReclassification,
     db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(require_admin),
 ) -> dict[str, Any]:
     """Route an unsupported intake into one existing family without deciding the law.
 
@@ -157,6 +158,7 @@ def reclassify_unsupported_review(
         from ..real_beta_gate import allowed_families, audit_once
         if payload.target_family not in allowed_families():
             audit_once(db, case.id, "REAL_BETA_FAMILY_BLOCKED", {"target_family": payload.target_family})
+            audit(db, case.id, "BACKOFFICE_RECLASSIFICATION_DENIED", {"target_family": payload.target_family}, actor_reviewer_id=principal.actor_id)
             db.commit()
             raise HTTPException(status_code=409, detail="Private family is unavailable")
 
@@ -180,6 +182,7 @@ def reclassify_unsupported_review(
                 "target_family": entry.code,
                 "target_vertical": entry.vertical,
             },
+            actor_reviewer_id=principal.actor_id,
         )
         db.flush()
         next_question = get_next_question(db, case)
@@ -202,6 +205,7 @@ def escalate_post_response_review_to_professional(
     review_id: str,
     payload: ProfessionalEscalation,
     db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(require_admin),
 ) -> dict[str, Any]:
     """Move a post-response dead end into an explicit professional-review handoff.
 
@@ -263,6 +267,7 @@ def escalate_post_response_review_to_professional(
             "family": case.family,
             "decision_id": case.current_decision_id,
         },
+        actor_reviewer_id=principal.actor_id,
     )
     db.commit()
 
@@ -282,6 +287,7 @@ def resolve_structured_review(
     review_id: str,
     payload: StructuredReviewResolution,
     db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(require_admin),
 ) -> dict[str, Any]:
     review = _review_or_404(db, review_id)
     if review.status != "OPEN":
@@ -352,11 +358,13 @@ def resolve_structured_review(
             "HUMAN_REVIEW_STRUCTURED_RESOLUTION",
             {
                 "review_id": review.id,
-                "assigned_to": review.assigned_to,
+                **({"assigned_reviewer_id": review.assigned_reviewer_id}
+                   if case.mode == "PRIVATE_REAL_BETA" else {"assigned_to": review.assigned_to}),
                 "fact_updates": update_audit,
                 "reanalyze_requested": True,
                 "review_reason": review.reason,
             },
+            actor_reviewer_id=principal.actor_id,
         )
         db.flush()
 

@@ -9,7 +9,8 @@ import pytest
 from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import Session
 
-from app.auth_models import RealBetaInvitation, User
+from app.auth_models import RealBetaInvitation, Reviewer, User
+from app.backoffice_auth import create_reviewer
 from app.config import settings
 from app.db import Base
 from app.models import AuditEvent, Case
@@ -28,8 +29,15 @@ def _register(client, email):
     assert response.status_code == 201, response.text
 
 
-def _invite(client):
-    response = client.post("/api/admin/real-beta/invitations", json={"expires_in_hours": 24}, headers=ADMIN)
+def _invite(client, db):
+    if db.query(Reviewer).count() == 0:
+        create_reviewer(db, "testoperator", "synthetic-operator-password", "operator")
+        db.commit()
+    logged_in = client.post("/api/backoffice-auth/login", json={
+        "login_id": "testoperator", "password": "synthetic-operator-password",
+    })
+    assert logged_in.status_code == 200, logged_in.text
+    response = client.post("/api/admin/real-beta/invitations", json={"expires_in_hours": 24})
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -65,7 +73,7 @@ def test_gate_is_default_off_and_invalid_allowlist_fails_closed(client, monkeypa
 
 
 def test_invitation_one_time_account_binding_revocation_and_no_secret_audit(client, db, simulated_gate):
-    invitation = _invite(client)
+    invitation = _invite(client, db)
     stored = db.get(RealBetaInvitation, invitation["invitation_id"])
     assert stored.token_digest == hashlib.sha256(invitation["token"].encode()).hexdigest()
     assert invitation["token"] not in str(stored.__dict__)
@@ -94,8 +102,8 @@ def test_invitation_one_time_account_binding_revocation_and_no_secret_audit(clie
     assert client.get(f"/api/cases/{case_id}").status_code in (403, 404)
     assert client.post("/api/real-beta/cases", json={"message": ELECTRICITY}).status_code == 403
 
-    assert client.post(f"/api/admin/real-beta/invitations/{invitation['invitation_id']}/revoke", headers=ADMIN).status_code == 200
-    assert client.post(f"/api/admin/real-beta/invitations/{invitation['invitation_id']}/revoke", headers=ADMIN).status_code == 200
+    assert client.post(f"/api/admin/real-beta/invitations/{invitation['invitation_id']}/revoke").status_code == 200
+    assert client.post(f"/api/admin/real-beta/invitations/{invitation['invitation_id']}/revoke").status_code == 200
     assert len(db.scalars(select(AuditEvent).where(AuditEvent.event_type == "REAL_BETA_INVITE_REVOKED")).all()) == 1
     client.post("/api/auth/logout")
     assert client.post("/api/auth/login", json={
@@ -107,7 +115,7 @@ def test_invitation_one_time_account_binding_revocation_and_no_secret_audit(clie
 
 
 def test_expired_invite_and_family_rejection_do_not_persist_intake(client, db, simulated_gate):
-    invitation = _invite(client)
+    invitation = _invite(client, db)
     _register(client, "expiry-real-beta@example.com")
     stored = db.get(RealBetaInvitation, invitation["invitation_id"])
     stored.expires_at = gate.utcnow() - timedelta(seconds=1)
@@ -115,7 +123,7 @@ def test_expired_invite_and_family_rejection_do_not_persist_intake(client, db, s
     assert client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]}).status_code == 404
     assert stored.status == "ISSUED"
 
-    another = _invite(client)
+    another = _invite(client, db)
     assert client.post("/api/real-beta/invitations/accept", json={"token": another["token"]}).status_code == 200
     before = db.query(Case).count()
     rejected = client.post("/api/real-beta/cases", json={"message": "Compré un televisor defectuoso y no me respetan la garantía"})
@@ -126,10 +134,10 @@ def test_expired_invite_and_family_rejection_do_not_persist_intake(client, db, s
     assert all("televisor" not in str(item.payload_json) for item in blocked)
 
 
-def test_revoked_unaccepted_and_unknown_invites_share_non_enumerating_response(client, simulated_gate):
-    invitation = _invite(client)
+def test_revoked_unaccepted_and_unknown_invites_share_non_enumerating_response(client, db, simulated_gate):
+    invitation = _invite(client, db)
     _register(client, "invalid-real-beta@example.com")
-    assert client.post(f"/api/admin/real-beta/invitations/{invitation['invitation_id']}/revoke", headers=ADMIN).status_code == 200
+    assert client.post(f"/api/admin/real-beta/invitations/{invitation['invitation_id']}/revoke").status_code == 200
     revoked = client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]})
     unknown = client.post("/api/real-beta/invitations/accept", json={"token": "not-an-invitation-" + "x" * 40})
     assert revoked.status_code == unknown.status_code == 404
@@ -137,7 +145,7 @@ def test_revoked_unaccepted_and_unknown_invites_share_non_enumerating_response(c
 
 
 def test_real_case_mutation_blocks_when_gate_closes_but_owner_can_read(client, db, simulated_gate, monkeypatch):
-    invitation = _invite(client)
+    invitation = _invite(client, db)
     _register(client, "closure-real-beta@example.com")
     assert client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]}).status_code == 200
     case_id = client.post("/api/real-beta/cases", json={"message": ELECTRICITY}).json()["id"]
@@ -147,12 +155,13 @@ def test_real_case_mutation_blocks_when_gate_closes_but_owner_can_read(client, d
     monkeypatch.setattr(settings, "real_beta_enabled", "false")
     assert client.get(f"/api/cases/{case_id}").status_code == 200
     assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 403
-    assert client.post(f"/api/admin/reviews/{review.id}/assign", json={"assigned_to": "synthetic-reviewer"}, headers=ADMIN).status_code == 403
+    assert client.post(f"/api/admin/reviews/{review.id}/assign", json={"assigned_to": "synthetic-reviewer"}).status_code == 403
     assert db.get(HumanReview, review.id).assigned_to is None
 
 
 def test_admin_invitation_requires_admin_secret(client):
     assert client.post("/api/admin/real-beta/invitations", json={"expires_in_hours": 24}).status_code == 401
+    assert client.post("/api/admin/real-beta/invitations", json={"expires_in_hours": 24}, headers=ADMIN).status_code == 403
 
 
 def test_direct_private_api_requires_login_even_when_gate_is_simulated_open(client, simulated_gate):
@@ -161,7 +170,7 @@ def test_direct_private_api_requires_login_even_when_gate_is_simulated_open(clie
 
 
 def test_admission_expires_at_exact_boundary_and_does_not_delete_case(client, db, simulated_gate):
-    invitation = _invite(client)
+    invitation = _invite(client, db)
     _register(client, "boundary-real-beta@example.com")
     assert client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]}).status_code == 200
     user = db.scalar(select(User).where(User.email == "boundary-real-beta@example.com"))
@@ -186,7 +195,7 @@ def test_admission_expires_at_exact_boundary_and_does_not_delete_case(client, db
 
 def test_reclassification_outside_allowlist_stops_without_material_decision(client, db, simulated_gate, monkeypatch):
     monkeypatch.setattr(settings, "real_beta_allowlist", "E06")
-    invitation = _invite(client)
+    invitation = _invite(client, db)
     _register(client, "reclass-real-beta@example.com")
     assert client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]}).status_code == 200
     created = client.post("/api/real-beta/cases", json={

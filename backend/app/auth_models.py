@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -40,6 +40,32 @@ class UserSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Reviewer(Base):
+    """Provisioned backoffice principal; never a claimant User."""
+
+    __tablename__ = "reviewers"
+    __table_args__ = (CheckConstraint("role IN ('reviewer', 'operator')", name="ck_reviewer_role"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    login_id: Mapped[str] = mapped_column(String(120), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now, nullable=False)
+
+
+class ReviewerSession(Base):
+    __tablename__ = "reviewer_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    reviewer_id: Mapped[str] = mapped_column(ForeignKey("reviewers.id", ondelete="CASCADE"), index=True, nullable=False)
+    token_digest: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
 
 
 class RealBetaInvitation(Base):

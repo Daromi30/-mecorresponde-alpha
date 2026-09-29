@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from ..admin_auth import require_admin
+from ..admin_auth import AdminPrincipal, require_admin
 from ..auth import require_current_user
 from ..auth_models import RealBetaInvitation, User
 from ..db import get_db
@@ -46,7 +46,10 @@ class PrivateCaseCreate(BaseModel):
 
 
 @admin_router.post("/invitations", status_code=201)
-def issue_invitation(payload: InvitationIssue, db: Session = Depends(get_db)):
+def issue_invitation(
+    payload: InvitationIssue, db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(require_admin),
+):
     # The secret is returned only at issuance. Delivery is deliberately out of scope.
     token = secrets.token_urlsafe(32)
     invitation = RealBetaInvitation(
@@ -56,20 +59,23 @@ def issue_invitation(payload: InvitationIssue, db: Session = Depends(get_db)):
     )
     db.add(invitation)
     db.flush()
-    audit(db, None, "REAL_BETA_INVITE_CREATED", {"invitation_id": invitation.id})
+    audit(db, None, "REAL_BETA_INVITE_CREATED", {"invitation_id": invitation.id}, actor_reviewer_id=principal.actor_id)
     db.commit()
     return {"invitation_id": invitation.id, "token": token, "expires_at": invitation.expires_at}
 
 
 @admin_router.post("/invitations/{invitation_id}/revoke")
-def revoke_invitation(invitation_id: str, db: Session = Depends(get_db)):
+def revoke_invitation(
+    invitation_id: str, db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(require_admin),
+):
     invitation = db.scalar(select(RealBetaInvitation).where(RealBetaInvitation.id == invitation_id).with_for_update())
     if invitation is None:
         raise HTTPException(404, "Invitation unavailable")
     if invitation.revoked_at is None:
         invitation.revoked_at = utcnow()
         invitation.status = "REVOKED"
-        audit(db, None, "REAL_BETA_INVITE_REVOKED", {"invitation_id": invitation.id})
+        audit(db, None, "REAL_BETA_INVITE_REVOKED", {"invitation_id": invitation.id}, actor_reviewer_id=principal.actor_id)
         db.commit()
     return {"status": "REVOKED"}
 

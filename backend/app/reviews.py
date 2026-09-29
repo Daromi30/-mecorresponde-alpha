@@ -19,6 +19,9 @@ class HumanReview(Base):
     status: Mapped[str] = mapped_column(String(30), default="OPEN", index=True)
     context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     assigned_to: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    assigned_reviewer_id: Mapped[str | None] = mapped_column(
+        ForeignKey("reviewers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     reviewer_decision: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

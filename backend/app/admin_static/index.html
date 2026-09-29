@@ -61,11 +61,17 @@
 </header>
 <main>
   <div class="auth">
-    <input id="token" type="password" autocomplete="off" placeholder="Token interno de administración" />
-    <button id="connect">Conectar</button>
+    <input id="reviewerLogin" type="text" autocomplete="username" placeholder="Identificador de revisor" />
+    <input id="reviewerPassword" type="password" autocomplete="current-password" placeholder="Contraseña de revisor" />
+    <button id="reviewerConnect">Iniciar sesión</button>
+    <button id="reviewerLogout" class="secondary">Cerrar sesión</button>
     <button id="refresh" class="secondary">Actualizar</button>
     <span id="authStatus" class="status">No conectado</span>
-    <span class="privacyNote">El token se mantiene solo en memoria y se pierde al recargar.</span>
+    <span class="privacyNote">Sesión individual en cookie HttpOnly; la contraseña no se conserva en esta página.</span>
+    <details><summary>Acceso heredado, solo expedientes sintéticos</summary>
+      <input id="token" type="password" autocomplete="off" placeholder="Token interno sintético" />
+      <button id="connect">Conectar al modo sintético</button>
+    </details>
   </div>
 
   <div id="metrics" class="metrics" aria-label="Métricas beta"></div>
@@ -96,6 +102,8 @@
 </main>
 <script>
 const tokenEl = document.getElementById('token');
+const reviewerLoginEl = document.getElementById('reviewerLogin');
+const reviewerPasswordEl = document.getElementById('reviewerPassword');
 const statusEl = document.getElementById('authStatus');
 const queueEl = document.getElementById('queue');
 const detailEl = document.getElementById('detail');
@@ -105,16 +113,28 @@ const funnelEl = document.getElementById('funnel');
 const verticalsEl = document.getElementById('verticals');
 const familiesEl = document.getElementById('families');
 let currentReview = null;
+let useLegacyToken = false;
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 }
-function authHeaders() { return {'Authorization':'Bearer ' + tokenEl.value.trim(), 'Content-Type':'application/json'}; }
+function authHeaders() {
+  return useLegacyToken ? {'Authorization':'Bearer ' + tokenEl.value.trim(), 'Content-Type':'application/json'}
+                        : {'Content-Type':'application/json'};
+}
 async function api(path, options={}) {
-  const response = await fetch(path, {...options, headers:{...authHeaders(), ...(options.headers||{})}, cache:'no-store'});
+  const response = await fetch(path, {...options, headers:{...authHeaders(), ...(options.headers||{})}, credentials:'same-origin', cache:'no-store'});
   if (!response.ok) {
     let message = response.status + ' ' + response.statusText;
     try { const body = await response.json(); message = body.detail || message; } catch (_) {}
+    if (response.status === 401 && !useLegacyToken) {
+      statusEl.className = 'status danger';
+      statusEl.textContent = 'Sesión caducada o revocada. Vuelve a iniciar sesión.';
+      summaryEl.textContent = '';
+      queueEl.innerHTML = '<div class="empty">Inicia sesión para cargar la cola.</div>';
+      detailEl.innerHTML = '<div class="empty">Selecciona una revisión.</div>';
+      currentReview = null;
+    }
     throw new Error(message);
   }
   return response.json();
@@ -123,15 +143,56 @@ function euro(value) { return new Intl.NumberFormat('es-ES', {style:'currency', 
 
 async function connect() {
   if (!tokenEl.value.trim()) return;
+  useLegacyToken = true;
   statusEl.textContent = 'Comprobando…';
   try {
     await api('/api/admin/health');
-    statusEl.textContent = 'Conectado';
+    statusEl.textContent = 'Modo sintético heredado';
     await refreshAll();
   } catch (e) {
     statusEl.textContent = 'Acceso denegado';
     statusEl.className = 'status danger';
   }
+}
+
+async function reviewerLogin() {
+  if (!reviewerLoginEl.value.trim() || !reviewerPasswordEl.value) return;
+  statusEl.textContent = 'Comprobando…';
+  try {
+    const response = await fetch('/api/backoffice-auth/login', {
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', cache:'no-store',
+      body:JSON.stringify({login_id:reviewerLoginEl.value.trim(), password:reviewerPasswordEl.value})
+    });
+    reviewerPasswordEl.value = '';
+    if (!response.ok) throw new Error('Acceso denegado');
+    const session = await response.json();
+    useLegacyToken = false;
+    tokenEl.value = '';
+    statusEl.className = 'status';
+    statusEl.textContent = `Revisor: ${session.login_id} (${session.role})`;
+    await refreshAll();
+  } catch (_) { reviewerPasswordEl.value = ''; statusEl.className='status danger'; statusEl.textContent='Acceso denegado'; }
+}
+
+async function reviewerLogout() {
+  await fetch('/api/backoffice-auth/logout', {method:'POST', credentials:'same-origin', cache:'no-store'});
+  useLegacyToken = false;
+  tokenEl.value = '';
+  reviewerPasswordEl.value = '';
+  statusEl.className = 'status';
+  statusEl.textContent = 'No conectado';
+  summaryEl.textContent = '';
+  queueEl.innerHTML = '<div class="empty">Inicia sesión para cargar la cola.</div>';
+  detailEl.innerHTML = '<div class="empty">Selecciona una revisión.</div>';
+}
+
+async function restoreReviewerSession() {
+  const response = await fetch('/api/backoffice-auth/session', {credentials:'same-origin', cache:'no-store'});
+  if (!response.ok) return;
+  const session = await response.json();
+  useLegacyToken = false;
+  statusEl.textContent = `Revisor: ${session.login_id} (${session.role})`;
+  await refreshAll();
 }
 
 async function refreshAll() {
@@ -214,8 +275,12 @@ function renderCase(c, reviewId) {
 }
 
 document.getElementById('connect').addEventListener('click', connect);
+document.getElementById('reviewerConnect').addEventListener('click', reviewerLogin);
+document.getElementById('reviewerLogout').addEventListener('click', reviewerLogout);
 document.getElementById('refresh').addEventListener('click', () => refreshAll().catch(e => { statusEl.textContent=e.message; }));
 tokenEl.addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+reviewerPasswordEl.addEventListener('keydown', e => { if (e.key === 'Enter') reviewerLogin(); });
+restoreReviewerSession().catch(() => {});
 </script>
 <script src="structured_review.js"></script>
 <script src="structured_review_reanalysis_guard.js"></script>
