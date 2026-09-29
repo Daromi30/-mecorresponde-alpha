@@ -34,7 +34,7 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id) is not None
         revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0009_backoffice_reviewer_identity"
+        assert revision == "0009_backoffice_identity"
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
 
     inspector = inspect(engine)
@@ -100,7 +100,7 @@ def test_real_beta_migration_upgrades_legacy_rows_and_is_reversible():
     upgrade_database()
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0009_backoffice_reviewer_identity"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0009_backoffice_identity"
     assert "real_beta_invitations" in inspect(engine).get_table_names()
 
     with engine.begin() as conn:
@@ -130,7 +130,7 @@ def test_reviewer_migration_from_0008_preserves_historical_audit_and_reverses():
     config.set_main_option("script_location", str(backend_dir / "alembic"))
     with engine.begin() as conn:
         config.attributes["connection"] = conn
-        command.stamp(config, "0009_backoffice_reviewer_identity")
+        command.stamp(config, "0009_backoffice_identity")
     with engine.begin() as conn:
         config.attributes["connection"] = conn
         command.downgrade(config, "0008_real_beta_admission")
@@ -139,7 +139,7 @@ def test_reviewer_migration_from_0008_preserves_historical_audit_and_reverses():
     with SessionLocal() as db:
         assert db.get(Case, case_id).mode == "SYNTHETIC"
         assert db.get(AuditEvent, event_id).actor_reviewer_id is None
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0009_backoffice_reviewer_identity"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0009_backoffice_identity"
     assert "reviewers" in inspect(engine).get_table_names()
 
     with engine.begin() as conn:

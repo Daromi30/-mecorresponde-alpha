@@ -3,7 +3,7 @@
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0009_backoffice_reviewer_identity"
+revision = "0009_backoffice_identity"
 down_revision = "0008_real_beta_admission"
 branch_labels = None
 depends_on = None
