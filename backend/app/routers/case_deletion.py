@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from ..case_lifecycle import CaseDeletionStorageError, delete_case_and_data
 from ..case_locking import lock_case_for_update
 from ..db import get_db
+from ..demo_boundary import enforce_demo_boundary
 from ..models import Case
 from ..schemas_v2 import CaseDeleteRequest
 from ..security import clear_case_access_cookie, require_case_access
@@ -14,7 +15,7 @@ from ..security import clear_case_access_cookie, require_case_access
 router = APIRouter(
     prefix="/api/cases",
     tags=["case-deletion"],
-    dependencies=[Depends(require_case_access)],
+    dependencies=[Depends(require_case_access), Depends(enforce_demo_boundary)],
 )
 
 

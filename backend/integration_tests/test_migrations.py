@@ -34,8 +34,9 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id) is not None
         revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0009_backoffice_identity"
+        assert revision == "0010_closed_demo_scenarios"
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
+        assert db.get(Case, sentinel_id).demo_scenario_id is None
 
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
@@ -50,6 +51,7 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     assert "actor_reviewer_id" in {column["name"] for column in inspector.get_columns("audit_events")}
     assert "assigned_reviewer_id" in {column["name"] for column in inspector.get_columns("human_reviews")}
     assert "mode" in {column["name"] for column in inspector.get_columns("cases")}
+    assert "demo_scenario_id" in {column["name"] for column in inspector.get_columns("cases")}
     assert "resolved_on" in {column["name"] for column in inspector.get_columns("outcomes")}
     assert "occurred_on" in {column["name"] for column in inspector.get_columns("communications")}
 
@@ -71,6 +73,7 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     assert "reviewers" in tables
     assert "reviewer_sessions" in tables
     assert "mode" in {column["name"] for column in inspector.get_columns("cases")}
+    assert "demo_scenario_id" in {column["name"] for column in inspector.get_columns("cases")}
     assert "documents" in tables
     assert "human_reviews" in tables
     assert "legal_rule_versions" in tables
@@ -100,7 +103,7 @@ def test_real_beta_migration_upgrades_legacy_rows_and_is_reversible():
     upgrade_database()
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0009_backoffice_identity"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0010_closed_demo_scenarios"
     assert "real_beta_invitations" in inspect(engine).get_table_names()
 
     with engine.begin() as conn:
@@ -139,7 +142,7 @@ def test_reviewer_migration_from_0008_preserves_historical_audit_and_reverses():
     with SessionLocal() as db:
         assert db.get(Case, case_id).mode == "SYNTHETIC"
         assert db.get(AuditEvent, event_id).actor_reviewer_id is None
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0009_backoffice_identity"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0010_closed_demo_scenarios"
     assert "reviewers" in inspect(engine).get_table_names()
 
     with engine.begin() as conn:

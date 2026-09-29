@@ -12,6 +12,7 @@ from ..calendar_clock import spain_today
 from ..case_quality import build_dossier_quality
 from ..case_locking import lock_case_for_update
 from ..db import get_db
+from ..demo_boundary import enforce_demo_boundary
 from ..evidence_context import atomic_workflow_transaction, company_response_evidence_context, outcome_evidence_context
 from ..models import Action, AuditEvent, Case, Communication, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
@@ -24,7 +25,7 @@ from .cases_v2 import response as process_company_response
 router = APIRouter(
     prefix="/api/cases",
     tags=["case-quality"],
-    dependencies=[Depends(require_case_access)],
+    dependencies=[Depends(require_case_access), Depends(enforce_demo_boundary)],
 )
 
 

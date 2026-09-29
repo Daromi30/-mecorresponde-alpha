@@ -15,17 +15,19 @@ def _quality_js() -> str:
     )
 
 
-def test_product_home_loads_dossier_quality_layer(client):
+def test_product_home_uses_closed_demo_without_legacy_quality_loader(client):
     response = client.get("/")
     assert response.status_code == 200
-    assert _versioned_loader_tag() in response.text
+    assert "Escenarios ficticios" in response.text
+    assert _versioned_loader_tag() not in response.text
 
 
-def test_demo_entrypoints_load_guarded_product_layer(client):
+def test_demo_entrypoints_serve_closed_fictional_demo(client):
     for path in ("/demo/", "/demo/index.html"):
         response = client.get(path)
         assert response.status_code == 200
-        assert _versioned_loader_tag() in response.text
+        assert "Escenarios ficticios" in response.text
+        assert _versioned_loader_tag() not in response.text
         assert response.headers["x-robots-tag"] == "noindex, nofollow"
         # The unresolved placeholder is replaced with the reviewed first
         # layer, or with nothing while business/legal details are incomplete.

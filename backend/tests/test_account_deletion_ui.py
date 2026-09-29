@@ -7,10 +7,12 @@ import tempfile
 STATIC = Path(__file__).parents[1] / "app" / "static"
 
 
-def test_product_home_loads_account_deletion_module(client):
+def test_closed_demo_home_does_not_load_account_modules(client):
     response = client.get("/")
     assert response.status_code == 200
-    assert "/demo/dossier_quality.js" in response.text
+    assert "Escenarios ficticios" in response.text
+    assert "/demo/dossier_quality.js" not in response.text
+    assert "/demo/account_deletion.js" not in response.text
 
     quality = (STATIC / "dossier_quality.js").read_text(encoding="utf-8")
     assert "/demo/account_deletion.js" in quality

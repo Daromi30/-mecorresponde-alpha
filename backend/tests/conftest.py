@@ -3,12 +3,14 @@ os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["ADMIN_API_TOKEN"] = "test-admin-token"
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db import Base, get_db
+from app.demo_boundary import enforce_demo_boundary
 from app.main import app
 from app.services_v2 import seed_legal
 
@@ -28,7 +30,12 @@ def db():
 def client(db):
     def override():
         yield db
+    def internal_flexible_fixture(request: Request):
+        # API regression fixtures deliberately exercise the unrestricted Motor.
+        # This override exists only in tests; production has no HTTP escape hatch.
+        request.state.allow_flexible_fixture = True
     app.dependency_overrides[get_db] = override
+    app.dependency_overrides[enforce_demo_boundary] = internal_flexible_fixture
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
