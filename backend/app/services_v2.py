@@ -39,8 +39,14 @@ from .reviews import HumanReview
 gateway = DeterministicAlphaGateway()
 
 
-def audit(db: Session, case_id: str | None, event_type: str, payload: dict[str, Any] | None = None):
-    db.add(AuditEvent(case_id=case_id, event_type=event_type, payload_json=payload or {}))
+def audit(
+    db: Session, case_id: str | None, event_type: str,
+    payload: dict[str, Any] | None = None, *, actor_reviewer_id: str | None = None,
+):
+    db.add(AuditEvent(
+        case_id=case_id, actor_reviewer_id=actor_reviewer_id,
+        event_type=event_type, payload_json=payload or {},
+    ))
 
 
 def create_human_review(

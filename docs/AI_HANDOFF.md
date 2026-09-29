@@ -1,8 +1,20 @@
 # MECORRESPONDE AI HANDOFF
 
-## Handoff vigente a CODEX — identidad individual del backoffice (2026-09-29)
+## Handoff propuesto a WORK — revisión independiente de identidad backoffice (2026-09-29)
 
-Active owner: **CODEX**
+Active owner al abrir PR: **WORK**, para revisión independiente; no merge/deploy autorizado por este handoff. Rama existente `feat/backoffice-reviewer-identity`, basada en `2f6e762ddb61d45c28ea841847805a0357992f97` y el commit documental previo de la rama. Este bloque **no activa beta real**.
+
+Implementado: identidad `Reviewer` separada de cuentas `User`, roles `reviewer`/`operator`, sesiones individuales revocables con digest de token, login throttled no enumerante, logout/cambio de contraseña, gestión de revisores solo con operador autenticado y bootstrap inicial local por consola (no ejecutado en LIVE). El guard central de `/api/admin` conserva el token compartido para operación sintética enumerada, pero no lo acepta para leer/mutar casos `PRIVATE_REAL_BETA`, administrar identidades ni emitir/revocar invitaciones. Cola/estadísticas del token compartido excluyen casos privados. Asignaciones privadas usan `assigned_reviewer_id`; `assigned_to` queda solo para compatibilidad sintética/visual. `AuditEvent.actor_reviewer_id` procede del servidor, y lecturas privadas de detalle/handoff/cola fallan cerradas si no se confirma la auditoría. UI mínima de login/logout, sin secretos en URL ni `localStorage`. Detalles y amenazas: [`backoffice-reviewer-identity-threat-plan.md`](backoffice-reviewer-identity-threat-plan.md).
+
+Migración `0009_backoffice_reviewer_identity`: aditiva, conserva eventos y casos anteriores con actor nulo; prueba local SQLite de upgrade/downgrade y preservación histórica: **3 passed**. Pruebas dirigidas de identidad/admisión/acciones privadas con datos ficticios: verdes. Suite extensa local: **712 passed, 3 failed** antes de la última prueba adicional; los fallos son la aserción POSIX `0600` en NTFS y dos pruebas de integración PostgreSQL ejecutadas sin servidor PG (la matriz CI proporciona PostgreSQL). JS del backoffice pasa `node --check`; `compileall` y comprobación de diff se repetirán antes de PR. Los cuatro checks CI Linux/PostgreSQL del head final deben verificarse en el PR, no inferirse de la suite Windows.
+
+FOLLOW_UP_FINDINGS: MFA, entrega/recuperación de credenciales, acceso de emergencia y proceso de altas/bajas requieren decisión operativa; la auditoría SQL no equivale a registro forense inmutable; la reclasificación de un caso privado sin familia permanece correctamente bloqueada por la admisión, incluso para operador; el intake sintético público sigue pudiendo contener texto libre real, por lo que no se debe tratar como perímetro listo para datos personales. Siguen pendientes los gates de privacidad, identidad empresarial, continuidad PostgreSQL, storage y revisión legal. No se han usado datos reales, proveedores, cambios de Render ni gasto.
+
+REAL BETA READINESS: **NOT READY**. `REAL_BETA_LAUNCH_REVIEW_COMPLETE=False`, `real_beta_enabled="false"` y allowlist vacía por defecto, sin modificación. Next owner: **WORK** revisa el PR/diff, migración y CI del último head; merge solo con controles verdes y sin interpretar este bloque como autorización para abrir `PRIVATE_REAL_BETA`.
+
+## Handoff previo a CODEX — identidad individual del backoffice (2026-09-29)
+
+Active owner histórico: **CODEX**
 
 Base SHA: `2f6e762ddb61d45c28ea841847805a0357992f97` (GitHub `main` y Render LIVE exactos al preparar este handoff; verificar de nuevo al comenzar)
 

@@ -9,7 +9,7 @@ import app.models  # noqa: F401
 import app.reviews  # noqa: F401
 from app.db import Base, SessionLocal, engine
 from app.migrations import upgrade_database
-from app.models import Case
+from app.models import AuditEvent, Case
 
 
 def drop_version_table() -> None:
@@ -34,7 +34,7 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id) is not None
         revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0008_real_beta_admission"
+        assert revision == "0009_backoffice_reviewer_identity"
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
 
     inspector = inspect(engine)
@@ -45,6 +45,10 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     assert "email_action_tokens" in tables
     assert "auth_throttle_state" in tables
     assert "real_beta_invitations" in tables
+    assert "reviewers" in tables
+    assert "reviewer_sessions" in tables
+    assert "actor_reviewer_id" in {column["name"] for column in inspector.get_columns("audit_events")}
+    assert "assigned_reviewer_id" in {column["name"] for column in inspector.get_columns("human_reviews")}
     assert "mode" in {column["name"] for column in inspector.get_columns("cases")}
     assert "resolved_on" in {column["name"] for column in inspector.get_columns("outcomes")}
     assert "occurred_on" in {column["name"] for column in inspector.get_columns("communications")}
@@ -64,6 +68,8 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     assert "email_action_tokens" in tables
     assert "auth_throttle_state" in tables
     assert "real_beta_invitations" in tables
+    assert "reviewers" in tables
+    assert "reviewer_sessions" in tables
     assert "mode" in {column["name"] for column in inspector.get_columns("cases")}
     assert "documents" in tables
     assert "human_reviews" in tables
@@ -94,7 +100,7 @@ def test_real_beta_migration_upgrades_legacy_rows_and_is_reversible():
     upgrade_database()
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0008_real_beta_admission"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0009_backoffice_reviewer_identity"
     assert "real_beta_invitations" in inspect(engine).get_table_names()
 
     with engine.begin() as conn:
@@ -105,3 +111,42 @@ def test_real_beta_migration_upgrades_legacy_rows_and_is_reversible():
     assert "real_beta_invitations" not in inspector.get_table_names()
     with engine.connect() as conn:
         assert conn.execute(text("SELECT id FROM cases WHERE id = :id"), {"id": sentinel_id}).scalar_one() == sentinel_id
+
+
+def test_reviewer_migration_from_0008_preserves_historical_audit_and_reverses():
+    Base.metadata.drop_all(bind=engine)
+    drop_version_table()
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        case = Case(status="INTAKE", vertical="electricity", family="E02-A", raw_intake="synthetic sentinel")
+        db.add(case)
+        db.flush()
+        event = AuditEvent(case_id=case.id, event_type="SYNTHETIC_SENTINEL", payload_json={})
+        db.add(event)
+        db.commit()
+        case_id, event_id = case.id, event.id
+    backend_dir = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_dir / "alembic"))
+    with engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.stamp(config, "0009_backoffice_reviewer_identity")
+    with engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.downgrade(config, "0008_real_beta_admission")
+    assert "reviewers" not in inspect(engine).get_table_names()
+    upgrade_database()
+    with SessionLocal() as db:
+        assert db.get(Case, case_id).mode == "SYNTHETIC"
+        assert db.get(AuditEvent, event_id).actor_reviewer_id is None
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0009_backoffice_reviewer_identity"
+    assert "reviewers" in inspect(engine).get_table_names()
+
+    with engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.downgrade(config, "0008_real_beta_admission")
+    inspector = inspect(engine)
+    assert "reviewers" not in inspector.get_table_names()
+    assert "actor_reviewer_id" not in {column["name"] for column in inspector.get_columns("audit_events")}
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT id FROM audit_events WHERE id = :id"), {"id": event_id}).scalar_one() == event_id

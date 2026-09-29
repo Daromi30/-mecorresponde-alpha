@@ -1,6 +1,16 @@
 # Backoffice: identidad y atribución individual mínima
 
-Estado 2026-09-29: diseño para el siguiente PR, **no implementado** y no habilita expedientes reales. Solo datos sintéticos; coste cero. La beta real permanece `NOT READY` incluso cuando este bloque esté técnicamente terminado.
+Estado 2026-09-29: implementación propuesta en `feat/backoffice-reviewer-identity`, pendiente de revisión independiente y CI; **no desplegada ni habilitante de expedientes reales**. Solo pruebas ficticias; coste cero. La beta real permanece `NOT READY` incluso si este bloque queda técnicamente terminado.
+
+## Implementación del bloque y decisión de bootstrap
+
+`Reviewer` y `ReviewerSession` son entidades separadas de `User`/`UserSession`. El identificador único de acceso se normaliza, la contraseña se guarda con el hash PBKDF2 existente, y la cookie individual aleatoria (12 h, HttpOnly, SameSite Strict, Secure en Render, ruta `/api`) persiste solo como digest SHA-256. Hay máximo tres sesiones activas; logout, cambio/restablecimiento de contraseña, cambio de rol y deshabilitación las revocan. El primer operador solo se puede crear mediante `python -m app.backoffice_bootstrap <login_id>` contra una base elegida expresamente, leyendo la contraseña por `getpass`; **este comando no se ha ejecutado en LIVE**. Después, solo un operador con sesión individual puede provisionar o administrar revisores mediante `/api/admin/reviewers`.
+
+Esto estrecha deliberadamente el diseño inicial: el `ADMIN_API_TOKEN` compartido **no** provisiona revisores, ni emite/revoca invitaciones reales, ni lee/muta casos `PRIVATE_REAL_BETA`. Sigue aceptado únicamente para endpoints sintéticos enumerados y casos `SYNTHETIC`; cola y estadísticas filtran los casos privados para ese principal. El guard central resuelve `case_id` y `review_id`, deniega por defecto nuevas rutas no enumeradas y exige operador para asignaciones privadas. `HumanReview.assigned_to` conserva compatibilidad visual/sintética; la asignación privada exige `assigned_reviewer_id` de un revisor activo, mientras `AuditEvent.actor_reviewer_id` siempre sale de la sesión autenticada. Los eventos históricos conservan actor nulo.
+
+Lecturas privadas de detalle/handoff y consultas de cola con sesión individual se auditan y confirman antes de devolver datos; un fallo de persistencia cierra la respuesta. La auditoría usa IDs y metadatos acotados, sin contraseña, token ni expediente íntegro. La UI admite login/logout individual sin guardar secretos en URL o `localStorage`. La migración `0009_backoffice_reviewer_identity` es aditiva y reversible; no modifica casos ni usuarios previos.
+
+Limitaciones: la auditoría de aplicación no es un registro forense inmutable; MFA, entrega/recuperación de credenciales, acceso de emergencia y protocolo de altas/bajas necesitan aprobación operativa antes de cualquier dato real. La cookie solo se marca Secure cuando `settings.render` es verdadero, como en la configuración de Render; revisar despliegue y cabeceras en entorno real antes de uso privado. Ninguna de estas decisiones abre el interlock `REAL_BETA_LAUNCH_REVIEW_COMPLETE=False`.
 
 ## Evidencia en código
 

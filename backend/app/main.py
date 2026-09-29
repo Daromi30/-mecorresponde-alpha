@@ -32,6 +32,7 @@ from .routers.account_cases import router as account_cases_router
 from .routers.admin import router as admin_router
 from .routers.admin_review_resolution import router as admin_review_resolution_router
 from .routers.auth import router as auth_router
+from .routers.backoffice_identity import auth_router as backoffice_auth_router, admin_router as backoffice_reviewer_router
 from .routers.case_deletion import router as case_deletion_router
 from .routers.cases_v2 import router as cases_router
 from .routers.handoff import router as handoff_router
@@ -307,6 +308,7 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
         or path.startswith("/api/cases/")
         or path.startswith("/api/real-beta")
         or path.startswith("/api/admin")
+        or path.startswith("/api/backoffice-auth")
         or path.startswith("/api/auth")
         or path.startswith("/backoffice")
     )
@@ -363,6 +365,8 @@ app.include_router(case_deletion_router)
 app.include_router(quality_router)
 app.include_router(account_cases_router)
 app.include_router(auth_router)
+app.include_router(backoffice_auth_router)
+app.include_router(backoffice_reviewer_router)
 app.include_router(sources_router)
 app.include_router(admin_router)
 app.include_router(admin_review_resolution_router)
