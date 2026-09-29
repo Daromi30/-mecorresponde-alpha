@@ -34,6 +34,7 @@ from .routers.admin_review_resolution import router as admin_review_resolution_r
 from .routers.auth import router as auth_router
 from .routers.backoffice_identity import auth_router as backoffice_auth_router, admin_router as backoffice_reviewer_router
 from .routers.case_deletion import router as case_deletion_router
+from .routers.demo import router as demo_router
 from .routers.cases_v2 import router as cases_router
 from .routers.handoff import router as handoff_router
 from .routers.quality import router as quality_router
@@ -56,6 +57,15 @@ install_evidenced_recovery_policy()
 logger = logging.getLogger("uvicorn.error")
 static_dir = Path(__file__).parent / "static"
 admin_static_dir = Path(__file__).parent / "admin_static"
+
+
+class DemoAssetFiles(StaticFiles):
+    """Keep the retained legacy intake HTML inaccessible via static fallback."""
+
+    async def get_response(self, path: str, scope):
+        if any(segment.casefold().endswith((".html", ".htm")) for segment in path.split("/")):
+            return PlainTextResponse("Not found", status_code=404)
+        return await super().get_response(path, scope)
 
 
 def _normalized_origin(value: str) -> str:
@@ -129,7 +139,7 @@ def _problem_library_html() -> str:
 
 
 def _render_product_home() -> str:
-    html = (static_dir / "index.html").read_text(encoding="utf-8")
+    html = (static_dir / "public_demo.html").read_text(encoding="utf-8")
     robots = "index,follow" if settings.public_indexing_ready else "noindex,nofollow"
     html = html.replace(
         '<meta name="robots" content="noindex,nofollow">',
@@ -157,7 +167,7 @@ def _render_product_home() -> str:
         )
     html = html.replace(
         "</body>",
-        f'{_problem_library_html()}\n{_versioned_product_loader()}\n</body>',
+        f'{_problem_library_html()}\n</body>',
         1,
     )
     # The notice is injected at the collection point only when the complete,
@@ -170,12 +180,9 @@ def _render_product_home() -> str:
 
 
 def _render_product_demo() -> str:
-    # SEO guide CTAs enter /demo/. Serve the same guarded product modules as
-    # the home page, while keeping this internal route permanently noindex.
-    html = (static_dir / "index.html").read_text(encoding="utf-8")
-    html = html.replace(
-        "</body>", f'{_versioned_product_loader()}\n</body>', 1
-    )
+    # SEO guide CTAs enter the same closed fictional demo as the home page.
+    # This route remains permanently noindex.
+    html = (static_dir / "public_demo.html").read_text(encoding="utf-8")
     return html.replace(
         '<div id="mcr-privacy-layer"></div>', render_first_layer(settings), 1
     )
@@ -357,6 +364,7 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
 
 
 app.include_router(cases_router)
+app.include_router(demo_router)
 app.include_router(real_beta_router)
 app.include_router(real_beta_admin_router)
 app.include_router(wait_resume_router)
@@ -426,7 +434,7 @@ def sitemap_xml():
     return Response(content=xml, media_type="application/xml")
 
 
-app.mount("/demo", StaticFiles(directory=str(static_dir), html=True), name="demo")
+app.mount("/demo", DemoAssetFiles(directory=str(static_dir), html=False), name="demo")
 app.mount("/backoffice", StaticFiles(directory=str(admin_static_dir), html=True), name="backoffice")
 
 

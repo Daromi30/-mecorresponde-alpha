@@ -10,7 +10,10 @@ from .fact_validation import normalize_user_fact_key
 
 class CaseCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    message: str = Field(min_length=3, max_length=10000)
+    # `message` remains accepted only by explicitly overridden internal test fixtures.
+    # Production HTTP requests must pass the demo boundary and use `scenario_id`.
+    scenario_id: str | None = Field(default=None, min_length=1, max_length=80)
+    message: str | None = Field(default=None, min_length=3, max_length=10000)
 
 
 class FactUpsert(BaseModel):

@@ -8,6 +8,7 @@ from ..auth_models import User
 from ..case_locking import lock_case_for_update
 from ..config import settings
 from ..db import get_db
+from ..demo_boundary import enforce_demo_boundary
 from ..models import Case
 from ..security import CaseAccess, clear_case_access_cookie, require_case_access
 from ..services_v2 import audit
@@ -15,7 +16,7 @@ from ..services_v2 import audit
 router = APIRouter(
     prefix="/api/cases",
     tags=["account-cases"],
-    dependencies=[Depends(require_case_access)],
+    dependencies=[Depends(require_case_access), Depends(enforce_demo_boundary)],
 )
 
 

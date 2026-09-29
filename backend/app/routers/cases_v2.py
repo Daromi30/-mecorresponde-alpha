@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from math import isfinite
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,8 @@ from ..case_lifecycle import complete_current_action, set_current_action
 from ..case_locking import lock_case_for_update
 from ..config import settings
 from ..db import get_db
+from ..demo_boundary import enforce_demo_boundary
+from ..demo_scenarios import SCENARIOS
 from ..documents import save_upload
 from ..evidence_context import atomic_workflow_transaction, current_outcome_evidence
 from ..models import Action, AuditEvent, Case, Communication, Deadline, Decision, Document, Evidence, Fact, Outcome
@@ -31,7 +33,7 @@ from ..storage import UnsafeDocumentUpload
 router = APIRouter(
     prefix="/api/cases",
     tags=["cases"],
-    dependencies=[Depends(require_case_access)],
+    dependencies=[Depends(require_case_access), Depends(enforce_demo_boundary)],
 )
 
 
@@ -65,6 +67,7 @@ def serialize_case(db: Session, case: Case):
     return {
         "id": case.id,
         "mode": case.mode,
+        "demo_scenario_id": case.demo_scenario_id,
         "status": case.status,
         "vertical": case.vertical,
         "family": case.family,
@@ -142,10 +145,24 @@ def serialize_case(db: Session, case: Case):
 
 
 @router.post("")
-def create(payload: CaseCreate, response: Response, db: Session = Depends(get_db)):
+def create(payload: CaseCreate, request: Request, response: Response, db: Session = Depends(get_db)):
     token = generate_case_token()
     try:
-        case = create_case(db, payload.message)
+        if getattr(request.state, "allow_flexible_fixture", False):
+            if payload.message is None:
+                raise HTTPException(422, "Internal fixture message required")
+            case = create_case(db, payload.message)
+        else:
+            scenario_id = getattr(request.state, "demo_scenario_id", None)
+            if scenario_id is None or payload.scenario_id != scenario_id:
+                raise HTTPException(422, "Predefined scenario required")
+            scenario = SCENARIOS[scenario_id]
+            case = create_case(db, scenario.message)
+            case.demo_scenario_id = scenario_id
+            for key, value in scenario.facts:
+                upsert_fact(db, case, key, value, state="confirmed", user_confirmed=True,
+                            created_by="scenario")
+            db.commit()
         db.add(CaseAccess(case_id=case.id, token_hash=hash_case_token(token)))
         audit(db, case.id, "CASE_ACCESS_ISSUED", {"method": "anonymous_case_token"})
         db.flush()

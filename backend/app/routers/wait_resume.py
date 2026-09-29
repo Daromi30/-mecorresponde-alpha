@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from ..case_locking import lock_case_for_update
 from ..db import get_db
+from ..demo_boundary import enforce_demo_boundary
 from ..evidence_context import atomic_workflow_transaction
 from ..models import Case
 from ..security import require_case_access
@@ -12,7 +13,7 @@ from ..wait_resume import resume_wait_action
 router = APIRouter(
     prefix="/api/cases",
     tags=["cases"],
-    dependencies=[Depends(require_case_access)],
+    dependencies=[Depends(require_case_access), Depends(enforce_demo_boundary)],
 )
 
 

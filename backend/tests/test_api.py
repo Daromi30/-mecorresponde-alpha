@@ -96,4 +96,4 @@ def test_outcome_requires_user_verification_to_close(client):
 
 
 def test_demo_frontend_is_served(client):
-    r=client.get("/demo/"); assert r.status_code==200; assert "Cuéntame qué te ha pasado" in r.text
+    r=client.get("/demo/"); assert r.status_code==200; assert "Escenarios ficticios" in r.text
