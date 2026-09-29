@@ -1,5 +1,31 @@
 # MECORRESPONDE AI HANDOFF
 
+## Estado vigente y handoff a WORK (2026-09-29)
+
+Active owner: **WORK**. Main/base verificado: `cde8b0e5048ee9d4afc59816f2a1416f3b3b700a`. Branch: `feat/real-beta-admission-gate`. PR: [#224](https://github.com/Daromi30/-mecorresponde-alpha/pull/224), abierta contra `main`, **sin merge ni deploy**. Head SHA funcional anterior a este commit documental: `e734d088b9dd422363c486dd3b83c15b6cda6da4`; consultar el head de la PR para el SHA final de rama tras este handoff.
+
+Root cause / architecture: el endpoint público `/api/cases` y las cuentas opcionales no distinguían procedencia sintética de una cohorte real ni exigían admisión. Ahora `Case.mode` es propiedad del servidor: histórico y entrada pública `SYNTHETIC`; únicamente `/api/real-beta/cases` puede establecer `PRIVATE_REAL_BETA`. **Esto no clasifica el contenido textual**: la entrada sintética pública aún puede recibir texto libre real. Por esa razón no se afirma que exista un perímetro integral seguro para datos personales reales y el interlock de lanzamiento permanece fijo en `False` en este PR.
+
+What was implemented: `REAL_BETA_ENABLED=false` y `REAL_BETA_ALLOWLIST` vacía por defecto, validación estricta de familias, interlock de lanzamiento no configurable desde Render, invitaciones de 256 bits con solo digest SHA-256 persistido, expiración, canje atómico por una única cuenta, revocación y eventos de auditoría sin secretos ni raw intake. La creación de casos reales exige sesión y admisión activa, clasifica antes de persistir el caso, rechaza familias no elegibles y no crea capacidad anónima. Acceso posterior exige propiedad de la cuenta; cada mutación de usuario/backoffice revalida estado, familia y admisión. Reclasificaciones fuera de allowlist quedan en revisión humana sin decisión material vigente, conservando expediente e historial. Lectura/exportación del titular permanece tras revocación/expiración para continuidad y derechos. Detalles y amenazas: [`private-real-beta-admission-gate.md`](private-real-beta-admission-gate.md).
+
+Migration: `0008_real_beta_admission` añade `cases.mode` con default seguro `SYNTHETIC` y `real_beta_invitations`; no transforma ningún caso a real. Upgrade/downgrade local en SQLite preservó un caso histórico. La prueba PostgreSQL de Database Migrations CI es la referencia de integración.
+
+Security guarantees: flag OFF + allowlist vacía + interlock fijo implican denegación aun con env configurado; token secreto nunca se guarda ni se vuelve a serializar; canje SQL condicional evita doble cuenta; sesión de propietario, no cookie de capacidad sintética, controla el carril real; respuesta de invitación inválida/revocada/expirada es no enumerante; no-store/noindex y protección Origin/Sec-Fetch-Site existente aplican. El token administrativo compartido sigue siendo un límite: atribución individual de backoffice es el siguiente bloque.
+
+Tests: 10 pruebas nuevas de admisión, aislamiento, revocación, expiración en el instante límite, allowlist, reclasificación y carrera concurrente, todas verdes en Windows; 2 pruebas de migración SQLite verdes; `compileall` verde. Suite backend Windows: **700 passed, 1 failed** por aserción POSIX `0600` que devuelve `0o666` en NTFS, sin otro fallo funcional; CI Linux decide. Sin JS/UI modificados.
+
+CI: los cuatro checks del head funcional `e734d088b9dd422363c486dd3b83c15b6cda6da4` terminaron **SUCCESS**: `legal-engine-regression`, `postgres-persistence`, `postgres-backup-restore` y `postgres-migrations`. Tras publicar este handoff, verificar de nuevo el head final de PR; no confundir este verde previo con una aprobación de lanzamiento real.
+
+Known limitations: interlock fijo hasta revisión posterior; el intake público sintético libre no previene que alguien introduzca datos reales; identidad empresarial, privacidad e información revisadas, análisis de riesgo, revisión jurídica, continuidad/backup/restore PostgreSQL, storage documental persistente, identidad individual backoffice y recuperación/email siguen pendientes. No se cambió Render, proveedores, costes, uploads, indexación ni readiness. Tras revocación se preservan casos y se bloquea trabajo nuevo; su gestión posterior requiere protocolo operativo, no borrado o cierre automático.
+
+FOLLOW_UP_FINDINGS: cierre/encauzamiento seguro del texto libre público sintético antes de cualquier lanzamiento real; identidad y atribución individual del backoffice; protocolo de expedientes tras revocación; deduplicación concurrente de eventos de denegación (la aceptación sí es atómica). Ninguno autoriza abrir la beta ahora.
+
+REAL BETA READINESS: **NOT READY**. Beta interna sintética: **PASS** previo, sin ampliación a datos reales.
+
+Next owner: **WORK**. Next WORK task: revisar diff y migración de #224; verificar CI del último head y merge solo si scope correcto; verificar después auto-deploy, que `REAL_BETA` permanece OFF en LIVE, beta sintética y readiness. Luego preparar el bloque separado de identidad + atribución individual de backoffice. No tratar privacidad/storage/database/revisión jurídica como resueltas.
+
+## Historial anterior (no define el owner ni la readiness vigente)
+
 Last updated: 2026-09-26
 
 ## Estado vigente y handoff a CODEX (2026-09-26)
