@@ -159,10 +159,12 @@ def create(payload: CaseCreate, request: Request, response: Response, db: Sessio
             scenario = SCENARIOS[scenario_id]
             case = create_case(db, scenario.message)
             case.demo_scenario_id = scenario_id
-            for key, value in scenario.facts:
-                upsert_fact(db, case, key, value, state="confirmed", user_confirmed=True,
-                            created_by="scenario")
-            db.commit()
+            # Scenario facts and the anonymous access capability must become durable
+            # together. The service's intermediate commits are only flushes here.
+            with atomic_workflow_transaction(db):
+                for key, value in scenario.facts:
+                    upsert_fact(db, case, key, value, state="confirmed", user_confirmed=True,
+                                created_by="scenario")
         db.add(CaseAccess(case_id=case.id, token_hash=hash_case_token(token)))
         audit(db, case.id, "CASE_ACCESS_ISSUED", {"method": "anonymous_case_token"})
         db.flush()

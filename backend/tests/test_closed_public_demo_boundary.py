@@ -1,13 +1,14 @@
 """Production HTTP boundary checks with wholly fictional marker strings."""
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.demo_boundary import enforce_demo_boundary
 from app.demo_scenarios import SCENARIOS
 from app.main import app
 from app.models import AIRun, AuditEvent, Case, Communication, Evidence, Fact
 from app.reviews import HumanReview
+from app.routers import cases_v2 as case_routes
 from app.security import CaseAccess, hash_case_token
 from app.services_v2 import create_case
 
@@ -64,6 +65,40 @@ def test_fictional_scenario_runs_the_real_motor(public_client, db, scenario_id):
     assert prepared.json().get("claim_type")
     db.expire_all()
     assert db.get(Case, body["id"]).mode == "SYNTHETIC"
+
+
+def test_failed_scenario_response_leaves_no_orphan_case_or_facts(public_client, db, monkeypatch):
+    cases_before = db.scalar(select(func.count()).select_from(Case))
+    facts_before = db.scalar(select(func.count()).select_from(Fact))
+
+    def fail_first_question(*_args, **_kwargs):
+        raise RuntimeError("forced scenario response failure")
+
+    monkeypatch.setattr(case_routes, "get_next_question", fail_first_question)
+    with pytest.raises(RuntimeError, match="forced scenario response failure"):
+        public_client.post("/api/cases", json={"scenario_id": "scn_8a1f3c67"})
+
+    db.rollback()
+    assert db.scalar(select(func.count()).select_from(Case)) == cases_before
+    assert db.scalar(select(func.count()).select_from(Fact)) == facts_before
+
+
+def test_scenario_case_facts_and_access_use_one_real_commit(public_client, db, monkeypatch):
+    real_commit = db.commit
+    commits = []
+
+    def counted_commit():
+        commits.append("commit")
+        return real_commit()
+
+    monkeypatch.setattr(db, "commit", counted_commit)
+    created = public_client.post("/api/cases", json={"scenario_id": "scn_8a1f3c67"})
+    assert created.status_code == 200, created.text
+    assert commits == ["commit"]
+    case_id = created.json()["id"]
+    db.expire_all()
+    assert db.get(CaseAccess, case_id) is not None
+    assert db.scalars(select(Fact).where(Fact.case_id == case_id)).all()
 
 
 def test_old_message_and_manipulated_scenario_are_rejected_without_persistence(public_client, db, caplog):
