@@ -1,5 +1,15 @@
 # MECORRESPONDE AI HANDOFF
 
+## Verificación post-#224 en WORK (2026-09-29)
+
+Active owner: **WORK** hasta integrar esta actualización documental y crear la rama del siguiente bloque. PR #224 `MERGED`; head revisado `e2e3912467b69afc15d9f3c949ef010d2ccc2ea4`, cuatro checks verdes y 10 pruebas locales dirigidas aprobadas. GitHub `main=85cb253bc1818c09e7ce8e0f6dce5bb717122fed`; Render auto-deploy `dep-datqsqbrjlhs73c0n2kg` terminó `live` en el mismo SHA, sin deploy manual. Los cuatro checks del merge commit también están verdes. `/health` 200/status ok/families 26/revisión exacta; `/health/persistence` PostgreSQL persistente; `/health/storage` `blocked`, local no persistente, uploads false; `/privacidad` 503/no-store/noindex; demo noindex, sitemap 404; email transaccional/recovery/verificación false. Logs de esa revisión: Alembic `0007 -> 0008_real_beta_admission`, `synthetic_internal_beta_ready=True`, `internal_beta_blockers=none`, indexación false, sin errores observados. La IP allowlist vacía de Postgres impidió lectura SQL directa de `alembic_version`; no se abrió acceso externo.
+
+Smoke LIVE con cuenta `@example.com` y hechos inventados: POST privado directo 403, invitación inexistente 404; POST sintético 200 (`mode=SYNTHETIC`, E02-A), tres hechos 200, diagnóstico 200/50 € ficticios, reentrada 200, logout 200. No hubo invitaciones emitidas ni datos reales. El interlock de código `REAL_BETA_LAUNCH_REVIEW_COMPLETE=False` no se cambia por variables de Render; cierre efectivo privado verificado. No se inspeccionaron valores de env; no afirmar que cada flag de Render sea literalmente vacío. `REAL BETA READINESS: NOT READY`; gate I **PARTIAL (implemented but disabled)**. La beta sintética conserva PASS; P0/P1 nuevos observados: ninguno. Continuidad PostgreSQL Free, privacidad, identidad empresarial, storage, backoffice individual, revisión legal, riesgo y email siguen pendientes. Fuente de detalle: [`real-beta-readiness-2026-09-26.md`](real-beta-readiness-2026-09-26.md).
+
+NEXT_EXECUTABLE_TASK: preparar identidad individual y atribución servidor-side del backoffice como PR técnico independiente, sin activar beta real ni modificar el token de bootstrap antes de diseñar transición segura. Reconciliar main/LIVE tras esta actualización documental antes de fijar el Base SHA para CODEX.
+
+## Historial anterior (no define el owner ni el HEAD vigentes)
+
 ## Estado vigente y handoff a WORK (2026-09-29)
 
 Active owner: **WORK**. Main/base verificado: `cde8b0e5048ee9d4afc59816f2a1416f3b3b700a`. Branch: `feat/real-beta-admission-gate`. PR: [#224](https://github.com/Daromi30/-mecorresponde-alpha/pull/224), abierta contra `main`, **sin merge ni deploy**. Head SHA funcional anterior a este commit documental: `e734d088b9dd422363c486dd3b83c15b6cda6da4`; consultar el head de la PR para el SHA final de rama tras este handoff.
