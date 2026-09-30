@@ -1,5 +1,7 @@
 # Frontera de integridad documental, sin proveedor ni uploads LIVE
 
+Nota histórica: este documento describe el alcance de #232. El protocolo posterior de intención durable y tombstones sustituye la semántica de compensación/borrado aquí descrita; véase [`document-storage-reconciliation-protocol.md`](document-storage-reconciliation-protocol.md). Storage continúa **NOT READY**.
+
 Estado: bloque de ingeniería de CODEX para revisión independiente; base GitHub `main=dba8fc50b833e0145bc7c0a7050dd7ee1da58910`. No selecciona S3-compatible, no configura Render, no permite datos reales y no declara storage READY.
 
 ## Contrato implementado ahora

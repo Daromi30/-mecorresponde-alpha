@@ -41,4 +41,5 @@ def delete_case(
         "status": "deleted",
         "case_id": result.case_id,
         "documents_deleted": result.documents_deleted,
+        "storage_cleanup_pending": result.storage_cleanup_pending,
     }

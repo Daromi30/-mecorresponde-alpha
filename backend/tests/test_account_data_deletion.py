@@ -5,19 +5,26 @@ from sqlalchemy import func, select
 
 import app.account_lifecycle as lifecycle
 from app.auth_models import User, UserSession
-from app.models import AIRun, AuditEvent, Case, Document, DocumentExtraction
-from app.storage import LocalDocumentStorage
+from app.models import AIRun, AuditEvent, Case, Document, DocumentExtraction, DocumentStorageOperation
+from app.storage import LocalDocumentStorage, ObjectProbe
 
 
 PASSWORD = "strong-password-for-deletion"
 
 
 class RecordingStorage:
+    backend_name = "local"
+
     def __init__(self):
         self.deleted: list[str] = []
+        self.present: set[str] = set()
+
+    def probe_object(self, key: str, sha256: str) -> ObjectProbe:
+        return ObjectProbe.PRESENT_AND_VALID if key in self.present else ObjectProbe.MISSING
 
     def delete_bytes(self, key: str) -> None:
         self.deleted.append(key)
+        self.present.discard(key)
 
 
 def register_and_claim_case(client):
@@ -82,6 +89,7 @@ def test_account_deletion_removes_owned_cases_sessions_audit_ai_and_documents(
     db.commit()
 
     storage = RecordingStorage()
+    storage.present.add(document.storage_key)
     monkeypatch.setattr(lifecycle, "get_document_storage", lambda: storage)
 
     deleted = client.request(
@@ -91,7 +99,7 @@ def test_account_deletion_removes_owned_cases_sessions_audit_ai_and_documents(
     )
     assert deleted.status_code == 200
     body = deleted.json()
-    assert body == {"status": "deleted", "cases_deleted": 1, "documents_deleted": 1}
+    assert body == {"status": "deleted", "cases_deleted": 1, "documents_deleted": 1, "storage_cleanup_pending": False}
     assert storage.deleted == [f"originals/{case_id}/aa/test-object"]
 
     assert client.get("/api/auth/me").status_code == 401
@@ -125,6 +133,11 @@ def test_account_deletion_fails_closed_when_document_storage_delete_fails(
     db.commit()
 
     class BrokenStorage:
+        backend_name = "local"
+
+        def probe_object(self, key: str, sha256: str) -> ObjectProbe:
+            return ObjectProbe.PRESENT_AND_VALID
+
         def delete_bytes(self, key: str) -> None:
             raise RuntimeError("synthetic storage failure")
 
@@ -134,10 +147,12 @@ def test_account_deletion_fails_closed_when_document_storage_delete_fails(
         "/api/auth/account",
         json={"password": PASSWORD, "confirmation": "DELETE"},
     )
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert response.json()["storage_cleanup_pending"] is True
     db.expire_all()
-    assert db.get(User, user_id) is not None
-    assert db.get(Case, case_id) is not None
+    assert db.get(User, user_id) is None
+    assert db.get(Case, case_id) is None
+    assert db.scalar(select(func.count()).select_from(DocumentStorageOperation)) == 1
 
 
 def test_local_document_storage_delete_is_idempotent(tmp_path: Path):

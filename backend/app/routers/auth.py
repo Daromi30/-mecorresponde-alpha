@@ -474,4 +474,5 @@ def delete_account(
         "status": "deleted",
         "cases_deleted": result.cases_deleted,
         "documents_deleted": result.documents_deleted,
+        "storage_cleanup_pending": result.storage_cleanup_pending,
     }

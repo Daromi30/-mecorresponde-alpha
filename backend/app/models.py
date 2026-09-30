@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone, date
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -69,6 +69,31 @@ class Document(Base):
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     contains_sensitive_data: Mapped[bool] = mapped_column(Boolean, default=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class DocumentStorageOperation(Base):
+    __tablename__ = "document_storage_operations"
+    __table_args__ = (
+        CheckConstraint("operation_type IN ('PUT', 'DELETE')", name="ck_document_storage_operation_type"),
+        CheckConstraint("state IN ('PENDING', 'CLEANUP', 'RETRY', 'BLOCKED', 'COMPLETE')", name="ck_document_storage_operation_state"),
+        CheckConstraint("attempt_count >= 0", name="ck_document_storage_operation_attempts"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    operation_type: Mapped[str] = mapped_column(String(8), nullable=False, index=True)
+    storage_key: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    backend: Mapped[str] = mapped_column(String(30), nullable=False)
+    state: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    cleanup_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    case_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    document_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now, nullable=False)
 
 
 class DocumentExtraction(Base):
