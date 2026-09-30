@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from .document_storage_reconciliation import add_delete_tombstones, cleanup_committed_tombstones
 from .models import (
     AIRun,
     Action,
@@ -37,6 +38,7 @@ class CaseDeletionStorageError(RuntimeError):
 class CaseDeletionResult:
     case_id: str
     documents_deleted: int
+    storage_cleanup_pending: bool = False
 
 
 def _matches_expected_action_type(action_type: str, only_types: set[str]) -> bool:
@@ -99,13 +101,16 @@ def set_current_action(
 
 
 def delete_case_and_data(db: Session, case: Case) -> CaseDeletionResult:
-    """Delete one accessible case and its persisted document objects.
-
-    SQL deletion is flushed before touching objects. If object deletion fails,
-    the database is rolled back so the application never reports clean deletion.
-    """
+    """Commit logical deletion and durable tombstones before physical cleanup."""
     case_id = case.id
+    db.scalar(select(Case.id).where(Case.id == case_id).with_for_update())
     documents = list(db.scalars(select(Document).where(Document.case_id == case_id)).all())
+    try:
+        storage = get_document_storage() if documents else None
+    except Exception as exc:
+        db.rollback()
+        raise CaseDeletionStorageError("Could not prepare durable document cleanup") from exc
+    tombstone_ids = add_delete_tombstones(db, documents, backend=storage.backend_name) if storage else []
     document_ids = [document.id for document in documents]
     if document_ids:
         db.execute(
@@ -133,14 +138,12 @@ def delete_case_and_data(db: Session, case: Case) -> CaseDeletionResult:
         db.execute(delete(model).where(model.case_id == case_id))
 
     db.execute(delete(Case).where(Case.id == case_id))
-    db.flush()
-    if documents:
-        try:
-            storage = get_document_storage()
-            for document in documents:
-                storage.delete_bytes(document.storage_key)
-        except Exception as exc:
-            db.rollback()
-            raise CaseDeletionStorageError("Could not remove all stored document objects") from exc
-    db.commit()
-    return CaseDeletionResult(case_id=case_id, documents_deleted=len(documents))
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    pending = cleanup_committed_tombstones(db, storage, tombstone_ids) if storage else False
+    return CaseDeletionResult(
+        case_id=case_id, documents_deleted=len(documents), storage_cleanup_pending=pending,
+    )

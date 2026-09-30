@@ -6,8 +6,9 @@ import tempfile
 from sqlalchemy import select
 
 import app.case_lifecycle as lifecycle
-from app.models import Case, Document, Fact
+from app.models import Case, Document, DocumentStorageOperation, Fact
 from app.security import CaseAccess
+from app.storage import ObjectProbe
 
 
 STATIC = Path(__file__).parents[1] / "app" / "static"
@@ -51,6 +52,7 @@ def test_anonymous_case_can_be_deleted_only_with_explicit_confirmation(client, d
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "deleted"
     assert response.json()["documents_deleted"] == 0
+    assert response.json()["storage_cleanup_pending"] is False
     assert db.get(Case, case_id) is None
     assert db.get(CaseAccess, case_id) is None
     assert db.scalars(select(Fact).where(Fact.case_id == case_id)).all() == []
@@ -101,6 +103,11 @@ def test_case_deletion_fails_closed_when_document_object_cannot_be_removed(clien
     db.commit()
 
     class BrokenStorage:
+        backend_name = "local"
+
+        def probe_object(self, key, sha256):
+            return ObjectProbe.PRESENT_AND_VALID
+
         def delete_bytes(self, key):
             raise RuntimeError("synthetic storage failure")
 
@@ -110,9 +117,11 @@ def test_case_deletion_fails_closed_when_document_object_cannot_be_removed(clien
         f"/api/cases/{case_id}",
         json={"confirmation": "DELETE"},
     )
-    assert response.status_code == 503
-    assert db.get(Case, case_id) is not None
-    assert db.get(Document, document.id) is not None
+    assert response.status_code == 200
+    assert response.json()["storage_cleanup_pending"] is True
+    assert db.get(Case, case_id) is None
+    assert db.get(Document, document.id) is None
+    assert len(db.scalars(select(DocumentStorageOperation)).all()) == 1
 
 
 def test_case_deletion_ui_is_explicit_and_does_not_use_browser_storage():

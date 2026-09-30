@@ -5,6 +5,7 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -24,6 +25,10 @@ class StorageIntegrityError(RuntimeError):
     """Object content or metadata cannot be trusted."""
 
 
+class StorageMetadataConflict(StorageIntegrityError):
+    """Provider returned contradictory metadata for one object."""
+
+
 class StorageWriteError(RuntimeError):
     """A write failed; ``created`` records a confirmed new object needing cleanup."""
 
@@ -35,6 +40,13 @@ class StorageWriteError(RuntimeError):
 @dataclass(frozen=True)
 class PutResult:
     created: bool
+
+
+class ObjectProbe(str, Enum):
+    MISSING = "MISSING"
+    PRESENT_AND_VALID = "PRESENT_AND_VALID"
+    PRESENT_CONFLICTING = "PRESENT_CONFLICTING"
+    UNKNOWN = "UNKNOWN"
 
 
 def validated_storage_key(key: str) -> str:
@@ -71,6 +83,7 @@ class DocumentStorage(Protocol):
     def put_bytes(self, key: str, data: bytes, *, content_type: str, sha256: str) -> PutResult: ...
     def get_bytes(self, key: str) -> bytes: ...
     def delete_bytes(self, key: str) -> None: ...
+    def probe_object(self, key: str, sha256: str) -> ObjectProbe: ...
 
 
 class LocalDocumentStorage:
@@ -122,6 +135,16 @@ class LocalDocumentStorage:
             path.unlink()
         except FileNotFoundError:
             return
+
+    def probe_object(self, key: str, sha256: str) -> ObjectProbe:
+        try:
+            data = self.get_bytes(key)
+        except FileNotFoundError:
+            return ObjectProbe.MISSING
+        except Exception:
+            return ObjectProbe.UNKNOWN
+        return (ObjectProbe.PRESENT_AND_VALID if hashlib.sha256(data).hexdigest() == sha256
+                else ObjectProbe.PRESENT_CONFLICTING)
 
 
 class S3DocumentStorage:
@@ -191,8 +214,10 @@ class S3DocumentStorage:
             head_metadata = head.get("Metadata", {})
             get_metadata = response.get("Metadata", {})
             if head_metadata.get("sha256") and get_metadata.get("sha256") and head_metadata["sha256"] != get_metadata["sha256"]:
-                raise StorageIntegrityError("Object metadata changed during verification")
+                raise StorageMetadataConflict("Object metadata changed during verification")
             return response["Body"].read(), head_metadata or get_metadata
+        except StorageMetadataConflict:
+            raise
         except Exception:
             raise StorageIntegrityError("Could not read existing object") from None
 
@@ -238,6 +263,21 @@ class S3DocumentStorage:
 
     def delete_bytes(self, key: str) -> None:
         self.client.delete_object(Bucket=self.bucket, Key=self._key(key))
+
+    def probe_object(self, key: str, sha256: str) -> ObjectProbe:
+        try:
+            existing = self._existing_bytes(self._key(key))
+        except StorageMetadataConflict:
+            return ObjectProbe.PRESENT_CONFLICTING
+        except Exception:
+            return ObjectProbe.UNKNOWN
+        if existing is None:
+            return ObjectProbe.MISSING
+        try:
+            _require_existing_integrity(existing, sha256)
+        except StorageIntegrityError:
+            return ObjectProbe.PRESENT_CONFLICTING
+        return ObjectProbe.PRESENT_AND_VALID
 
 
 def get_document_storage() -> DocumentStorage:

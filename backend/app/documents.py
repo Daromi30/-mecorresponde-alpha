@@ -2,28 +2,25 @@ from __future__ import annotations
 
 import hashlib
 import io
-import logging
 import re
-import threading
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
 from pypdf import PdfReader
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .config import settings
+from .document_storage_lock import document_key_lock
+from .document_storage_reconciliation import (
+    authorize_put_after_missing_probe, complete_put_with_document,
+    create_put_intent, reconcile_document_storage_operations,
+)
 from .models import AuditEvent, Case, Document, DocumentExtraction, Evidence, Fact
 from .storage import (
-    DocumentStorage, PutResult, StorageWriteError, UnsafeDocumentUpload,
+    DocumentStorage, ObjectProbe, UnsafeDocumentUpload,
     get_document_storage, object_key, read_verified_document, validate_document_bytes,
 )
-
-
-logger = logging.getLogger(__name__)
-_local_key_locks: dict[str, threading.Lock] = {}
-_local_key_locks_guard = threading.Lock()
 
 
 class DocumentUploadPersistenceError(RuntimeError):
@@ -32,43 +29,6 @@ class DocumentUploadPersistenceError(RuntimeError):
 
 class DocumentUploadCompensationError(DocumentUploadPersistenceError):
     pass
-
-
-@contextmanager
-def _document_key_lock(db: Session, key: str):
-    """Serialize same-key uploads through commit/rollback and compensation.
-
-    PostgreSQL's session advisory lock works across app workers. SQLite's local
-    lock is sufficient for isolated tests/development, not a production lease.
-    """
-    bind = db.get_bind()
-    if bind.dialect.name == "postgresql":
-        lock_id = int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], "big", signed=True)
-        with bind.connect() as connection:
-            connection.execute(text("SELECT pg_advisory_lock(:lock_id)"), {"lock_id": lock_id})
-            try:
-                yield
-            finally:
-                connection.execute(text("SELECT pg_advisory_unlock(:lock_id)"), {"lock_id": lock_id})
-        return
-    with _local_key_locks_guard:
-        lock = _local_key_locks.setdefault(key, threading.Lock())
-    with lock:
-        yield
-
-
-def _compensate_new_object(db: Session, storage: DocumentStorage, key: str) -> None:
-    # The key lock is still held. A fresh transaction sees committed references,
-    # including a commit that succeeded despite a lost DB acknowledgement.
-    with Session(db.get_bind()) as check:
-        referenced = check.scalar(select(func.count()).select_from(Document).where(Document.storage_key == key))
-    if referenced:
-        return
-    try:
-        storage.delete_bytes(key)
-    except Exception as exc:
-        logger.error("DOCUMENT_UPLOAD_COMPENSATION_FAILED backend=%s error_type=%s", storage.backend_name, type(exc).__name__)
-        raise DocumentUploadCompensationError("Document upload failed and object cleanup failed") from None
 
 
 def _audit(db: Session, case_id: str, event_type: str, payload: dict[str, Any]) -> None:
@@ -105,20 +65,36 @@ def save_upload(
 
     digest = hashlib.sha256(data).hexdigest()
     key = object_key(case.id, digest)
-    with _document_key_lock(db, key):
-        existing = db.scalar(select(Document).where(Document.case_id == case.id, Document.storage_key == key))
-        if existing is not None:
-            read_verified_document(storage, existing)
-            extraction = db.scalar(select(DocumentExtraction).where(DocumentExtraction.document_id == existing.id))
-            if extraction is None:
-                raise DocumentUploadPersistenceError("Existing document has no extraction record")
-            return existing, extraction
+    operation_id: str | None = None
+    try:
+        with document_key_lock(db, key):
+            existing = db.scalar(select(Document).where(Document.case_id == case.id, Document.storage_key == key))
+            if existing is not None:
+                read_verified_document(storage, existing)
+                extraction = db.scalar(select(DocumentExtraction).where(DocumentExtraction.document_id == existing.id))
+                if extraction is None:
+                    raise DocumentUploadPersistenceError("Existing document has no extraction record")
+                return existing, extraction
 
-        created = False
-        try:
             _enforce_alpha_document_quota(db, case.id)
-            result: PutResult = storage.put_bytes(key, data, content_type=canonical_mime, sha256=digest)
-            created = result.created
+            operation = create_put_intent(
+                db, key=key, sha256=digest, backend=storage.backend_name, case_id=case.id,
+            )
+            operation_id = operation.id
+            preflight = storage.probe_object(key, digest)
+            if preflight == ObjectProbe.MISSING:
+                authorize_put_after_missing_probe(db, operation)
+                storage.put_bytes(key, data, content_type=canonical_mime, sha256=digest)
+            elif preflight == ObjectProbe.PRESENT_CONFLICTING:
+                raise DocumentUploadPersistenceError("Existing document object conflicts with expected hash")
+            elif preflight == ObjectProbe.UNKNOWN:
+                raise DocumentUploadPersistenceError("Document object state could not be verified")
+            elif preflight != ObjectProbe.PRESENT_AND_VALID:
+                raise DocumentUploadPersistenceError("Unsupported document object probe result")
+            # PRESENT_AND_VALID predates this attempt; do not overwrite or
+            # authorize cleanup if the subsequent SQL transaction fails.
+            if db.scalar(select(Case.id).where(Case.id == case.id).with_for_update()) is None:
+                raise DocumentUploadPersistenceError("Case no longer exists")
             document = Document(
                 case_id=case.id, storage_key=key, original_filename=filename,
                 mime_type=canonical_mime, sha256=digest,
@@ -188,15 +164,18 @@ def save_upload(
                 "processing_status": document.processing_status,
                 "size_bytes": len(data),
             })
+            complete_put_with_document(operation, document)
             db.commit()
             db.refresh(document)
             return document, extraction
-        except Exception as exc:
-            if isinstance(exc, StorageWriteError):
-                created = exc.created
-            db.rollback()
-            if created:
-                _compensate_new_object(db, storage, key)
-            if isinstance(exc, (UnsafeDocumentUpload, DocumentUploadPersistenceError)):
-                raise
-            raise DocumentUploadPersistenceError("Document upload did not commit") from exc
+    except Exception as exc:
+        db.rollback()
+        if operation_id is not None:
+            outcome = reconcile_document_storage_operations(
+                db, storage=storage, operation_ids=[operation_id], limit=1,
+            )
+            if outcome["retry"] or outcome["blocked"]:
+                raise DocumentUploadCompensationError("Document upload failed; durable reconciliation is pending") from None
+        if isinstance(exc, (UnsafeDocumentUpload, DocumentUploadPersistenceError)):
+            raise
+        raise DocumentUploadPersistenceError("Document upload did not commit") from exc

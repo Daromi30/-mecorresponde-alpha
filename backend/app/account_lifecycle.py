@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from .auth_models import EmailActionToken, User, UserSession
 from .auth_throttle import clear_all_auth_throttles
+from .document_storage_reconciliation import add_delete_tombstones, cleanup_committed_tombstones
 from .models import (
     AIRun,
     Action,
@@ -37,16 +38,13 @@ class AccountDeletionStorageError(RuntimeError):
 class AccountDeletionResult:
     cases_deleted: int
     documents_deleted: int
+    storage_cleanup_pending: bool = False
 
 
 def delete_account_and_owned_data(db: Session, user: User) -> AccountDeletionResult:
-    """Delete an account and every case it owns, including non-FK audit/AI rows.
-
-    SQL deletion is flushed before object deletion so a SQL constraint/flush failure
-    cannot remove document bytes. Object deletion then fails closed before commit.
-    """
+    """Commit account removal and object tombstones atomically in SQL first."""
     case_ids = list(
-        db.scalars(select(Case.id).where(Case.user_id == user.id)).all()
+        db.scalars(select(Case.id).where(Case.user_id == user.id).with_for_update()).all()
     )
     if not case_ids:
         clear_all_auth_throttles(db, user.email)
@@ -59,6 +57,12 @@ def delete_account_and_owned_data(db: Session, user: User) -> AccountDeletionRes
     documents = list(
         db.scalars(select(Document).where(Document.case_id.in_(case_ids))).all()
     )
+    try:
+        storage = get_document_storage() if documents else None
+    except Exception as exc:
+        db.rollback()
+        raise AccountDeletionStorageError("Could not prepare durable document cleanup") from exc
+    tombstone_ids = add_delete_tombstones(db, documents, backend=storage.backend_name) if storage else []
     document_ids = [document.id for document in documents]
     if document_ids:
         db.execute(
@@ -95,19 +99,14 @@ def delete_account_and_owned_data(db: Session, user: User) -> AccountDeletionRes
     db.execute(delete(EmailActionToken).where(EmailActionToken.user_id == user.id))
     db.execute(delete(UserSession).where(UserSession.user_id == user.id))
     db.delete(user)
-    db.flush()
-    if documents:
-        try:
-            storage = get_document_storage()
-            for document in documents:
-                storage.delete_bytes(document.storage_key)
-        except Exception as exc:
-            db.rollback()
-            raise AccountDeletionStorageError(
-                "Could not remove all document objects; account deletion was not committed"
-            ) from exc
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    pending = cleanup_committed_tombstones(db, storage, tombstone_ids) if storage else False
     return AccountDeletionResult(
         cases_deleted=len(case_ids),
         documents_deleted=len(documents),
+        storage_cleanup_pending=pending,
     )

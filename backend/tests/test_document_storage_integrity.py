@@ -17,7 +17,7 @@ from app.documents import DocumentUploadCompensationError, DocumentUploadPersist
 from app.models import AuditEvent, Case, Document, DocumentExtraction, Evidence, Fact
 from app.services_v2 import create_case
 from app.storage import (
-    LocalDocumentStorage, S3DocumentStorage, StorageIntegrityError,
+    LocalDocumentStorage, ObjectProbe, S3DocumentStorage, StorageIntegrityError,
     StorageConfigurationError, StorageWriteError, UnsafeDocumentUpload,
     object_key, read_verified_document,
     storage_status, validate_document_bytes,
@@ -35,6 +35,7 @@ class FakeS3:
         self.objects = {}
         self.fail_head = False
         self.fail_get = False
+        self.fail_get_once = False
         self.fail_put = False
         self.put_calls = 0
         self.delete_calls = 0
@@ -47,7 +48,8 @@ class FakeS3:
         return {"Metadata": self.objects[Key][1]}
 
     def get_object(self, *, Bucket, Key):
-        if self.fail_get:
+        if self.fail_get or self.fail_get_once:
+            self.fail_get_once = False
             raise S3Error("InternalError")
         data, metadata = self.objects[Key]
         return {"Body": io.BytesIO(data), "Metadata": metadata}
@@ -149,12 +151,27 @@ def test_s3_conditional_collision_rechecks_existing_without_overwrite():
     assert client.put_calls == 1
 
 
+def test_s3_probe_classifies_contradictory_metadata_as_conflict():
+    storage, client = fake_s3_storage()
+    data = b"fictional object"
+    digest = hashlib.sha256(data).hexdigest()
+    key = object_key("fictional-case", digest)
+    client.objects[storage._key(key)] = (data, {"sha256": digest})
+    real_get = client.get_object
+    def inconsistent_get(*, Bucket, Key):
+        response = real_get(Bucket=Bucket, Key=Key)
+        response["Metadata"] = {"sha256": "0" * 64}
+        return response
+    client.get_object = inconsistent_get
+    assert storage.probe_object(key, digest) == ObjectProbe.PRESENT_CONFLICTING
+
+
 def test_s3_post_write_verification_failure_compensates_new_object(db):
     case = create_case(db, "Fictional electricity dispute")
     storage, client = fake_s3_storage()
     data = b"fictional text"
     key = key_for(case.id, data)
-    client.fail_get = True
+    client.fail_get_once = True
     with pytest.raises(DocumentUploadPersistenceError):
         save_upload(db, case, "x.txt", "text/plain", data, storage=storage)
     assert storage._key(key) not in client.objects
@@ -251,8 +268,14 @@ def test_new_object_is_compensated_after_commit_failure(tmp_path, db, monkeypatc
     storage = LocalDocumentStorage(tmp_path, persistent=True)
     data = b"fictional text"
     key = key_for(case.id, data)
+    real_commit = db.commit
+    calls = 0
     def failed_commit():
-        raise RuntimeError("simulated database failure")
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise RuntimeError("simulated database failure")
+        return real_commit()
     monkeypatch.setattr(db, "commit", failed_commit)
     with pytest.raises(DocumentUploadPersistenceError):
         save_upload(db, case, "x.txt", "text/plain", data, storage=storage)
@@ -276,7 +299,7 @@ def test_new_object_is_compensated_for_each_sql_pipeline_failure(tmp_path, db, m
         def selective_flush(*args, **kwargs):
             nonlocal calls
             calls += 1
-            if (failure == "document_flush" and calls == 1) or (failure == "fact_flush" and calls == 2):
+            if (failure == "document_flush" and any(isinstance(row, Document) for row in db.new)) or (failure == "fact_flush" and any(isinstance(row, Fact) for row in db.new)):
                 raise RuntimeError("simulated SQL flush failure")
             return real_flush(*args, **kwargs)
         monkeypatch.setattr(db, "flush", selective_flush)
@@ -306,8 +329,14 @@ def test_preexisting_object_is_not_deleted_after_database_failure(tmp_path, db, 
     digest = hashlib.sha256(data).hexdigest()
     key = object_key(case.id, digest)
     assert storage.put_bytes(key, data, content_type="text/plain", sha256=digest).created
+    real_commit = db.commit
+    calls = 0
     def failed_commit():
-        raise RuntimeError("simulated database failure")
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("simulated database failure")
+        return real_commit()
     monkeypatch.setattr(db, "commit", failed_commit)
     with pytest.raises(DocumentUploadPersistenceError):
         save_upload(db, case, "x.txt", "text/plain", data, storage=storage)
@@ -321,9 +350,13 @@ def test_compensation_preserves_object_if_database_commit_was_acknowledged_late(
     data = b"fictional text"
     key = key_for(case.id, data)
     real_commit = db.commit
+    calls = 0
     def commit_then_lose_ack():
+        nonlocal calls
+        calls += 1
         real_commit()
-        raise RuntimeError("simulated lost acknowledgement")
+        if calls == 3:
+            raise RuntimeError("simulated lost acknowledgement")
     monkeypatch.setattr(db, "commit", commit_then_lose_ack)
     with pytest.raises(DocumentUploadPersistenceError):
         save_upload(db, case, "x.txt", "text/plain", data, storage=storage)
@@ -335,8 +368,14 @@ def test_failed_compensation_is_explicit_and_does_not_log_content(tmp_path, db, 
     case = create_case(db, "Fictional electricity dispute")
     storage = LocalDocumentStorage(tmp_path, persistent=True)
     data = b"fictional private text"
+    real_commit = db.commit
+    calls = 0
     def failed_commit():
-        raise RuntimeError("simulated database failure")
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise RuntimeError("simulated database failure")
+        return real_commit()
     def failed_delete(key):
         raise RuntimeError("simulated deletion failure")
     monkeypatch.setattr(db, "commit", failed_commit)
@@ -344,7 +383,7 @@ def test_failed_compensation_is_explicit_and_does_not_log_content(tmp_path, db, 
     with pytest.raises(DocumentUploadCompensationError):
         save_upload(db, case, "x.txt", "text/plain", data, storage=storage)
     assert "fictional private text" not in caplog.text
-    assert "DOCUMENT_UPLOAD_COMPENSATION_FAILED" in caplog.text
+    assert "DOCUMENT_STORAGE_RECONCILED" in caplog.text
 
 
 def test_extractor_failure_retains_failed_document_consistently(tmp_path, db, monkeypatch):
