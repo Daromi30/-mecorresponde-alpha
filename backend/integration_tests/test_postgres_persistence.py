@@ -1,9 +1,14 @@
-from sqlalchemy import select
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
+from sqlalchemy import func, select
 
 from app.db import Base, SessionLocal, engine
+from app.documents import save_upload
 from app.main import persistence_health
-from app.models import Case, Decision, Evidence, Fact
+from app.models import Case, Decision, Document, Evidence, Fact
 from app.services_v2 import create_case, diagnose, seed_legal, upsert_fact
+from app.storage import LocalDocumentStorage
 
 
 def test_case_survives_new_postgres_session():
@@ -59,3 +64,31 @@ def test_case_survives_new_postgres_session():
 
     gate = persistence_health()
     assert gate == {"status": "ok", "database": "postgresql", "persistent": True}
+
+
+def test_postgres_key_lock_serializes_same_document_upload(tmp_path):
+    # Disposable CI PostgreSQL plus fictional local bytes; no provider or LIVE data.
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        case = Case(raw_intake="fictional concurrent document")
+        db.add(case)
+        db.commit()
+        case_id = case.id
+    storage = LocalDocumentStorage(tmp_path / "objects", persistent=True)
+    data = b"fictional simultaneous document"
+    barrier = Barrier(2)
+
+    def upload():
+        with SessionLocal() as db:
+            barrier.wait(timeout=10)
+            document, _ = save_upload(
+                db, Case(id=case_id), "fictional.txt", "text/plain", data,
+                storage=storage,
+            )
+            return document.id
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        ids = list(pool.map(lambda _: upload(), range(2)))
+    assert ids[0] == ids[1]
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Document).where(Document.case_id == case_id)) == 1
