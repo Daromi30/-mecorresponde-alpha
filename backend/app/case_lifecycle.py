@@ -101,21 +101,11 @@ def set_current_action(
 def delete_case_and_data(db: Session, case: Case) -> CaseDeletionResult:
     """Delete one accessible case and its persisted document objects.
 
-    Storage objects are deleted before the database transaction is committed. If
-    object deletion fails, the database is rolled back so the application never
-    reports a clean deletion while knowingly retaining a document object.
+    SQL deletion is flushed before touching objects. If object deletion fails,
+    the database is rolled back so the application never reports clean deletion.
     """
     case_id = case.id
     documents = list(db.scalars(select(Document).where(Document.case_id == case_id)).all())
-    if documents:
-        try:
-            storage = get_document_storage()
-            for document in documents:
-                storage.delete_bytes(document.storage_key)
-        except Exception as exc:
-            db.rollback()
-            raise CaseDeletionStorageError("Could not remove all stored document objects") from exc
-
     document_ids = [document.id for document in documents]
     if document_ids:
         db.execute(
@@ -143,5 +133,14 @@ def delete_case_and_data(db: Session, case: Case) -> CaseDeletionResult:
         db.execute(delete(model).where(model.case_id == case_id))
 
     db.execute(delete(Case).where(Case.id == case_id))
+    db.flush()
+    if documents:
+        try:
+            storage = get_document_storage()
+            for document in documents:
+                storage.delete_bytes(document.storage_key)
+        except Exception as exc:
+            db.rollback()
+            raise CaseDeletionStorageError("Could not remove all stored document objects") from exc
     db.commit()
     return CaseDeletionResult(case_id=case_id, documents_deleted=len(documents))

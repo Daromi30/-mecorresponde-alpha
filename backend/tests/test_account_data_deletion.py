@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -141,8 +142,9 @@ def test_account_deletion_fails_closed_when_document_storage_delete_fails(
 
 def test_local_document_storage_delete_is_idempotent(tmp_path: Path):
     storage = LocalDocumentStorage(tmp_path, persistent=True)
-    key = "originals/case/aa/file"
-    storage.put_bytes(key, b"hello", content_type="text/plain", sha256="0" * 64)
+    digest = hashlib.sha256(b"hello").hexdigest()
+    key = f"originals/case/{digest[:2]}/{digest}"
+    storage.put_bytes(key, b"hello", content_type="text/plain", sha256=digest)
     assert storage.get_bytes(key) == b"hello"
     storage.delete_bytes(key)
     storage.delete_bytes(key)

@@ -12,7 +12,7 @@ from ..config import settings
 from ..db import get_db
 from ..demo_boundary import enforce_demo_boundary
 from ..demo_scenarios import SCENARIOS
-from ..documents import save_upload
+from ..documents import DocumentUploadPersistenceError, save_upload
 from ..evidence_context import atomic_workflow_transaction, current_outcome_evidence
 from ..models import Action, AuditEvent, Case, Communication, Deadline, Decision, Document, Evidence, Fact, Outcome
 from ..reviews import HumanReview
@@ -28,7 +28,7 @@ from ..services_v2 import (
     EVALUATORS, analyze_company_response, audit, confirm_document_fact, create_case, create_human_review,
     diagnose, get_next_question, prepare_claim_package, upsert_fact,
 )
-from ..storage import UnsafeDocumentUpload
+from ..storage import StorageIntegrityError, StorageWriteError, UnsafeDocumentUpload
 
 router = APIRouter(
     prefix="/api/cases",
@@ -289,6 +289,8 @@ async def documents(case_id: str, file: UploadFile = File(...), db: Session = De
         )
     except UnsafeDocumentUpload as exc:
         raise HTTPException(422, str(exc)) from exc
+    except (DocumentUploadPersistenceError, StorageIntegrityError, StorageWriteError) as exc:
+        raise HTTPException(503, "Document upload could not be stored safely") from exc
     return {
         "document_id": document.id,
         "status": document.processing_status,

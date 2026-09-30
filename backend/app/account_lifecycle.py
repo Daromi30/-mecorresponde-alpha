@@ -42,9 +42,8 @@ class AccountDeletionResult:
 def delete_account_and_owned_data(db: Session, user: User) -> AccountDeletionResult:
     """Delete an account and every case it owns, including non-FK audit/AI rows.
 
-    Document bytes are removed before database records so a storage failure fails closed
-    instead of silently leaving personal files behind. Object deletion is idempotent, so
-    the operation can safely be retried if the database transaction later fails.
+    SQL deletion is flushed before object deletion so a SQL constraint/flush failure
+    cannot remove document bytes. Object deletion then fails closed before commit.
     """
     case_ids = list(
         db.scalars(select(Case.id).where(Case.user_id == user.id)).all()
@@ -60,17 +59,6 @@ def delete_account_and_owned_data(db: Session, user: User) -> AccountDeletionRes
     documents = list(
         db.scalars(select(Document).where(Document.case_id.in_(case_ids))).all()
     )
-    if documents:
-        try:
-            storage = get_document_storage()
-            for document in documents:
-                storage.delete_bytes(document.storage_key)
-        except Exception as exc:
-            db.rollback()
-            raise AccountDeletionStorageError(
-                "Could not remove all document objects; account deletion was not committed"
-            ) from exc
-
     document_ids = [document.id for document in documents]
     if document_ids:
         db.execute(
@@ -107,6 +95,17 @@ def delete_account_and_owned_data(db: Session, user: User) -> AccountDeletionRes
     db.execute(delete(EmailActionToken).where(EmailActionToken.user_id == user.id))
     db.execute(delete(UserSession).where(UserSession.user_id == user.id))
     db.delete(user)
+    db.flush()
+    if documents:
+        try:
+            storage = get_document_storage()
+            for document in documents:
+                storage.delete_bytes(document.storage_key)
+        except Exception as exc:
+            db.rollback()
+            raise AccountDeletionStorageError(
+                "Could not remove all document objects; account deletion was not committed"
+            ) from exc
     db.commit()
     return AccountDeletionResult(
         cases_deleted=len(case_ids),
