@@ -44,12 +44,8 @@ def test_complete_saved_account_beta_resolution_journey(client):
     assert case["status"] == "INTAKE"
     assert anonymous_token
 
-    # 2. The same person can create an optional account and attach the live case to it.
-    registered = client.post(
-        "/api/auth/register",
-        json={"email": EMAIL, "password": PASSWORD},
-    )
-    assert registered.status_code == 201, registered.text
+    # 2. A pre-existing fictional account can attach the case to it.
+    registered = client.historical_account(EMAIL, PASSWORD)
     assert registered.json()["user"]["email"] == EMAIL
 
     claimed = client.post(f"/api/cases/{case_id}/claim")

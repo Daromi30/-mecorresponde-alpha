@@ -17,11 +17,7 @@ def _fact(client, case_id: str, key: str, value) -> None:
 
 
 def test_real_communication_dates_survive_persistence_handoff_and_account_export(client, db):
-    registered = client.post(
-        "/api/auth/register",
-        json={"email": "chronology@example.com", "password": PASSWORD},
-    )
-    assert registered.status_code == 201, registered.text
+    client.historical_account("chronology@example.com", PASSWORD)
 
     created = client.post(
         "/api/cases",

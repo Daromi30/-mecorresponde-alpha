@@ -24,11 +24,7 @@ def create_case(client):
 
 
 def register(client, email):
-    response = client.post(
-        "/api/auth/register",
-        json={"email": email, "password": PASSWORD},
-    )
-    assert response.status_code == 201, response.text
+    client.historical_account(email, PASSWORD)
 
 
 def test_anonymous_case_can_be_deleted_only_with_explicit_confirmation(client, db):

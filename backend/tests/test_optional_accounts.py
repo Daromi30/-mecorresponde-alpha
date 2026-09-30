@@ -15,11 +15,7 @@ def test_account_can_claim_case_and_recover_it_without_anonymous_token(client, d
     assert db.get(CaseAccess, case_id) is not None
 
     password = "correct-horse-battery-staple"
-    registered = client.post(
-        "/api/auth/register",
-        json={"email": " Persona@Example.com ", "password": password},
-    )
-    assert registered.status_code == 201
+    registered = client.historical_account(" Persona@Example.com ", password)
     assert registered.json()["user"]["email"] == "persona@example.com"
     assert registered.json()["user"]["email_verified"] is False
 
@@ -59,11 +55,12 @@ def test_account_can_claim_case_and_recover_it_without_anonymous_token(client, d
     assert client.get(f"/api/cases/{case_id}").status_code == 200
 
 
-def test_registration_rejects_duplicate_normalized_email(client):
+def test_public_registration_is_closed_for_existing_and_new_emails(client):
     payload = {"email": "user@example.com", "password": "a-strong-alpha-password"}
-    assert client.post("/api/auth/register", json=payload).status_code == 201
+    client.historical_account(payload["email"], payload["password"])
+    assert client.post("/api/auth/register", json=payload).status_code == 503
     duplicate = client.post(
         "/api/auth/register",
         json={"email": " USER@example.com ", "password": "another-strong-password"},
     )
-    assert duplicate.status_code == 409
+    assert duplicate.status_code == 503

@@ -6,11 +6,7 @@ def create_case(client, message):
 
 
 def register(client, email, password):
-    response = client.post(
-        "/api/auth/register",
-        json={"email": email, "password": password},
-    )
-    assert response.status_code == 201, response.text
+    client.historical_account(email, password)
 
 
 def login(client, email, password):

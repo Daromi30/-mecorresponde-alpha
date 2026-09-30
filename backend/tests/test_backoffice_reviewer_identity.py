@@ -138,9 +138,7 @@ def test_shared_token_and_claimant_cookie_cannot_read_private_case_or_mutate_rev
         ("resolve-structured", {"reviewer_decision": "synthetic", "fact_updates": [{"key": "electricity.billing.correct_amount", "value": 80}]}),
     ):
         assert client.post(f"/api/admin/reviews/{review.id}/{suffix}", json=payload, headers=ADMIN).status_code == 404
-    assert client.post("/api/auth/register", json={
-        "email": "claimant-only@example.com", "password": "synthetic-claimant-password",
-    }).status_code == 201
+    client.historical_account("claimant-only@example.com", "synthetic-claimant-password")
     assert client.get(f"/api/admin/cases/{case.id}").status_code == 401
     assert client.get("/api/admin/reviews").status_code == 401
     db.expire_all()
