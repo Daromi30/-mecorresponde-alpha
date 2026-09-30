@@ -4,7 +4,7 @@ Estado: implementación provider-neutral para revisión independiente. **No habi
 
 ## Tabla y estados
 
-La migración aditiva y reversible `0011_document_storage_reconciliation` crea `document_storage_operations`. Cada fila conserva únicamente ID, tipo `PUT`/`DELETE`, clave técnica content-addressed, SHA-256, backend, estado, indicador `cleanup_allowed`, contador/retry, marcas de tiempo, tipo de error sanitizado y snapshots opcionales de IDs de caso/documento **sin FK**. No contiene bytes, nombre de archivo, texto, extracción, email ni secretos. Las filas históricas `Document` no se modifican y no se generan tombstones retrospectivos.
+La migración aditiva y reversible `0011_document_storage_reconciliation.py` usa revision Alembic `0011_document_storage_ops` (dentro del límite de 32 caracteres) y crea `document_storage_operations`. Cada fila conserva únicamente ID, tipo `PUT`/`DELETE`, clave técnica content-addressed, SHA-256, backend, estado, indicador `cleanup_allowed`, contador/retry, marcas de tiempo, tipo de error sanitizado y snapshots opcionales de IDs de caso/documento **sin FK**. No contiene bytes, nombre de archivo, texto, extracción, email ni secretos. Las filas históricas `Document` no se modifican y no se generan tombstones retrospectivos.
 
 | Estado | Significado | Transiciones automáticas válidas |
 | --- | --- | --- |

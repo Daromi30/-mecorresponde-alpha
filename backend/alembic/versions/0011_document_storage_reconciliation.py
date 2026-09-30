@@ -3,7 +3,7 @@
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0011_document_storage_reconciliation"
+revision = "0011_document_storage_ops"
 down_revision = "0010_closed_demo_scenarios"
 branch_labels = None
 depends_on = None
