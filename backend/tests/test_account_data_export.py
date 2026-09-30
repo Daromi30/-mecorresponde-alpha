@@ -12,11 +12,7 @@ PASSWORD = "strong-password-for-export"
 
 
 def register(client, email="export@example.com"):
-    response = client.post(
-        "/api/auth/register",
-        json={"email": email, "password": PASSWORD},
-    )
-    assert response.status_code == 201, response.text
+    response = client.historical_account(email, PASSWORD)
     return response.json()["user"]["id"]
 
 

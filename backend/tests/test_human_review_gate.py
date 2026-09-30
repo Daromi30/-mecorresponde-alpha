@@ -51,14 +51,7 @@ def test_anonymous_case_holder_cannot_complete_human_review(client, db):
 
 def test_authenticated_case_owner_cannot_complete_own_human_review(client, db):
     case_id, review_id = create_case_with_human_review(client)
-    registered = client.post(
-        "/api/auth/register",
-        json={
-            "email": "review-gate-owner@example.com",
-            "password": "correct-horse-battery-staple",
-        },
-    )
-    assert registered.status_code == 201
+    client.historical_account("review-gate-owner@example.com", "correct-horse-battery-staple")
     claimed = client.post(f"/api/cases/{case_id}/claim")
     assert claimed.status_code == 200
 

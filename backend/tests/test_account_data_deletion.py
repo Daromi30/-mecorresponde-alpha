@@ -20,11 +20,7 @@ class RecordingStorage:
 
 
 def register_and_claim_case(client):
-    registered = client.post(
-        "/api/auth/register",
-        json={"email": "delete-me@example.com", "password": PASSWORD},
-    )
-    assert registered.status_code == 201
+    registered = client.historical_account("delete-me@example.com", PASSWORD)
     user_id = registered.json()["user"]["id"]
 
     created = client.post(

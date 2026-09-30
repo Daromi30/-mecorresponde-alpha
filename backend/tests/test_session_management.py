@@ -16,11 +16,7 @@ STATIC = Path(__file__).parents[1] / "app" / "static"
 
 def test_user_can_list_and_revoke_other_sessions_without_closing_current(client, db):
     email = "session-owner@example.com"
-    registered = client.post(
-        "/api/auth/register",
-        json={"email": email, "password": PASSWORD},
-    )
-    assert registered.status_code == 201
+    client.historical_account(email, PASSWORD)
     user = db.scalar(select(User).where(User.email == email))
     assert user is not None
 
@@ -75,10 +71,7 @@ def test_session_management_requires_authentication(client):
 
 
 def test_revoke_other_sessions_rejects_extra_fields(client):
-    client.post(
-        "/api/auth/register",
-        json={"email": "session-extra@example.com", "password": PASSWORD},
-    )
+    client.historical_account("session-extra@example.com", PASSWORD)
     response = client.post(
         "/api/auth/sessions/revoke-others",
         json={"password": PASSWORD, "all_accounts": True},

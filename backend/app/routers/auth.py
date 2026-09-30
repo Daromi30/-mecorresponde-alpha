@@ -166,28 +166,11 @@ def auth_capabilities():
     }
 
 
-@router.post("/register", status_code=201)
-def register(
-    payload: AuthCredentials,
-    response: Response,
-    db: Session = Depends(get_db),
-):
-    email = normalize_email(payload.email)
-    existing = db.scalar(select(User).where(User.email == email))
-    if existing:
-        raise HTTPException(status_code=409, detail="An account already exists for this email")
-
-    user = User(email=email, password_hash=hash_password(payload.password))
-    db.add(user)
-    db.flush()
-    issue_session(db, user, response)
-    db.commit()
-    return {
-        "user": user_payload(user),
-        "email_verification_required": bool(
-            settings.email_verification_enforced and settings.transactional_email_operational
-        ),
-    }
+@router.post("/register")
+def register():
+    # Public self-registration is deliberately closed for the synthetic-only demo.
+    # Reopening it requires a reviewed code change, not an environment flag.
+    raise HTTPException(status_code=503, detail="Account registration is not available")
 
 
 @router.post("/login")
@@ -197,14 +180,24 @@ def login(
     db: Session = Depends(get_db),
 ):
     email = normalize_email(payload.email)
-    login_throttle.check(db, email)
     user = db.scalar(select(User).where(User.email == email))
     if not user:
+        # Keep the expensive password work without retaining an email-derived
+        # throttle key for a person who has no account here.
         hash_password(payload.password)
-        login_throttle.fail(db, email)
-        db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if user.disabled_at is not None or not verify_password(payload.password, user.password_hash):
+    try:
+        login_throttle.check(db, email)
+    except HTTPException as exc:
+        if exc.status_code != 429:
+            raise
+        # Keep the persistent block, but do not disclose account existence or
+        # block timing through the public login response. Match the unknown-email
+        # path's password work without checking credentials or issuing a session.
+        hash_password(payload.password)
+        raise HTTPException(status_code=401, detail="Invalid email or password") from None
+    password_matches = verify_password(payload.password, user.password_hash)
+    if user.disabled_at is not None or not password_matches:
         login_throttle.fail(db, email)
         db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")

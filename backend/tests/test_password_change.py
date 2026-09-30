@@ -18,11 +18,7 @@ STATIC = Path(__file__).parents[1] / "app" / "static"
 
 def test_password_change_requires_current_password_revokes_sessions_and_reset_links(client, db):
     email = "change-password@example.com"
-    registered = client.post(
-        "/api/auth/register",
-        json={"email": email, "password": OLD_PASSWORD},
-    )
-    assert registered.status_code == 201
+    client.historical_account(email, OLD_PASSWORD)
     user = db.scalar(select(User).where(User.email == email))
     assert user is not None
 
@@ -78,10 +74,7 @@ def test_password_change_requires_current_password_revokes_sessions_and_reset_li
 
 
 def test_password_change_rejects_extra_fields(client):
-    client.post(
-        "/api/auth/register",
-        json={"email": "extra-password@example.com", "password": OLD_PASSWORD},
-    )
+    client.historical_account("extra-password@example.com", OLD_PASSWORD)
     response = client.post(
         "/api/auth/password-change",
         json={

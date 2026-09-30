@@ -48,11 +48,7 @@ def test_verification_email_resends_are_limited_and_namespaced(client, db, monke
     sent = []
     configure_email(monkeypatch, sent)
     email = "verify-throttle@example.com"
-    registered = client.post(
-        "/api/auth/register",
-        json={"email": email, "password": "strong-password-for-verification"},
-    )
-    assert registered.status_code == 201
+    client.historical_account(email, "strong-password-for-verification")
 
     for _ in range(verification_email_throttle.limit):
         response = client.post("/api/auth/email-verification/request")
@@ -68,11 +64,7 @@ def test_verification_email_resends_are_limited_and_namespaced(client, db, monke
 def test_account_deletion_removes_all_auth_action_throttle_digests(client, db):
     email = "delete-throttles@example.com"
     password = "strong-password-for-deletion"
-    registered = client.post(
-        "/api/auth/register",
-        json={"email": email, "password": password},
-    )
-    assert registered.status_code == 201
+    client.historical_account(email, password)
 
     login_throttle.hit(db, email)
     password_reset_throttle.hit(db, email)

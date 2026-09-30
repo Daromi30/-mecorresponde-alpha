@@ -6,18 +6,21 @@ from app.auth_models import AuthThrottleState, User, UserSession
 from app.auth_throttle import LoginThrottle, login_throttle
 
 
-def test_failed_login_throttle_returns_retry_after_without_ip_tracking(client, db):
+def test_failed_login_throttle_is_internal_without_public_retry_after_or_ip_tracking(client, db):
     old_limit = login_throttle.limit
     login_throttle.limit = 2
     login_throttle.reset(db)
     db.commit()
     payload = {"email": "throttle-test@example.com", "password": "wrong-password-long-enough"}
+    client.historical_account(payload["email"], "correct-password-for-throttle")
+    client.post("/api/auth/logout")
     try:
         assert client.post("/api/auth/login", json=payload).status_code == 401
         assert client.post("/api/auth/login", json=payload).status_code == 401
         blocked = client.post("/api/auth/login", json=payload)
-        assert blocked.status_code == 429
-        assert int(blocked.headers["retry-after"]) >= 1
+        assert blocked.status_code == 401
+        assert blocked.json() == {"detail": "Invalid email or password"}
+        assert "retry-after" not in blocked.headers
 
         rows = db.scalars(select(AuthThrottleState)).all()
         assert len(rows) == 1
@@ -32,6 +35,8 @@ def test_failed_login_throttle_returns_retry_after_without_ip_tracking(client, d
 def test_throttle_state_survives_new_throttle_instance(client, db):
     email = "persistent-throttle@example.com"
     payload = {"email": email, "password": "wrong-password-long-enough"}
+    client.historical_account(email, "correct-password-for-throttle")
+    client.post("/api/auth/logout")
     old_limit = login_throttle.limit
     login_throttle.limit = 2
     login_throttle.reset(db)
@@ -56,7 +61,7 @@ def test_throttle_state_survives_new_throttle_instance(client, db):
 def test_successful_login_clears_persisted_throttle_state(client, db):
     email = "clear-throttle@example.com"
     password = "strong-password-for-throttle"
-    assert client.post("/api/auth/register", json={"email": email, "password": password}).status_code == 201
+    client.historical_account(email, password)
     assert client.post("/api/auth/logout").status_code == 200
     assert client.post("/api/auth/login", json={"email": email, "password": "wrong-password-long-enough"}).status_code == 401
     assert db.get(AuthThrottleState, login_throttle._key(email)) is not None
@@ -67,11 +72,7 @@ def test_successful_login_clears_persisted_throttle_state(client, db):
 
 
 def test_successful_account_is_limited_to_five_active_sessions(client, db):
-    registered = client.post(
-        "/api/auth/register",
-        json={"email": "sessions@example.com", "password": "strong-password-for-sessions"},
-    )
-    assert registered.status_code == 201
+    client.historical_account("sessions@example.com", "strong-password-for-sessions")
     user = db.scalar(select(User).where(User.email == "sessions@example.com"))
     assert user is not None
 

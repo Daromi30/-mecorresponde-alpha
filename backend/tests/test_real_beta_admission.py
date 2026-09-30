@@ -23,10 +23,7 @@ ELECTRICITY = "La factura de luz es incorrecta y me han cobrado de más"
 
 
 def _register(client, email):
-    response = client.post("/api/auth/register", json={
-        "email": email, "password": "strong-password-for-real-beta-tests",
-    })
-    assert response.status_code == 201, response.text
+    client.historical_account(email, "strong-password-for-real-beta-tests")
 
 
 def _invite(client, db):
