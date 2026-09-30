@@ -67,7 +67,7 @@ def save_upload(
     key = object_key(case.id, digest)
     operation_id: str | None = None
     try:
-        with document_key_lock(db, key):
+        with document_key_lock(db, key) as intent_connection:
             existing = db.scalar(select(Document).where(Document.case_id == case.id, Document.storage_key == key))
             if existing is not None:
                 read_verified_document(storage, existing)
@@ -79,11 +79,12 @@ def save_upload(
             _enforce_alpha_document_quota(db, case.id)
             operation = create_put_intent(
                 db, key=key, sha256=digest, backend=storage.backend_name, case_id=case.id,
+                intent_connection=intent_connection,
             )
             operation_id = operation.id
             preflight = storage.probe_object(key, digest)
             if preflight == ObjectProbe.MISSING:
-                authorize_put_after_missing_probe(db, operation)
+                authorize_put_after_missing_probe(db, operation, intent_connection=intent_connection)
                 storage.put_bytes(key, data, content_type=canonical_mime, sha256=digest)
             elif preflight == ObjectProbe.PRESENT_CONFLICTING:
                 raise DocumentUploadPersistenceError("Existing document object conflicts with expected hash")
@@ -93,6 +94,9 @@ def save_upload(
                 raise DocumentUploadPersistenceError("Unsupported document object probe result")
             # PRESENT_AND_VALID predates this attempt; do not overwrite or
             # authorize cleanup if the subsequent SQL transaction fails.
+            operation = db.get(type(operation), operation.id)
+            if operation is None:
+                raise DocumentUploadPersistenceError("Document storage intent disappeared")
             if db.scalar(select(Case.id).where(Case.id == case.id).with_for_update()) is None:
                 raise DocumentUploadPersistenceError("Case no longer exists")
             document = Document(

@@ -44,6 +44,38 @@ def pending_put(db, storage, case, key, digest):
     return operation
 
 
+def test_put_intent_does_not_commit_unrelated_pending_case_change(tmp_path):
+    SessionLocal = database(tmp_path)
+    with SessionLocal() as db:
+        case, key, digest = case_and_key(db)
+        case_id = case.id
+        case.title = "fictional uncommitted business change"
+        operation = create_put_intent(db, key=key, sha256=digest, backend="local", case_id=case.id)
+        with SessionLocal() as check:
+            assert check.get(DocumentStorageOperation, operation.id).state == PENDING
+            assert check.get(Case, case_id).title is None
+        db.rollback()
+    with SessionLocal() as check:
+        assert check.get(Case, case_id).title is None
+        assert check.get(DocumentStorageOperation, operation.id).state == PENDING
+
+
+def test_shared_sqlite_connection_rejects_flushed_caller_work(db):
+    case = Case(raw_intake="fictional shared connection")
+    db.add(case)
+    db.commit()
+    case_id = case.id
+    case.title = "fictional uncommitted title"
+    db.flush()
+    digest = hashlib.sha256(b"fictional intent").hexdigest()
+    with pytest.raises(RuntimeError, match="Cannot isolate durable intent"):
+        create_put_intent(db, key=object_key(case_id, digest), sha256=digest,
+                          backend="local", case_id=case_id)
+    db.rollback()
+    assert db.get(Case, case_id).title is None
+    assert db.scalar(select(func.count()).select_from(DocumentStorageOperation)) == 0
+
+
 def test_put_intent_is_committed_before_any_external_mutation(tmp_path):
     SessionLocal = database(tmp_path)
     data = b"fictional uploaded bytes"

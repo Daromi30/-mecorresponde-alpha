@@ -8,7 +8,9 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import SingletonThreadPool, StaticPool
 
 from .document_storage_lock import document_key_lock
 from .models import Document, DocumentStorageOperation
@@ -52,24 +54,54 @@ def _safe_error_type(exc: BaseException) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "", type(exc).__name__)[:80] or "Error"
 
 
-def create_put_intent(db: Session, *, key: str, sha256: str, backend: str, case_id: str) -> DocumentStorageOperation:
-    """Commit before a caller may mutate storage; never holds document bytes."""
+def _intent_bind(db: Session, intent_connection: Connection | None) -> Connection | Engine:
+    if intent_connection is not None:
+        return intent_connection
+    bind = db.get_bind()
+    if isinstance(bind, Connection):
+        raise RuntimeError("Durable intent requires an independent SQL connection")
+    if bind.dialect.name == "sqlite" and isinstance(bind.pool, (StaticPool, SingletonThreadPool)):
+        # In-memory SQLite pools may hand both Sessions the very same DBAPI
+        # connection. Refuse to commit a durable intent on top of caller DML.
+        if db.connection().connection.driver_connection.in_transaction:
+            raise RuntimeError("Cannot isolate durable intent from caller SQL transaction")
+    return bind
+
+
+def create_put_intent(
+    db: Session, *, key: str, sha256: str, backend: str, case_id: str,
+    intent_connection: Connection | None = None,
+) -> DocumentStorageOperation:
+    """Commit an intent independently of the caller's business transaction.
+
+    PostgreSQL callers pass their advisory-lock connection so an upload uses at
+    most two connections: the caller's work Session and this locked connection.
+    The caller's Session is never committed or flushed by this function.
+    """
     operation = DocumentStorageOperation(
         operation_type=PUT, storage_key=key, sha256=sha256, backend=backend,
         state=PENDING, cleanup_allowed=False, case_id=case_id,
     )
-    db.add(operation)
-    db.commit()
+    with Session(_intent_bind(db, intent_connection), expire_on_commit=False) as intent_db:
+        intent_db.add(operation)
+        intent_db.commit()
     return operation
 
 
-def authorize_put_after_missing_probe(db: Session, operation: DocumentStorageOperation) -> None:
+def authorize_put_after_missing_probe(
+    db: Session, operation: DocumentStorageOperation, *,
+    intent_connection: Connection | None = None,
+) -> None:
     """A durable may-create marker precedes a potentially ambiguous PUT."""
-    if operation.operation_type != PUT or operation.state != PENDING or operation.cleanup_allowed:
-        raise RuntimeError("Invalid PUT authorization")
+    with Session(_intent_bind(db, intent_connection), expire_on_commit=False) as intent_db:
+        stored = intent_db.get(DocumentStorageOperation, operation.id)
+        if stored is None or stored.operation_type != PUT or stored.state != PENDING or stored.cleanup_allowed:
+            raise RuntimeError("Invalid PUT authorization")
+        stored.cleanup_allowed = True
+        stored.updated_at = _utcnow()
+        intent_db.commit()
     operation.cleanup_allowed = True
-    operation.updated_at = _utcnow()
-    db.commit()
+    operation.updated_at = stored.updated_at
 
 
 def complete_put_with_document(operation: DocumentStorageOperation, document: Document) -> None:

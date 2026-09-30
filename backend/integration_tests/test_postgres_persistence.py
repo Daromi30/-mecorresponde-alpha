@@ -1,7 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier, Lock
 
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, func, select
+from sqlalchemy.orm import sessionmaker
 
 from app.db import Base, SessionLocal, engine
 from app.document_storage_reconciliation import (
@@ -133,6 +134,47 @@ def test_postgres_durable_put_and_tombstone_recover_with_new_sessions(tmp_path):
         restarted_again.expire_all()
         assert restarted_again.get(DocumentStorageOperation, ids[0]).state == COMPLETE
         assert storage.probe_object(key, digest) == ObjectProbe.MISSING
+
+
+def test_postgres_put_intent_cannot_commit_flushed_business_change():
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        case = Case(raw_intake="fictional intent isolation")
+        db.add(case)
+        db.commit()
+        case_id = case.id
+        case.title = "fictional uncommitted title"
+        db.flush()
+        digest = hashlib.sha256(b"fictional intent").hexdigest()
+        key = object_key(case_id, digest)
+        operation = create_put_intent(db, key=key, sha256=digest, backend="local", case_id=case_id)
+        with SessionLocal() as check:
+            assert check.get(DocumentStorageOperation, operation.id).state == "PENDING"
+            assert check.get(Case, case_id).title is None
+        db.rollback()
+    with SessionLocal() as check:
+        assert check.get(Case, case_id).title is None
+        assert check.get(DocumentStorageOperation, operation.id).state == "PENDING"
+
+
+def test_postgres_upload_uses_at_most_two_pooled_connections(tmp_path):
+    Base.metadata.create_all(bind=engine)
+    limited_engine = create_engine(engine.url, pool_size=2, max_overflow=0, pool_timeout=3)
+    LimitedSession = sessionmaker(bind=limited_engine, autoflush=False, expire_on_commit=False)
+    try:
+        with LimitedSession() as db:
+            case = Case(raw_intake="fictional bounded-pool upload")
+            db.add(case)
+            db.commit()
+            case = db.get(Case, case.id)
+            storage = LocalDocumentStorage(tmp_path / "bounded-pool", persistent=True)
+            document, _ = save_upload(
+                db, case, "fictional.txt", "text/plain", b"fictional bounded-pool bytes",
+                storage=storage,
+            )
+            assert document.case_id == case.id
+    finally:
+        limited_engine.dispose()
 
 
 def test_postgres_two_reconcilers_compete_safely_for_same_tombstone(tmp_path):

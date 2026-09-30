@@ -273,7 +273,7 @@ def test_new_object_is_compensated_after_commit_failure(tmp_path, db, monkeypatc
     def failed_commit():
         nonlocal calls
         calls += 1
-        if calls == 3:
+        if calls == 1:
             raise RuntimeError("simulated database failure")
         return real_commit()
     monkeypatch.setattr(db, "commit", failed_commit)
@@ -334,7 +334,7 @@ def test_preexisting_object_is_not_deleted_after_database_failure(tmp_path, db, 
     def failed_commit():
         nonlocal calls
         calls += 1
-        if calls == 2:
+        if calls == 1:
             raise RuntimeError("simulated database failure")
         return real_commit()
     monkeypatch.setattr(db, "commit", failed_commit)
@@ -355,7 +355,7 @@ def test_compensation_preserves_object_if_database_commit_was_acknowledged_late(
         nonlocal calls
         calls += 1
         real_commit()
-        if calls == 3:
+        if calls == 1:
             raise RuntimeError("simulated lost acknowledgement")
     monkeypatch.setattr(db, "commit", commit_then_lose_ack)
     with pytest.raises(DocumentUploadPersistenceError):
@@ -373,7 +373,7 @@ def test_failed_compensation_is_explicit_and_does_not_log_content(tmp_path, db, 
     def failed_commit():
         nonlocal calls
         calls += 1
-        if calls == 3:
+        if calls == 1:
             raise RuntimeError("simulated database failure")
         return real_commit()
     def failed_delete(key):
