@@ -6,7 +6,7 @@ from app.auth_models import AuthThrottleState, User, UserSession
 from app.auth_throttle import LoginThrottle, login_throttle
 
 
-def test_failed_login_throttle_returns_retry_after_without_ip_tracking(client, db):
+def test_failed_login_throttle_is_internal_without_public_retry_after_or_ip_tracking(client, db):
     old_limit = login_throttle.limit
     login_throttle.limit = 2
     login_throttle.reset(db)
@@ -18,8 +18,9 @@ def test_failed_login_throttle_returns_retry_after_without_ip_tracking(client, d
         assert client.post("/api/auth/login", json=payload).status_code == 401
         assert client.post("/api/auth/login", json=payload).status_code == 401
         blocked = client.post("/api/auth/login", json=payload)
-        assert blocked.status_code == 429
-        assert int(blocked.headers["retry-after"]) >= 1
+        assert blocked.status_code == 401
+        assert blocked.json() == {"detail": "Invalid email or password"}
+        assert "retry-after" not in blocked.headers
 
         rows = db.scalars(select(AuthThrottleState)).all()
         assert len(rows) == 1

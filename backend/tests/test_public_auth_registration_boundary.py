@@ -1,5 +1,7 @@
 """Public identity boundary for the synthetic-only demo (fictional identities)."""
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import select
 
 import app.routers.auth as auth_router
@@ -73,20 +75,92 @@ def test_unknown_login_is_non_enumerating_and_does_not_persist_digest(client, db
     assert db.scalars(select(UserSession).where(UserSession.revoked_at.is_(None))).all() == []
 
 
-def test_existing_identity_throttle_still_blocks_brute_force(client, db):
+def test_existing_identity_throttle_blocks_internally_with_uniform_public_error(client, db):
     email = "protected-fictional@example.test"
-    client.historical_account(email, "correct-fictional-password-123")
+    unknown = "unregistered-fictional@example.test"
+    correct_password = "correct-fictional-password-123"
+    client.historical_account(email, correct_password)
     client.post("/api/auth/logout")
     old_limit = login_throttle.limit
     login_throttle.limit = 2
     try:
         payload = {"email": email, "password": "incorrect-fictional-password-123"}
-        assert client.post("/api/auth/login", json=payload).status_code == 401
-        assert client.post("/api/auth/login", json=payload).status_code == 401
+        unknown_payload = {"email": unknown, "password": payload["password"]}
+        for _ in range(3):
+            unknown_response = client.post("/api/auth/login", json=unknown_payload)
+            assert unknown_response.status_code == 401
+            assert unknown_response.json() == {"detail": "Invalid email or password"}
+            assert "retry-after" not in unknown_response.headers
+            assert db.get(AuthThrottleState, login_throttle._key(unknown)) is None
+
+        first = client.post("/api/auth/login", json=payload)
+        second = client.post("/api/auth/login", json=payload)
+        assert first.status_code == second.status_code == 401
+        assert first.json() == second.json() == unknown_response.json()
         blocked = client.post("/api/auth/login", json=payload)
-        assert blocked.status_code == 429
-        assert int(blocked.headers["retry-after"]) > 0
+        assert blocked.status_code == 401
+        assert blocked.json() == unknown_response.json()
+        assert "retry-after" not in blocked.headers
+        row = db.get(AuthThrottleState, login_throttle._key(email))
+        assert row.failure_count == 2
+        assert row.blocked_until is not None
+
+        # A correct password cannot bypass the live internal lock or create a session.
+        correct_while_blocked = client.post(
+            "/api/auth/login", json={"email": email, "password": correct_password}
+        )
+        assert correct_while_blocked.status_code == 401
+        assert correct_while_blocked.json() == unknown_response.json()
+        assert "retry-after" not in correct_while_blocked.headers
         assert db.get(AuthThrottleState, login_throttle._key(email)).failure_count == 2
+        assert db.scalars(select(UserSession).where(UserSession.revoked_at.is_(None))).all() == []
+
+        # Expire the existing window without changing the throttle implementation.
+        expired_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        row.window_started_at = expired_at - timedelta(seconds=login_throttle.window_seconds)
+        row.blocked_until = expired_at
+        db.commit()
+        recovered = client.post(
+            "/api/auth/login", json={"email": email, "password": correct_password}
+        )
+        assert recovered.status_code == 200
+        assert db.get(AuthThrottleState, login_throttle._key(email)) is None
+    finally:
+        login_throttle.limit = old_limit
+
+
+def test_blocked_and_unknown_login_both_do_pbkdf2_without_password_verification(
+    client, db, monkeypatch
+):
+    email = "locked-crypto-fictional@example.test"
+    password = "correct-fictional-password-123"
+    wrong = "incorrect-fictional-password-123"
+    client.historical_account(email, password)
+    client.post("/api/auth/logout")
+    old_limit = login_throttle.limit
+    login_throttle.limit = 1
+    try:
+        assert client.post("/api/auth/login", json={"email": email, "password": wrong}).status_code == 401
+        calls = []
+        original_hash = auth_router.hash_password
+
+        def record_hash(value):
+            calls.append(value)
+            return original_hash(value)
+
+        def unexpected_verification(*args):
+            raise AssertionError("Blocked login must not check the password hash")
+
+        monkeypatch.setattr(auth_router, "hash_password", record_hash)
+        monkeypatch.setattr(auth_router, "verify_password", unexpected_verification)
+        blocked = client.post("/api/auth/login", json={"email": email, "password": password})
+        unknown = client.post(
+            "/api/auth/login",
+            json={"email": "unknown-crypto-fictional@example.test", "password": wrong},
+        )
+        assert blocked.status_code == unknown.status_code == 401
+        assert blocked.json() == unknown.json()
+        assert calls == [password, wrong]
     finally:
         login_throttle.limit = old_limit
 

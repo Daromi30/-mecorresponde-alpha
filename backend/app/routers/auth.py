@@ -186,7 +186,16 @@ def login(
         # throttle key for a person who has no account here.
         hash_password(payload.password)
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    login_throttle.check(db, email)
+    try:
+        login_throttle.check(db, email)
+    except HTTPException as exc:
+        if exc.status_code != 429:
+            raise
+        # Keep the persistent block, but do not disclose account existence or
+        # block timing through the public login response. Match the unknown-email
+        # path's password work without checking credentials or issuing a session.
+        hash_password(payload.password)
+        raise HTTPException(status_code=401, detail="Invalid email or password") from None
     password_matches = verify_password(payload.password, user.password_hash)
     if user.disabled_at is not None or not password_matches:
         login_throttle.fail(db, email)
