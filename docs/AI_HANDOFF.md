@@ -1,5 +1,9 @@
 # MECORRESPONDE AI HANDOFF
 
+## WORK — privacidad pre-beta: paquete privado (2026-10-01)
+
+Active owner: **WORK**. El mapa factual pre-beta se completó como paquete privado de trabajo, mantenido deliberadamente fuera del repositorio público. La identidad del responsable, las bases jurídicas, la conservación, el análisis de encargados/DPA/transferencias y la revisión profesional de riesgo/EIPD siguen pendientes. `PRIVATE_REAL_BETA` permanece **OFF** y `REAL BETA READINESS` permanece **NOT READY**. NEXT_EXECUTABLE_TASK: continuar la preparación de privacidad por un canal privado con los hechos que aporte el titular y la revisión profesional correspondiente. Esta nota no autoriza publicar `/privacidad` ni activar datos reales.
+
 ## WORK — #234 corregido, integrado y LIVE; siguiente gate empresarial/privacidad (2026-09-30)
 
 Active owner: **WORK**. PR [#234](https://github.com/Daromi30/-mecorresponde-alpha/pull/234) se revisó independientemente desde base `ca26211b30660dca36a3ec2f3aec996dbe733db1`. El head inicial `ba308d7a991d7bc88909aa744f5303ce193d8ae9` tenía un defecto bloqueante: `create_put_intent()` confirmaba la Session llamante y podía confirmar cambios de negocio pendientes. Se corrigió en la misma PR, con intención y `cleanup_allowed` en transacción aislada, reutilización de la conexión del advisory lock PostgreSQL (máximo dos conexiones por subida) y rechazo seguro de DML pendiente en SQLite de memoria compartida. Head revisado y fusionado: `e04a36d4de4517df1298feba055c434f737dc65a`; cuatro checks CI Linux/PostgreSQL SUCCESS en ese head. Repetición local del código final: **793 passed, 1 deselected** (solo aserción POSIX `0600` incompatible con NTFS), 4 pruebas de migración SQLite PASS, `compileall` y diff PASS. Merge/main: `3a9a75400fcbf336fb5bcbb8b4d84078dd15dd12`.
