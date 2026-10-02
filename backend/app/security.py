@@ -218,6 +218,9 @@ def _block_locked_initial_mutation(request: Request, db: Session, case: Case) ->
 
 
 def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Case) -> None:
+    if request.method.upper() == "POST" and request.url.path.rstrip("/").endswith(("/prepare-claim", "/submission")):
+        from .private_beta_release import require_release_approval
+        require_release_approval(db, case)
     _block_case_user_review_completion(request)
     _block_legacy_untraced_resolution_routes(request)
     _block_terminal_document_upload(request, case)
