@@ -3,6 +3,8 @@ import shutil
 import subprocess
 import tempfile
 
+from app.calendar_clock import spain_today
+
 
 STATIC = Path(__file__).parents[1] / "app" / "static"
 
@@ -42,7 +44,7 @@ def _c04_case(client, *, order_date: str, additional_requested=None):
 
 
 def test_waiting_diagnosis_exposes_wait_action_not_claim_preparation(client):
-    case_id = _c04_case(client, order_date="2026-09-01")
+    case_id = _c04_case(client, order_date=spain_today().isoformat())
     diagnosis = client.post(f"/api/cases/{case_id}/diagnose")
     assert diagnosis.status_code == 200, diagnosis.text
     assert diagnosis.json()["viability"] == "MEDIUM"

@@ -500,6 +500,9 @@ def diagnose(db: Session, case: Case):
     else:
         case.status = "DIAGNOSED"
 
+    from .private_beta_release import ensure_release_review
+    ensure_release_review(db, case, decision, action)
+
     audit(
         db,
         case.id,

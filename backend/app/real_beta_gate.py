@@ -18,6 +18,7 @@ from .config import settings
 from .db import engine
 from .family_manifest import FAMILY_MANIFEST
 from .models import AuditEvent, Case
+from .private_beta_release import INITIAL_FAMILIES
 from .privacy_information import privacy_information_status
 from .storage import StorageConfigurationError, storage_status
 
@@ -47,7 +48,7 @@ def allowed_families() -> frozenset[str]:
     if not isinstance(raw, str) or not raw.strip():
         return frozenset()
     values = [part.strip() for part in raw.split(",")]
-    if any(not value or value not in FAMILY_MANIFEST for value in values):
+    if any(not value or value not in FAMILY_MANIFEST or value not in INITIAL_FAMILIES for value in values):
         return frozenset()
     return frozenset(values)
 

@@ -85,7 +85,7 @@ def test_invitation_one_time_account_binding_revocation_and_no_secret_audit(clie
     assert db.scalar(select(AuditEvent).where(AuditEvent.event_type == "REAL_BETA_INVITE_ACCEPTED")) is not None
     assert all(invitation["token"] not in str(event.payload_json) for event in db.scalars(select(AuditEvent)).all())
 
-    created = client.post("/api/real-beta/cases", json={"message": ELECTRICITY})
+    created = client.post("/api/real-beta/cases", json={"message": ELECTRICITY, "age_18_plus_attested": True})
     assert created.status_code == 201, created.text
     case_id = created.json()["id"]
     assert created.json()["mode"] == "PRIVATE_REAL_BETA"
@@ -97,7 +97,7 @@ def test_invitation_one_time_account_binding_revocation_and_no_secret_audit(clie
     _register(client, "second-real-beta@example.com")
     assert client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]}).status_code == 404
     assert client.get(f"/api/cases/{case_id}").status_code in (403, 404)
-    assert client.post("/api/real-beta/cases", json={"message": ELECTRICITY}).status_code == 403
+    assert client.post("/api/real-beta/cases", json={"message": ELECTRICITY, "age_18_plus_attested": True}).status_code == 403
 
     assert client.post(f"/api/admin/real-beta/invitations/{invitation['invitation_id']}/revoke").status_code == 200
     assert client.post(f"/api/admin/real-beta/invitations/{invitation['invitation_id']}/revoke").status_code == 200
@@ -106,7 +106,7 @@ def test_invitation_one_time_account_binding_revocation_and_no_secret_audit(clie
     assert client.post("/api/auth/login", json={
         "email": "first-real-beta@example.com", "password": "strong-password-for-real-beta-tests",
     }).status_code == 200
-    assert client.post("/api/real-beta/cases", json={"message": ELECTRICITY}).status_code == 403
+    assert client.post("/api/real-beta/cases", json={"message": ELECTRICITY, "age_18_plus_attested": True}).status_code == 403
     assert client.get(f"/api/cases/{case_id}").status_code == 200
     assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 403
 
@@ -123,7 +123,7 @@ def test_expired_invite_and_family_rejection_do_not_persist_intake(client, db, s
     another = _invite(client, db)
     assert client.post("/api/real-beta/invitations/accept", json={"token": another["token"]}).status_code == 200
     before = db.query(Case).count()
-    rejected = client.post("/api/real-beta/cases", json={"message": "Compré un televisor defectuoso y no me respetan la garantía"})
+    rejected = client.post("/api/real-beta/cases", json={"message": "Compré un televisor defectuoso y no me respetan la garantía", "age_18_plus_attested": True})
     assert rejected.status_code == 403, rejected.text
     assert db.query(Case).count() == before
     blocked = db.scalars(select(AuditEvent).where(AuditEvent.event_type == "REAL_BETA_FAMILY_BLOCKED")).all()
@@ -145,7 +145,7 @@ def test_real_case_mutation_blocks_when_gate_closes_but_owner_can_read(client, d
     invitation = _invite(client, db)
     _register(client, "closure-real-beta@example.com")
     assert client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]}).status_code == 200
-    case_id = client.post("/api/real-beta/cases", json={"message": ELECTRICITY}).json()["id"]
+    case_id = client.post("/api/real-beta/cases", json={"message": ELECTRICITY, "age_18_plus_attested": True}).json()["id"]
     review = HumanReview(case_id=case_id, reason="TEST_REVIEW", status="OPEN")
     db.add(review)
     db.commit()
@@ -180,48 +180,28 @@ def test_admission_expires_at_exact_boundary_and_does_not_delete_case(client, db
     assert not gate.admission_active(db, user.id, deadline + timedelta(microseconds=1))
     item.expires_at = gate.utcnow() + timedelta(hours=1)
     db.commit()
-    created = client.post("/api/real-beta/cases", json={"message": ELECTRICITY})
+    created = client.post("/api/real-beta/cases", json={"message": ELECTRICITY, "age_18_plus_attested": True})
     assert created.status_code == 201, created.text
     item.expires_at = gate.utcnow() - timedelta(seconds=1)
     db.commit()
-    assert client.post("/api/real-beta/cases", json={"message": ELECTRICITY}).status_code == 403
+    assert client.post("/api/real-beta/cases", json={"message": ELECTRICITY, "age_18_plus_attested": True}).status_code == 403
     assert client.post(f"/api/cases/{created.json()['id']}/diagnose").status_code == 403
     assert client.get(f"/api/cases/{created.json()['id']}").status_code == 200
     assert db.get(Case, created.json()["id"]) is not None
 
 
-def test_reclassification_outside_allowlist_stops_without_material_decision(client, db, simulated_gate, monkeypatch):
+def test_non_initial_family_cannot_enter_private_beta(client, db, simulated_gate, monkeypatch):
     monkeypatch.setattr(settings, "real_beta_allowlist", "E06")
-    invitation = _invite(client, db)
-    _register(client, "reclass-real-beta@example.com")
-    assert client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]}).status_code == 200
+    assert not gate.allowed_families()
+    assert not gate.real_beta_gate_open()
+    _register(client, "noninitial-real-beta@example.com")
+    before = db.query(Case).count()
     created = client.post("/api/real-beta/cases", json={
-        "message": "Mi factura de luz tiene una lectura estimada porque falló la lectura remota",
+        "message": "Mi factura de luz tiene una lectura estimada",
+        "age_18_plus_attested": True,
     })
-    assert created.status_code == 201, created.text
-    case_id = created.json()["id"]
-    for key, value in (
-        ("electricity.reading_issue_invoice_date", "2026-09-01"),
-        ("electricity.meter_fraud_tampering_or_complex_technical_issue", False),
-        ("electricity.reading_issue_type", "overbilling_regularization"),
-    ):
-        response = client.post(f"/api/cases/{case_id}/facts", json={
-            "key": key, "value": value, "state": "confirmed", "user_confirmed": True,
-        })
-        assert response.status_code == 200, response.text
-    diagnosis = client.post(f"/api/cases/{case_id}/diagnose")
-    assert diagnosis.status_code == 200, diagnosis.text
-    assert diagnosis.json()["status"] == "HUMAN_REVIEW"
-    assert diagnosis.json()["decision_id"] is None
-    db.expire_all()
-    case = db.get(Case, case_id)
-    assert case.family == "E06"
-    assert case.status == "HUMAN_REVIEW"
-    assert case.current_decision_id is None
-    assert db.scalar(select(AuditEvent).where(
-        AuditEvent.case_id == case_id, AuditEvent.event_type == "REAL_BETA_FAMILY_BLOCKED",
-    )) is not None
-    assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code in (403, 409)
+    assert created.status_code == 403
+    assert db.query(Case).count() == before
 
 
 def test_conditional_acceptance_cannot_bind_two_accounts_concurrently(tmp_path):

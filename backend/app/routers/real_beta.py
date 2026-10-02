@@ -7,7 +7,7 @@ import secrets
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -42,7 +42,15 @@ class InvitationAccept(BaseModel):
 
 class PrivateCaseCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    message: str = Field(min_length=3, max_length=10000)
+    message: str = Field(min_length=3, max_length=500)
+    age_18_plus_attested: StrictBool
+
+    @field_validator("age_18_plus_attested")
+    @classmethod
+    def require_adult_attestation(cls, value: bool) -> bool:
+        if value is not True:
+            raise ValueError("Adult attestation is required")
+        return value
 
 
 @admin_router.post("/invitations", status_code=201)
@@ -138,6 +146,7 @@ def create_private_case(
             raise HTTPException(403, "Private access unavailable")
         case.mode = REAL_MODE
         case.user_id = user.id
+        audit(db, case.id, "REAL_BETA_ADULT_ATTESTED", {})
         audit(db, case.id, "REAL_BETA_CASE_ADMITTED", {"user_id": user.id, "family": case.family})
         response = {
             **cases_v2.serialize_case(db, case),

@@ -1,5 +1,6 @@
 from sqlalchemy import func, select
 
+from app.calendar_clock import spain_today
 from app.models import Action, Case
 
 
@@ -47,7 +48,7 @@ def _submit_action_count(db, case_id: str) -> int:
 
 
 def test_wait_action_cannot_be_packaged_as_an_outbound_claim(client, db):
-    case_id = _c04_case(client, order_date="2026-09-01")
+    case_id = _c04_case(client, order_date=spain_today().isoformat())
     diagnosed = client.post(f"/api/cases/{case_id}/diagnose")
     assert diagnosed.status_code == 200, diagnosed.text
     assert diagnosed.json()["next_action"] == "WAIT_UNTIL_DELIVERY_DUE"

@@ -15,6 +15,8 @@ from ..demo_scenarios import SCENARIOS
 from ..documents import DocumentUploadPersistenceError, save_upload
 from ..evidence_context import atomic_workflow_transaction, current_outcome_evidence
 from ..models import Action, AuditEvent, Case, Communication, Deadline, Decision, Document, Evidence, Fact, Outcome
+from ..private_beta_fields import validate_private_fact
+from ..private_beta_release import PENDING_RESPONSE, private_scope, release_approved
 from ..reviews import HumanReview
 from ..schemas_v2 import (
     CaseCreate, ChargesInput, DocumentFactConfirm, FactUpsert, HumanReviewComplete,
@@ -64,6 +66,7 @@ def serialize_case(db: Session, case: Case):
     deadlines = db.scalars(select(Deadline).where(Deadline.case_id == case.id)).all()
     evidence = db.scalars(select(Evidence).where(Evidence.case_id == case.id).order_by(Evidence.created_at.asc())).all()
     reviews = db.scalars(select(HumanReview).where(HumanReview.case_id == case.id).order_by(HumanReview.created_at.desc())).all()
+    pending_release = private_scope(case) and not release_approved(db, case)
     return {
         "id": case.id,
         "mode": case.mode,
@@ -73,8 +76,12 @@ def serialize_case(db: Session, case: Case):
         "family": case.family,
         "title": case.title,
         "raw_intake": case.raw_intake,
-        "current_decision_id": case.current_decision_id,
-        "current_action_id": case.current_action_id,
+        "current_decision_id": None if pending_release else case.current_decision_id,
+        "current_action_id": None if pending_release else case.current_action_id,
+        "release_status": (
+            "NOT_RELEASED" if pending_release and not case.current_decision_id
+            else "PENDING_HUMAN_REVIEW" if pending_release else "RELEASED"
+        ),
         "execution_verification": (
             {
                 **latest_execution.payload_json,
@@ -120,11 +127,11 @@ def serialize_case(db: Session, case: Case):
                 "rule_evaluations": decision.rule_evaluations_json,
                 "created_at": decision.created_at,
             }
-            for decision in decisions
+            for decision in ([] if pending_release else decisions)
         ],
         "actions": [
             {"id": action.id, "type": action.type, "status": action.status, "payload": action.payload_json}
-            for action in actions
+            for action in ([] if pending_release else actions)
         ],
         "deadlines": [
             {"id": deadline.id, "type": deadline.deadline_type, "computed_date": deadline.computed_date, "status": deadline.status}
@@ -200,6 +207,9 @@ def question(case_id: str, db: Session = Depends(get_db)):
 def fact(case_id: str, payload: FactUpsert, db: Session = Depends(get_db)):
     case = case_for_update_or_404(db, case_id)
     value = payload.value
+    validate_private_fact(case, payload.key, value, state=payload.state)
+    if private_scope(case) and payload.state == "unknown" and payload.user_confirmed:
+        raise HTTPException(422, "Unknown private facts cannot be confirmed")
     if payload.correction:
         # The first correction surface is deliberately limited to a confirmed E02-A
         # amount. It reuses the normal fact lifecycle, evidence and audit trail.
@@ -310,6 +320,7 @@ def document_fact(
     document = db.get(Document, document_id)
     if not document or document.case_id != case.id:
         raise HTTPException(404, "Document not found in case")
+    validate_private_fact(case, payload.key, payload.value)
     with atomic_workflow_transaction(db) as commit:
         created = confirm_document_fact(
             db,
@@ -340,11 +351,10 @@ def run_diagnosis(case_id: str, db: Session = Depends(get_db)):
             raise HTTPException(422, str(exc)) from exc
 
         response = {
-            **({"status": "HUMAN_REVIEW", "reason": "Private family review required"}
-               if case.mode == "PRIVATE_REAL_BETA" and case.current_decision_id is None
+            **(PENDING_RESPONSE if private_scope(case) and not release_approved(db, case)
                else result.to_dict()),
-            "decision_id": case.current_decision_id,
-            "action_id": action.id,
+            "decision_id": case.current_decision_id if release_approved(db, case) else None,
+            "action_id": action.id if release_approved(db, case) else None,
         }
         commit()
         return response
@@ -488,8 +498,8 @@ def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)
         try:
             diagnosis, _, _ = diagnose(db, case)
             updated = (
-                {"status": "HUMAN_REVIEW", "reason": "Private family review required"}
-                if case.mode == "PRIVATE_REAL_BETA" and case.current_decision_id is None
+                PENDING_RESPONSE
+                if private_scope(case) and not release_approved(db, case)
                 else diagnosis.to_dict()
             )
         except ValueError:
