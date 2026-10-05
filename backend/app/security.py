@@ -108,6 +108,19 @@ def _block_terminal_document_upload(request: Request, case: Case) -> None:
         )
 
 
+def _block_private_real_document_upload(request: Request, case: Case) -> None:
+    """Keep real document ingestion closed for the initial private beta."""
+    if (
+        case.mode == "PRIVATE_REAL_BETA"
+        and request.method.upper() == "POST"
+        and request.url.path.rstrip("/").endswith("/documents")
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Document uploads are unavailable for the private beta",
+        )
+
+
 def _require_prepared_claim_before_submission(request: Request, db: Session, case: Case) -> None:
     if request.method.upper() != "POST" or not request.url.path.rstrip("/").endswith("/submission"):
         return
@@ -223,6 +236,7 @@ def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Cas
         require_release_approval(db, case)
     _block_case_user_review_completion(request)
     _block_legacy_untraced_resolution_routes(request)
+    _block_private_real_document_upload(request, case)
     _block_terminal_document_upload(request, case)
     _require_prepared_claim_before_submission(request, db, case)
     _require_preparable_action_before_claim_package(request, db, case)

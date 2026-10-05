@@ -325,7 +325,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "payload": row.payload_json,
                         "created_at": _json_value(row.created_at),
                     }
-                    for row in audits[case.id]
+                    for row in ([] if pending_release else audits[case.id])
                 ],
                 "ai_runs": [
                     {
@@ -340,7 +340,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "status": row.status,
                         "created_at": _json_value(row.created_at),
                     }
-                    for row in ai_runs[case.id]
+                    for row in ([] if pending_release else ai_runs[case.id])
                 ],
             }
         )

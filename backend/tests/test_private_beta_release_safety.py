@@ -7,7 +7,7 @@ from app.auth_models import Reviewer
 from app.backoffice_auth import create_reviewer
 from app.config import settings
 from app.models import Action, Case, Decision
-from app.private_beta_release import RELEASE_REASON, ensure_release_review
+from app.private_beta_release import RELEASE_REASON, ensure_release_review, release_approved
 from app.reviews import HumanReview
 from app import real_beta_gate as gate
 
@@ -67,16 +67,33 @@ def _admit(client, db, family):
     return created.json()["id"], reviewer, facts
 
 
-@pytest.mark.parametrize("family", ["E02-A", "C01"])
-def test_private_release_requires_assigned_reviewer_for_current_decision(
-    client, db, future_test_gate, family,
-):
-    case_id, reviewer, facts = _admit(client, db, family)
+def _record_required_facts(client, case_id, facts):
     for key, value in facts:
         response = client.post(f"/api/cases/{case_id}/facts", json={
             "key": key, "value": value, "state": "confirmed", "user_confirmed": True,
         })
         assert response.status_code == 200, response.text
+
+
+def _assign_and_approve(client, review, reviewer):
+    assigned = client.post(f"/api/admin/reviews/{review.id}/assign", json={"reviewer_id": reviewer.id})
+    assert assigned.status_code == 200, assigned.text
+    assert client.post("/api/backoffice-auth/logout").status_code == 200
+    assert client.post(f"/api/admin/reviews/{review.id}/approve-release").status_code == 401
+    assert client.post("/api/backoffice-auth/login", json={
+        "login_id": "testoperator", "password": "synthetic-operator-password",
+    }).status_code == 200
+    approved = client.post(f"/api/admin/reviews/{review.id}/approve-release")
+    assert approved.status_code == 200, approved.text
+    return approved
+
+
+@pytest.mark.parametrize("family", ["E02-A", "C01"])
+def test_private_release_requires_assigned_reviewer_for_current_decision(
+    client, db, future_test_gate, family,
+):
+    case_id, reviewer, facts = _admit(client, db, family)
+    _record_required_facts(client, case_id, facts)
     diagnosis = client.post(f"/api/cases/{case_id}/diagnose")
     assert diagnosis.status_code == 200, diagnosis.text
     assert diagnosis.json()["status"] == "PENDING_HUMAN_REVIEW"
@@ -101,12 +118,26 @@ def test_private_release_requires_assigned_reviewer_for_current_decision(
     assert exported.status_code == 200
     exported_case = next(row for row in exported.json()["cases"] if row["id"] == case_id)
     assert exported_case["actions"] == exported_case["decisions"] == []
+    assert exported_case["calculations"] == exported_case["rule_evaluations"] == []
+    assert exported_case["audit_events"] == exported_case["ai_runs"] == []
+    legal_sources = client.get(f"/api/cases/{case_id}/legal-sources")
+    assert legal_sources.status_code == 200
+    assert legal_sources.json() == {"decision_id": None, "sources": []}
+    quality = client.get(f"/api/cases/{case_id}/quality")
+    assert quality.status_code == 200
+    assert quality.json()["gates"]["current_decision_id"] is None
+    assert quality.json()["gates"]["rules_evaluated"] == 0
     assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
     internal_draft = client.get(f"/api/admin/cases/{case_id}/handoff")
     assert internal_draft.status_code == 200
     assert internal_draft.json()["latest_decision"] is not None
     assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 409
     assert client.post(f"/api/cases/{case_id}/submission", json={"submitted_on": "2026-09-01"}).status_code == 409
+    upload = client.post(
+        f"/api/cases/{case_id}/documents",
+        files={"file": ("synthetic.txt", b"synthetic only", "text/plain")},
+    )
+    assert upload.status_code == 409
     assert client.post(f"/api/cases/{case_id}/reviews/{review.id}/complete", json={
         "reviewer_decision": "I approve myself",
     }).status_code == 403
@@ -114,19 +145,58 @@ def test_private_release_requires_assigned_reviewer_for_current_decision(
         "reviewer_decision": "generic note",
     }).status_code == 409
 
-    assigned = client.post(f"/api/admin/reviews/{review.id}/assign", json={"reviewer_id": reviewer.id})
-    assert assigned.status_code == 200, assigned.text
-    assert client.post("/api/backoffice-auth/logout").status_code == 200
-    assert client.post(f"/api/admin/reviews/{review.id}/approve-release").status_code == 401
-    assert client.post("/api/backoffice-auth/login", json={
-        "login_id": "testoperator", "password": "synthetic-operator-password",
-    }).status_code == 200
-    approved = client.post(f"/api/admin/reviews/{review.id}/approve-release")
-    assert approved.status_code == 200, approved.text
+    _assign_and_approve(client, review, reviewer)
     assert client.post(f"/api/admin/reviews/{review.id}/approve-release").status_code == 409
     released = client.post(f"/api/cases/{case_id}/prepare-claim")
     assert released.status_code == 200, released.text
     assert client.get(f"/api/cases/{case_id}/handoff").status_code == 200
+
+
+def test_fact_change_and_rediagnosis_cannot_reuse_prior_release_approval(
+    client, db, future_test_gate,
+):
+    case_id, reviewer, facts = _admit(client, db, "E02-A")
+    _record_required_facts(client, case_id, facts)
+    diagnosis = client.post(f"/api/cases/{case_id}/diagnose")
+    assert diagnosis.status_code == 200
+    case = db.get(Case, case_id)
+    first_decision_id = case.current_decision_id
+    review = db.scalar(select(HumanReview).where(
+        HumanReview.case_id == case_id,
+        HumanReview.reason == RELEASE_REASON,
+        HumanReview.status == "OPEN",
+    ))
+    _assign_and_approve(client, review, reviewer)
+    assert release_approved(db, case)
+
+    changed = client.post(f"/api/cases/{case_id}/facts", json={
+        "key": "electricity.billing.billed_amount",
+        "value": 130,
+        "state": "confirmed",
+        "user_confirmed": True,
+    })
+    assert changed.status_code == 200, changed.text
+    db.expire_all()
+    case = db.get(Case, case_id)
+    assert case.current_decision_id is None
+    assert not release_approved(db, case)
+
+    rediagnosed = client.post(f"/api/cases/{case_id}/diagnose")
+    assert rediagnosed.status_code == 200, rediagnosed.text
+    assert rediagnosed.json()["status"] == "PENDING_HUMAN_REVIEW"
+    assert rediagnosed.json()["decision_id"] is None
+    assert rediagnosed.json()["action_id"] is None
+    db.expire_all()
+    case = db.get(Case, case_id)
+    assert case.current_decision_id != first_decision_id
+    assert not release_approved(db, case)
+    reviews = db.scalars(select(HumanReview).where(
+        HumanReview.case_id == case_id,
+        HumanReview.reason == RELEASE_REASON,
+    )).all()
+    assert sorted(row.status for row in reviews) == ["COMPLETED", "OPEN"]
+    assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 409
+    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
 
 
 @pytest.mark.parametrize("family,wrong_key", [

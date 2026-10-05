@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import Case, Decision, LegalRuleVersion, LegalSource
+from ..private_beta_release import private_scope, release_approved
 from ..security import require_case_access
 
 router = APIRouter(
@@ -20,6 +21,8 @@ def current_legal_sources(case_id: str, db: Session = Depends(get_db)):
     case = db.get(Case, case_id)
     if not case:
         raise HTTPException(404, "Case not found")
+    if private_scope(case) and not release_approved(db, case):
+        return {"decision_id": None, "sources": []}
     if not case.current_decision_id:
         return {"decision_id": None, "sources": []}
 
