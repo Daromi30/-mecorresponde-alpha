@@ -90,6 +90,8 @@ def install_fact_write_policy() -> None:
         created_by: str = "user",
     ) -> Fact:
         if created_by == "user":
+            from .private_beta_fields import validate_private_fact
+            validate_private_fact(case, key, value, state=state)
             supersede_current_analysis(db, case, fact_key=key, source="user")
             return previous_upsert_fact(
                 db,

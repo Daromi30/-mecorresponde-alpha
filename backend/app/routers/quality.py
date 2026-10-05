@@ -15,6 +15,7 @@ from ..db import get_db
 from ..demo_boundary import enforce_demo_boundary
 from ..evidence_context import atomic_workflow_transaction, company_response_evidence_context, outcome_evidence_context
 from ..models import Action, AuditEvent, Case, Communication, Decision, Document, Evidence, Fact, Outcome
+from ..private_beta_release import private_scope, release_approved
 from ..reviews import HumanReview
 from ..schemas_v2 import OutcomeInput, ResponseInput
 from ..security import require_case_access
@@ -185,6 +186,8 @@ def dossier_quality(case_id: str, db: Session = Depends(get_db)):
     decisions = db.scalars(
         select(Decision).where(Decision.case_id == case.id).order_by(Decision.created_at.desc())
     ).all()
+    if private_scope(case) and not release_approved(db, case):
+        decisions = []
     reviews = db.scalars(
         select(HumanReview)
         .where(HumanReview.case_id == case.id)

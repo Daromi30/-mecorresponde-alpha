@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import secrets
 from datetime import timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,8 @@ from ..admin_auth import AdminPrincipal, require_admin
 from ..auth import require_current_user
 from ..auth_models import RealBetaInvitation, User
 from ..db import get_db
+from ..family_manifest import FAMILY_MANIFEST
+from ..models import Case
 from ..real_beta_gate import (
     REAL_MODE, admission_active, allowed_families, audit_once,
     real_beta_gate_open, utcnow,
@@ -42,7 +45,15 @@ class InvitationAccept(BaseModel):
 
 class PrivateCaseCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    message: str = Field(min_length=3, max_length=10000)
+    family: Literal["E02-A", "C01"]
+    age_18_plus_attested: StrictBool
+
+    @field_validator("age_18_plus_attested")
+    @classmethod
+    def require_adult_attestation(cls, value: bool) -> bool:
+        if value is not True:
+            raise ValueError("Adult attestation is required")
+        return value
 
 
 @admin_router.post("/invitations", status_code=201)
@@ -126,18 +137,28 @@ def create_private_case(
         audit_once(db, None, "REAL_BETA_ADMISSION_DENIED", {"user_id": user.id, "reason": "case_creation_unavailable"})
         db.commit()
         raise HTTPException(403, "Private access unavailable")
+    if payload.family not in allowed_families():
+        audit_once(db, None, "REAL_BETA_FAMILY_BLOCKED", {"user_id": user.id, "family": payload.family})
+        db.commit()
+        raise HTTPException(403, "Private access unavailable")
     try:
-        # Reuse the existing atomic creation wrapper. Its intermediate commits are
-        # flushes; a family rejection rolls the raw intake back before durability.
-        case = cases_v2.create_case(db, payload.message)
-        if case.family not in allowed_families():
-            family = case.family or "UNCLASSIFIED"
-            db.rollback()
-            audit_once(db, None, "REAL_BETA_FAMILY_BLOCKED", {"user_id": user.id, "family": family})
-            db.commit()
-            raise HTTPException(403, "Private access unavailable")
-        case.mode = REAL_MODE
-        case.user_id = user.id
+        entry = FAMILY_MANIFEST[payload.family]
+        case = Case(
+            status="INTAKE",
+            mode=REAL_MODE,
+            user_id=user.id,
+            vertical=entry.vertical,
+            family=entry.code,
+            title=entry.title,
+            raw_intake=f"{REAL_MODE}:{entry.code}",
+        )
+        db.add(case)
+        db.flush()
+        audit(db, case.id, "CASE_STARTED", {
+            "admission": "structured_family_selection",
+            "family": entry.code,
+        })
+        audit(db, case.id, "REAL_BETA_ADULT_ATTESTED", {})
         audit(db, case.id, "REAL_BETA_CASE_ADMITTED", {"user_id": user.id, "family": case.family})
         response = {
             **cases_v2.serialize_case(db, case),

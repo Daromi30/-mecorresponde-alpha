@@ -14,7 +14,9 @@ from ..case_locking import lock_case_for_update
 from ..db import get_db
 from ..evidence_context import atomic_workflow_transaction
 from ..family_manifest import FAMILY_MANIFEST
-from ..models import Case, Evidence, Fact
+from ..models import Action, Case, Decision, Evidence, Fact
+from ..private_beta_fields import validate_private_fact
+from ..private_beta_release import RELEASE_REASON, INITIAL_FAMILIES, actionable, release_approved
 from ..reviews import HumanReview
 from ..services_v2 import EVALUATORS, audit, create_human_review, diagnose, get_next_question
 
@@ -110,6 +112,54 @@ def _complete_review_row(review: HumanReview, reviewer_decision: str) -> None:
     review.status = "COMPLETED"
     review.reviewer_decision = reviewer_decision.strip()
     review.completed_at = datetime.now(timezone.utc)
+
+
+@router.post("/reviews/{review_id}/approve-release")
+def approve_private_release(
+    review_id: str,
+    db: Session = Depends(get_db),
+    principal: AdminPrincipal = Depends(require_admin),
+) -> dict[str, str]:
+    """Approve one current diagnosis, never a future or changed fact snapshot."""
+    review = _review_or_404(db, review_id)
+    case = lock_case_for_update(db, review.case_id)
+    if case is None or case.mode != "PRIVATE_REAL_BETA" or case.family not in INITIAL_FAMILIES:
+        raise HTTPException(409, "Private release is unavailable")
+    if principal.reviewer is None or review.assigned_reviewer_id != principal.actor_id:
+        raise HTTPException(403, "Assigned reviewer session required")
+    decision = db.get(Decision, case.current_decision_id) if case.current_decision_id else None
+    action = db.get(Action, case.current_action_id) if case.current_action_id else None
+    if (
+        review.reason != RELEASE_REASON or review.status != "OPEN"
+        or decision is None or action is None
+        or decision.case_id != case.id or action.case_id != case.id
+        or decision.viability not in {"HIGH", "MEDIUM"}
+        or not actionable(action) or action.status != "OPEN"
+        or review.context_json.get("decision_id") != decision.id
+        or review.context_json.get("diagnosis_action_id") != action.id
+        or case.status != "HUMAN_REVIEW"
+    ):
+        raise HTTPException(409, "Current diagnosis cannot be released")
+    other_open = db.scalar(select(HumanReview.id).where(
+        HumanReview.case_id == case.id,
+        HumanReview.id != review.id,
+        HumanReview.status == "OPEN",
+    ))
+    if other_open is not None:
+        raise HTTPException(409, "Other human review remains pending")
+    with atomic_workflow_transaction(db) as commit:
+        review.status = "COMPLETED"
+        review.reviewer_decision = "APPROVED_FOR_EXTERNAL_RELEASE"
+        review.completed_at = datetime.now(timezone.utc)
+        case.status = "DIAGNOSED"
+        audit(db, case.id, "PRE_BETA_RELEASE_APPROVED", {
+            "review_id": review.id, "decision_id": decision.id,
+        }, actor_reviewer_id=principal.actor_id)
+        db.flush()
+        if not release_approved(db, case):
+            raise HTTPException(409, "Private release approval could not be verified")
+        commit()
+    return {"status": "RELEASED", "decision_id": decision.id}
 
 
 @router.get("/review-routing/families")
@@ -292,6 +342,8 @@ def resolve_structured_review(
     review = _review_or_404(db, review_id)
     if review.status != "OPEN":
         raise HTTPException(status_code=409, detail="Review is not open")
+    if review.reason == RELEASE_REASON:
+        raise HTTPException(status_code=409, detail="Use the dedicated private release review route")
     if review.reason == "UNSUPPORTED_CLASSIFICATION":
         raise HTTPException(
             status_code=409,
@@ -311,6 +363,7 @@ def resolve_structured_review(
         created_fact_ids: list[str] = []
         update_audit: list[dict[str, str]] = []
         for item in payload.fact_updates:
+            validate_private_fact(case, item.key, item.value, state=item.state)
             previous = db.scalars(
                 select(Fact)
                 .where(Fact.case_id == case.id, Fact.key == item.key)
