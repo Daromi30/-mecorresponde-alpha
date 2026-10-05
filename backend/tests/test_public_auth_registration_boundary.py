@@ -44,7 +44,10 @@ def test_registration_has_no_header_query_body_or_legacy_demo_escape(client, db)
         assert response.status_code in {404, 405, 503}
         assert response.status_code != 201
     assert client.post("/api/real-beta/invitations/accept", json={"token": "x" * 43}).status_code == 401
-    assert client.post("/api/real-beta/cases", json={"message": "fictional"}).status_code == 401
+    assert client.post(
+        "/api/real-beta/cases",
+        json={"family": "E02-A", "age_18_plus_attested": True},
+    ).status_code == 401
     assert db.scalars(select(User)).all() == []
     assert db.scalars(select(UserSession)).all() == []
 
