@@ -1,21 +1,30 @@
 """Synthetic-only tests: the production private-beta interlock remains false."""
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.auth_models import Reviewer
 from app.backoffice_auth import create_reviewer
 from app.config import settings
 from app.family_manifest import FAMILY_MANIFEST
-from app.models import Action, Case, Decision
+from app.models import Action, Case, Decision, Fact
+from app.engine.c01 import evaluate_c01
+from app.engine.common import FactValue
+from app.engine.e02 import evaluate_e02a
+from app.engine.questions import next_question
+from app.private_beta_fields import FIELD_SCHEMA
+from app.services_v2 import latest_facts
 from app.private_beta_release import RELEASE_REASON, ensure_release_review, release_approved
 from app.reviews import HumanReview
 from app import real_beta_gate as gate
+from app import services_v2 as svc
 
 
 CASES = {
     "E02-A": [
-        ("electricity.billing.invoice_date", "2026-09-01"),
+        ("electricity.billing.billing_period", "2026-09"),
+        ("electricity.billing.invoice_date", "2026-10-01"),
         ("electricity.billing.billed_amount", 120),
         ("electricity.billing.correct_amount", 80),
     ],
@@ -23,10 +32,9 @@ CASES = {
         ("purchase.buyer_is_consumer", True),
         ("purchase.seller_is_business", True),
         ("purchase.second_hand", False),
-        ("purchase.product_name", "televisor ficticio"),
         ("purchase.delivery_date", "2026-08-01"),
         ("purchase.defect_manifested_date", "2026-09-01"),
-        ("purchase.defect_description", "No enciende"),
+        ("purchase.nonconformity_reported", True),
         ("purchase.accidental_damage_or_misuse", False),
         ("purchase.price", 150),
     ],
@@ -228,3 +236,257 @@ def test_true_attestation_alone_never_opens_real_beta():
     assert gate.REAL_BETA_LAUNCH_REVIEW_COMPLETE is False
     assert gate.technical_prerequisites_ready() is False
     assert gate.real_beta_gate_open() is False
+
+
+def test_e02_period_without_day_or_correct_amount_can_reach_human_review(
+    client, db, future_test_gate,
+):
+    case_id, _reviewer, _facts = _admit(client, db, "E02-A")
+    first = client.get(f"/api/cases/{case_id}/next-question").json()
+    assert first["field"] == "electricity.billing.billing_period"
+    assert first["input_type"] == "month"
+    _record_required_facts(client, case_id, [
+        ("electricity.billing.billing_period", "2026-09"),
+        ("electricity.billing.billed_amount", 120),
+    ])
+    exact_question = client.get(f"/api/cases/{case_id}/next-question").json()
+    assert exact_question["field"] == "electricity.billing.invoice_date"
+    assert exact_question["optional"] is True
+    assert client.post(f"/api/cases/{case_id}/facts", json={
+        "key": "electricity.billing.invoice_date", "value": None,
+        "state": "unknown", "user_confirmed": False,
+    }).status_code == 200
+    assert client.get(f"/api/cases/{case_id}/next-question").json()["done"] is True
+    diagnosed = client.post(f"/api/cases/{case_id}/diagnose")
+    assert diagnosed.status_code == 200
+    assert diagnosed.json()["status"] == "PENDING_HUMAN_REVIEW"
+    decision = db.get(Decision, db.get(Case, case_id).current_decision_id)
+    assert decision.claimable_amount is None
+    assert decision.viability == "INSUFFICIENT_INFORMATION"
+    assert "electricity.billing.correct_amount" not in latest_facts(db, case_id)
+    # Protected review owns the next transition; no participant question bypasses it.
+    assert client.get(f"/api/cases/{case_id}/next-question").json()["done"] is True
+    exact_fact = next(f for f in client.get(f"/api/cases/{case_id}").json()["facts"]
+                      if f["key"] == "electricity.billing.invoice_date")
+    assert exact_fact["value"] is None and exact_fact["state"] == "unknown"
+
+
+@pytest.mark.parametrize("period,expected", [
+    ("2026-05", "PENDING"),
+    ("2026-06", "PENDING"),
+    ("2026-07", "PENDING"),
+])
+def test_e02_month_precision_never_becomes_a_fabricated_date(period, expected):
+    facts = {
+        "electricity.billing.billing_period": FactValue(period),
+        "electricity.billing.billed_amount": FactValue(120),
+    }
+    result = evaluate_e02a(facts, private_beta=True)
+    assert result.rule_result == expected
+    assert "electricity.billing.invoice_date" not in facts
+    assert result.calculation is None
+    assert "insufficient_date_precision" in result.failed_conditions
+    assert result.claimable_amount is None
+
+
+@pytest.mark.parametrize("exact,expected", [
+    ("2026-06-11", "OUT_OF_VALIDITY"),
+    ("2026-06-12", "APPLIES"),
+])
+def test_e02_exact_date_optional_and_respects_rule_boundary(exact, expected):
+    facts = {
+        "electricity.billing.billing_period": FactValue("2026-06"),
+        "electricity.billing.invoice_date": FactValue(exact),
+        "electricity.billing.billed_amount": FactValue(120, state="confirmed", source="user"),
+        "electricity.billing.correct_amount": FactValue(80, state="confirmed", source="user"),
+    }
+    result = evaluate_e02a(facts, private_beta=True)
+    assert result.rule_result == expected
+    if expected == "APPLIES":
+        assert result.viability == "MEDIUM"  # User-supplied correct amount is not independently verified.
+        assert result.claimable_amount == 40
+        assert any(c["type"] == "CORRECT_AMOUNT_MAY_BE_DISPUTED" for c in result.counterarguments)
+
+
+def test_e02_unknown_correct_amount_never_invents_quantification():
+    facts = {
+        "electricity.billing.billing_period": FactValue("2026-09"),
+        "electricity.billing.billed_amount": FactValue(120),
+        "electricity.billing.correct_amount": FactValue(None, state="unknown"),
+    }
+    result = evaluate_e02a(facts, private_beta=True)
+    assert result.viability == "INSUFFICIENT_INFORMATION"
+    assert result.claimable_amount is None and result.calculation is None
+    assert "electricity.billing.correct_amount" in result.missing_facts
+
+
+def test_e02_correct_amount_can_be_added_later_by_reviewer_without_release(
+    client, db, future_test_gate,
+):
+    case_id, _reviewer, _facts = _admit(client, db, "E02-A")
+    _record_required_facts(client, case_id, [
+        ("electricity.billing.billing_period", "2026-09"),
+        ("electricity.billing.invoice_date", "2026-10-01"),
+        ("electricity.billing.billed_amount", 120),
+    ])
+    assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 200
+    review = db.scalar(select(HumanReview).where(
+        HumanReview.case_id == case_id,
+        HumanReview.reason == "PRIVATE_BETA_INSUFFICIENT_INFORMATION",
+    ))
+    assert review is not None and review.status == "OPEN"
+    completed = client.post(f"/api/admin/reviews/{review.id}/resolve-structured", json={
+        "reviewer_decision": "Importe sintético revisado",
+        "fact_updates": [{"key": "electricity.billing.correct_amount", "value": 80}],
+    })
+    assert completed.status_code == 200, completed.text
+    db.expire_all()
+    decision = db.get(Decision, db.get(Case, case_id).current_decision_id)
+    assert decision.claimable_amount == 40
+    assert db.scalar(select(Fact).where(
+        Fact.case_id == case_id, Fact.key == "electricity.billing.correct_amount",
+    )).created_by == "human"
+    assert client.get(f"/api/cases/{case_id}").json()["decisions"] == []
+    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
+
+
+def test_private_e02_rejects_bad_period_and_does_not_equate_period_to_issue_month(client, db, future_test_gate):
+    case_id, _reviewer, _facts = _admit(client, db, "E02-A")
+    for value in ("0000-01", "2026-00", "2026-13", "2026-9", "2026-09-01", {"month": "2026-09"}):
+        assert client.post(f"/api/cases/{case_id}/facts", json={
+            "key": "electricity.billing.billing_period", "value": value,
+        }).status_code == 422
+    _record_required_facts(client, case_id, [
+        ("electricity.billing.billing_period", "2026-09"),
+        ("electricity.billing.invoice_date", "2026-08-31"),
+        ("electricity.billing.billed_amount", 120),
+        ("electricity.billing.correct_amount", 80),
+    ])
+    assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 200
+    decision = db.get(Decision, db.get(Case, case_id).current_decision_id)
+    assert decision.viability == "MEDIUM"
+    assert decision.claimable_amount == 40
+
+
+def test_private_c01_rejects_free_text_and_has_no_other_text_fallback(client, db, future_test_gate):
+    case_id, _reviewer, _facts = _admit(client, db, "C01")
+    assert "purchase.product_name" not in FIELD_SCHEMA["C01"]
+    assert "purchase.defect_description" not in FIELD_SCHEMA["C01"]
+    for key in ("purchase.product_name", "purchase.defect_description", "purchase.other_description"):
+        assert client.post(f"/api/cases/{case_id}/facts", json={
+            "key": key, "value": "narrativa sintética",
+        }).status_code == 422
+    for value in ("true", 1, {"answer": True}):
+        assert client.post(f"/api/cases/{case_id}/facts", json={
+            "key": "purchase.nonconformity_reported", "value": value,
+        }).status_code == 422
+    assert client.post(f"/api/cases/{case_id}/facts", json={
+        "key": "purchase.nonconformity_reported", "value": None, "state": "unknown",
+        "user_confirmed": False,
+    }).status_code == 200
+    assert client.post(f"/api/cases/{case_id}/facts", json={
+        "key": "purchase.nonconformity_reported", "value": "other", "state": "unknown",
+        "user_confirmed": False,
+    }).status_code == 422
+
+
+def test_reviewer_fact_write_cannot_restore_private_free_text(client, db, future_test_gate):
+    case_id, _reviewer, _facts = _admit(client, db, "C01")
+    review = HumanReview(case_id=case_id, reason="TEST_STRUCTURED_FACTS", status="OPEN")
+    db.add(review)
+    db.commit()
+    for key, value in (
+        ("purchase.product_name", "producto sintético"),
+        ("purchase.defect_description", "descripción sintética"),
+        ("purchase.nonconformity_reported", {"other": "texto"}),
+    ):
+        rejected = client.post(f"/api/admin/reviews/{review.id}/resolve-structured", json={
+            "reviewer_decision": "Revisión de prueba sintética",
+            "fact_updates": [{"key": key, "value": value}],
+        })
+        assert rejected.status_code == 422, rejected.text
+        assert db.scalar(select(Fact).where(Fact.case_id == case_id, Fact.key == key)) is None
+    assert db.get(HumanReview, review.id).status == "OPEN"
+
+
+def test_nonparticipant_fact_write_policy_still_enforces_private_allowlist(client, db, future_test_gate):
+    case_id, _reviewer, _facts = _admit(client, db, "C01")
+    case = db.get(Case, case_id)
+    for source in ("human", "company", "system"):
+        with pytest.raises(HTTPException) as rejected:
+            svc.upsert_fact(db, case, "purchase.defect_description", "narrativa sintética", created_by=source)
+        assert rejected.value.status_code == 422
+    with pytest.raises(HTTPException) as rejected:
+        svc.upsert_fact(db, case, "purchase.price", None, state="unknown", created_by="human")
+    assert rejected.value.status_code == 422
+    assert db.scalar(select(Fact).where(
+        Fact.case_id == case_id, Fact.key == "purchase.defect_description",
+    )) is None
+
+
+def test_private_c01_without_structured_allegation_is_not_classified():
+    facts = {
+        "purchase.buyer_is_consumer": FactValue(True),
+        "purchase.seller_is_business": FactValue(True),
+        "purchase.second_hand": FactValue(False),
+        "purchase.nonconformity_reported": FactValue(False),
+    }
+    result = evaluate_c01(facts, private_beta=True)
+    assert result.viability == "INSUFFICIENT_INFORMATION"
+    assert result.claimable_amount is None
+    assert result.rule_result == "PENDING"
+
+
+def test_private_c01_price_is_progressive_and_not_required_for_triage(client, db, future_test_gate):
+    case_id, _reviewer, _facts = _admit(client, db, "C01")
+    preliminary = [
+        ("purchase.buyer_is_consumer", True),
+        ("purchase.seller_is_business", True),
+        ("purchase.second_hand", False),
+        ("purchase.delivery_date", "2026-08-01"),
+        ("purchase.defect_manifested_date", "2026-09-01"),
+        ("purchase.nonconformity_reported", True),
+        ("purchase.accidental_damage_or_misuse", False),
+        ("purchase.seller_denied_conformity", False),
+    ]
+    for key, value in preliminary:
+        question = client.get(f"/api/cases/{case_id}/next-question").json()
+        assert question["field"] == key
+        assert question["field"] != "purchase.price"
+        _record_required_facts(client, case_id, [(key, value)])
+    price_question = client.get(f"/api/cases/{case_id}/next-question").json()
+    assert price_question["field"] == "purchase.price"
+    assert price_question["phase"] == "QUANTIFICATION" and price_question["optional"]
+    assert "purchase.price" not in latest_facts(db, case_id)
+    assert evaluate_c01(latest_facts(db, case_id), private_beta=True).rule_result == "APPLIES"
+    assert evaluate_c01(latest_facts(db, case_id), private_beta=True).economic_value is None
+    assert client.post(f"/api/cases/{case_id}/facts", json={
+        "key": "purchase.price", "value": None, "state": "unknown", "user_confirmed": False,
+    }).status_code == 200
+    assert client.get(f"/api/cases/{case_id}/next-question").json()["done"] is True
+    assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 200
+    decision = db.get(Decision, db.get(Case, case_id).current_decision_id)
+    assert decision.viability in {"HIGH", "MEDIUM"}
+    assert decision.economic_value is None
+
+
+def test_global_synthetic_fields_and_26_family_manifest_are_unchanged():
+    assert len(FAMILY_MANIFEST) == 26
+    assert next_question({}, "C01")["field"] == "purchase.buyer_is_consumer"
+    assert "purchase.product_name" in next_question({
+        key: FactValue(value) for key, value in [
+            ("purchase.buyer_is_consumer", True),
+            ("purchase.seller_is_business", True),
+            ("purchase.second_hand", False),
+        ]
+    }, "C01")["field"]
+    assert evaluate_c01({
+        "purchase.buyer_is_consumer": FactValue(True),
+        "purchase.seller_is_business": FactValue(True),
+        "purchase.second_hand": FactValue(False),
+        "purchase.product_name": FactValue("producto sintético"),
+        "purchase.delivery_date": FactValue("2026-08-01"),
+        "purchase.defect_manifested_date": FactValue("2026-09-01"),
+        "purchase.defect_description": FactValue("fallo sintético"),
+        "purchase.accidental_damage_or_misuse": FactValue(False),
+    }).rule_result == "APPLIES"

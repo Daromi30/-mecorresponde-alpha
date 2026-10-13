@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -33,6 +34,7 @@ from .models import (
     LegalSource,
     RuleEvaluation,
 )
+from .private_beta_fields import next_private_question, validate_private_fact
 from .reviews import HumanReview
 
 
@@ -109,6 +111,7 @@ def latest_facts(db: Session, case_id: str) -> dict[str, FactValue]:
             value=row.value_json.get("value"),
             state=row.state,
             user_confirmed=row.user_confirmed,
+            source=row.created_by,
         )
         for key, row in latest.items()
     }
@@ -125,6 +128,9 @@ def upsert_fact(
     user_confirmed: bool = True,
     created_by: str = "user",
 ) -> Fact:
+    validate_private_fact(case, key, value, state=state)
+    if case.mode == "PRIVATE_REAL_BETA" and state == "unknown" and user_confirmed:
+        raise HTTPException(422, "Unknown private facts cannot be confirmed")
     prev = db.scalars(
         select(Fact)
         .where(Fact.case_id == case.id, Fact.key == key)
@@ -171,7 +177,10 @@ def upsert_fact(
 
 
 def get_next_question(db: Session, case: Case) -> dict[str, Any]:
-    return next_question(latest_facts(db, case.id), case.family)
+    facts = latest_facts(db, case.id)
+    if case.mode == "PRIVATE_REAL_BETA":
+        return next_private_question(facts, case.family or "")
+    return next_question(facts, case.family)
 
 
 def _ensure_source(
@@ -391,14 +400,19 @@ def diagnose(db: Session, case: Case):
         "system.analysis_date",
         FactValue(value=date.today().isoformat(), state="confirmed", user_confirmed=False),
     )
-    result = evaluator(facts)
+    if case.mode == "PRIVATE_REAL_BETA" and case.family == "E02-A":
+        result = evaluate_e02a(facts, private_beta=True)
+    elif case.mode == "PRIVATE_REAL_BETA" and case.family == "C01":
+        result = evaluate_c01(facts, private_beta=True)
+    else:
+        result = evaluator(facts)
     snapshot = {
         key: {"value": value.value, "state": value.state, "user_confirmed": value.user_confirmed}
         for key, value in facts.items()
     }
 
     economic_value = getattr(result, "economic_value", None)
-    if economic_value is None:
+    if economic_value is None and not (case.mode == "PRIVATE_REAL_BETA" and case.family == "C01"):
         economic_value = result.claimable_amount
     remedies = list(getattr(result, "remedies", []) or [])
     burden = list(getattr(result, "burden_of_proof", []) or [])
@@ -500,6 +514,14 @@ def diagnose(db: Session, case: Case):
     else:
         case.status = "DIAGNOSED"
 
+    if case.mode == "PRIVATE_REAL_BETA" and result.viability == "INSUFFICIENT_INFORMATION":
+        review = create_human_review(
+            db, case, "PRIVATE_BETA_INSUFFICIENT_INFORMATION", "NORMAL",
+            {"family": case.family, "missing_fields": result.missing_facts},
+        )
+        from .case_lifecycle import set_current_action
+        set_current_action(db, case, "HUMAN_REVIEW", payload={"reason": review.reason})
+
     from .private_beta_release import ensure_release_review
     ensure_release_review(db, case, decision, action)
 
@@ -530,6 +552,7 @@ def confirm_document_fact(
     excerpt: str | None = None,
     materiality: str = "critical",
 ) -> Fact:
+    validate_private_fact(case, key, value, state="confirmed")
     prev = db.scalars(
         select(Fact).where(Fact.case_id == case.id, Fact.key == key).order_by(Fact.created_at.desc())
     ).first()
@@ -713,7 +736,7 @@ def prepare_claim_package(db: Session, case: Case) -> dict[str, Any]:
         )
         claim_type = "E02-B_INITIAL_CLAIM"
     elif case.family == "C01":
-        result = evaluate_c01(facts)
+        result = evaluate_c01(facts, private_beta=case.mode == "PRIVATE_REAL_BETA")
         product = facts.get("purchase.product_name").value if facts.get("purchase.product_name") else "producto"
         remedies = list(result.remedies)
         legal_basis = [

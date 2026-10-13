@@ -22,7 +22,7 @@ def _add_years(d: date, years: int) -> date:
         return d.replace(month=2, day=28, year=d.year + years)
 
 
-def evaluate_c01(facts: dict[str, FactValue]) -> EngineResult:
+def evaluate_c01(facts: dict[str, FactValue], *, private_beta: bool = False) -> EngineResult:
     sources = [{"title": "TRLGDCU, arts. 117-121 y 124-125", "url": TRLGDCU_URL}]
     missing: list[str] = []
     counterarguments: list[dict[str, Any]] = []
@@ -57,9 +57,23 @@ def evaluate_c01(facts: dict[str, FactValue]) -> EngineResult:
             remedies=[], burden_of_proof=[],
         )
 
-    product = raw(facts, "purchase.product_name")
-    if not product:
-        missing.append("purchase.product_name")
+    if private_beta:
+        # The private-beta boundary records only the participant's structured
+        # allegation; it does not turn that allegation into a verified defect.
+        if raw(facts, "purchase.nonconformity_reported") is not True:
+            return EngineResult(
+                viability="INSUFFICIENT_INFORMATION", scope_status="SUPPORTED", claimable_amount=None,
+                economic_value=None, worth_pursuing="NEEDS_INFORMATION",
+                reasoning_summary="No consta una alegación estructurada suficiente de falta de conformidad. Se necesita información o revisión humana antes de concluir.",
+                counterarguments=[], missing_facts=["purchase.nonconformity_reported"],
+                next_action="HUMAN_REVIEW_NONCONFORMITY", rule_result="PENDING",
+                failed_conditions=[], calculation=None, sources=sources,
+                remedies=[], burden_of_proof=[],
+            )
+    else:
+        product = raw(facts, "purchase.product_name")
+        if not product:
+            missing.append("purchase.product_name")
     delivery = raw(facts, "purchase.delivery_date")
     manifested = raw(facts, "purchase.defect_manifested_date")
     if not delivery:
@@ -70,9 +84,10 @@ def evaluate_c01(facts: dict[str, FactValue]) -> EngineResult:
         missing.append("purchase.defect_manifested_date")
     else:
         manifested = _parse_date(manifested)
-    defect = raw(facts, "purchase.defect_description")
-    if not defect:
-        missing.append("purchase.defect_description")
+    if not private_beta:
+        defect = raw(facts, "purchase.defect_description")
+        if not defect:
+            missing.append("purchase.defect_description")
 
     price = raw(facts, "purchase.price")
     economic_value = round(float(price), 2) if price is not None else None
