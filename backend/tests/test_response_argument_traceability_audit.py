@@ -116,7 +116,7 @@ def _submitted_case(client, family: str, scenario: dict) -> str:
     submitted = client.post(
         f"/api/cases/{case_id}/submission",
         json={
-            "submitted_on": "2026-09-10",
+            "submitted_on": scenario.get("workflow_dates", {}).get("submitted_on", "2026-09-10"),
             "channel": "web_form",
             "reference_number": f"ARG-AUDIT-{family}",
         },
@@ -191,7 +191,7 @@ def test_every_beta_family_keeps_denial_in_post_response_phase_and_blocks_second
             f"/api/cases/{case_id}/responses/evidenced",
             json={
                 "text": text,
-                "received_on": "2026-09-11",
+                "received_on": scenario.get("workflow_dates", {}).get("received_on", "2026-09-11"),
                 "channel": "email",
                 "reference_number": f"RESP-ARG-AUDIT-{family}",
             },
