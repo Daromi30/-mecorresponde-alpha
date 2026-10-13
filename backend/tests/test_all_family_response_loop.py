@@ -60,7 +60,7 @@ def _submitted_case(client, family: str, scenario: dict) -> str:
     submitted = client.post(
         f"/api/cases/{case_id}/submission",
         json={
-            "submitted_on": "2026-09-10",
+            "submitted_on": scenario.get("workflow_dates", {}).get("submitted_on", "2026-09-10"),
             "channel": "web_form",
             "reference_number": f"RESP-MATRIX-{family}",
         },
@@ -88,7 +88,7 @@ def test_every_beta_family_can_complete_favorable_response_and_verified_executio
             f"/api/cases/{case_id}/responses/evidenced",
             json={
                 "text": "Aceptamos su reclamación y procederemos a cumplir lo solicitado.",
-                "received_on": "2026-09-12",
+                "received_on": scenario.get("workflow_dates", {}).get("received_on", "2026-09-12"),
                 "channel": "email",
                 "reference_number": f"ACCEPT-{family}",
             },
@@ -115,7 +115,7 @@ def test_every_beta_family_can_complete_favorable_response_and_verified_executio
                 "amount_recovered": 0,
                 "verified_by_user": True,
                 "remaining_material_commitments": "none",
-                "resolved_on": "2026-09-13",
+                "resolved_on": scenario.get("workflow_dates", {}).get("resolved_on", "2026-09-13"),
                 "resolution_channel": "other",
                 "non_monetary_result": "Cumplimiento sintético confirmado para prueba interna.",
             },
@@ -133,7 +133,7 @@ def test_partial_company_response_never_loops_back_to_a_second_initial_claim(cli
             f"/api/cases/{case_id}/responses/evidenced",
             json={
                 "text": "Devolvemos una parte del importe reclamado; el resto queda rechazado.",
-                "received_on": "2026-09-12",
+                "received_on": scenario.get("workflow_dates", {}).get("received_on", "2026-09-12"),
                 "channel": "email",
                 "reference_number": f"PARTIAL-{family}",
             },

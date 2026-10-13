@@ -19,6 +19,9 @@ def _fact(client, case_id, key, value):
 
 
 RECENT_C05_RECEIVED_DATE = (spain_today() - timedelta(days=7)).isoformat()
+T02_TEST_DATE = spain_today()
+T02_NOTICE_DATE = (T02_TEST_DATE - timedelta(days=11)).isoformat()
+T02_EFFECTIVE_DATE = (T02_TEST_DATE + timedelta(days=24)).isoformat()
 
 SCENARIOS = {
     "E01": {
@@ -138,12 +141,17 @@ SCENARIOS = {
     },
     "T02": {
         "message": "Mi operadora de fibra me ha subido el precio y me ha comunicado un cambio de condiciones",
+        "workflow_dates": {
+            "submitted_on": (T02_TEST_DATE - timedelta(days=2)).isoformat(),
+            "received_on": (T02_TEST_DATE - timedelta(days=1)).isoformat(),
+            "resolved_on": T02_TEST_DATE.isoformat(),
+        },
         "facts": {
             "telecom.final_user_contract": True,
             "telecom.change_notice_received": True,
             "telecom.change_exception_type": "adverse_or_other",
-            "telecom.change_notice_date": "2026-09-10",
-            "telecom.change_effective_date": "2026-10-15",
+            "telecom.change_notice_date": T02_NOTICE_DATE,
+            "telecom.change_effective_date": T02_EFFECTIVE_DATE,
             "telecom.notice_informed_free_termination_right": True,
             "telecom.notice_clear_and_durable": True,
             "telecom.contract_contains_valid_change_reason": True,

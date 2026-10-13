@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 
@@ -29,7 +30,8 @@ def test_postgres_connection_keeps_credentials_out_of_command_material():
     }
 
 
-def test_backup_uses_environment_for_credentials_and_writes_restricted_manifest(tmp_path):
+@pytest.fixture
+def synthetic_backup(tmp_path):
     calls = []
 
     def fake_runner(command, **kwargs):
@@ -46,6 +48,11 @@ def test_backup_uses_environment_for_credentials_and_writes_restricted_manifest(
         runner=fake_runner,
         now=datetime(2026, 9, 16, 8, 45, tzinfo=timezone.utc),
     )
+    return backup, manifest, calls
+
+
+def test_backup_uses_environment_for_credentials_and_writes_restricted_manifest(synthetic_backup):
+    backup, manifest, calls = synthetic_backup
 
     command, kwargs = calls[0]
     joined = " ".join(command)
@@ -55,8 +62,6 @@ def test_backup_uses_environment_for_credentials_and_writes_restricted_manifest(
     assert kwargs["env"]["PGHOST"] == "db.example.test"
     assert backup.exists()
     assert manifest.exists()
-    assert oct(backup.stat().st_mode & 0o777) == "0o600"
-    assert oct(manifest.stat().st_mode & 0o777) == "0o600"
 
     metadata = json.loads(manifest.read_text(encoding="utf-8"))
     assert metadata["format"] == "postgresql-custom"
@@ -65,6 +70,13 @@ def test_backup_uses_environment_for_credentials_and_writes_restricted_manifest(
     assert len(metadata["sha256"]) == 64
     assert "secret-password" not in manifest.read_text(encoding="utf-8")
     assert "db.example.test" not in manifest.read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX 0600 mode is not represented by Windows/NTFS")
+def test_backup_and_manifest_retain_posix_0600_permissions(synthetic_backup):
+    backup, manifest, _calls = synthetic_backup
+    assert oct(backup.stat().st_mode & 0o777) == "0o600"
+    assert oct(manifest.stat().st_mode & 0o777) == "0o600"
 
 
 def test_backup_archive_verification_checks_hash_and_pg_restore_catalog(tmp_path):
