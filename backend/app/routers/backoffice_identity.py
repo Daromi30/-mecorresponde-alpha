@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..admin_auth import require_admin
 from ..auth import hash_password, verify_password
-from ..auth_models import Reviewer
+from ..auth_models import Reviewer, ReviewerFamilyAuthorization
 from ..backoffice_auth import (
     authenticate, clear_cookie, create_reviewer, issue_session, normalize_login,
     require_session, revoke_sessions, session_from_request, utcnow, validate_password,
@@ -53,6 +54,11 @@ class RoleChange(BaseModel):
 class PasswordReset(BaseModel):
     model_config = ConfigDict(extra="forbid")
     new_password: SecretStr
+
+
+class TechnicalFamilyScope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    families: list[Literal["E02-A", "C01"]] = Field(max_length=2)
 
 
 def _operator(request: Request) -> Reviewer:
@@ -146,7 +152,41 @@ def list_reviewers(request: Request, db: Session = Depends(get_db)):
     rows = db.scalars(select(Reviewer).order_by(Reviewer.created_at.asc())).all()
     audit(db, None, "BACKOFFICE_REVIEWER_LISTED", {}, actor_reviewer_id=operator.id)
     db.commit()
-    return [{"id": row.id, "login_id": row.login_id, "role": row.role, "active": row.disabled_at is None} for row in rows]
+    return [{
+        "id": row.id, "login_id": row.login_id, "role": row.role, "active": row.disabled_at is None,
+        "technical_authorized_families": sorted(db.scalars(select(ReviewerFamilyAuthorization.family).where(
+            ReviewerFamilyAuthorization.reviewer_id == row.id,
+        )).all()),
+        "professional_legal_qualification": "NOT_ASSERTED",
+    } for row in rows]
+
+
+@admin_router.put("/{reviewer_id}/technical-scope")
+def set_technical_scope(reviewer_id: str, payload: TechnicalFamilyScope, request: Request,
+                        db: Session = Depends(get_db)):
+    """Operator grant/revocation is explicit; existing reviewers start with no scope."""
+    operator = _operator(request)
+    target = _target(db, reviewer_id)
+    if target.disabled_at is not None or len(payload.families) != len(set(payload.families)):
+        raise HTTPException(422, "Active reviewer and distinct families required")
+    existing = {row.family: row for row in db.scalars(select(ReviewerFamilyAuthorization).where(
+        ReviewerFamilyAuthorization.reviewer_id == reviewer_id,
+    )).all()}
+    desired = set(payload.families)
+    for family, row in existing.items():
+        if family not in desired:
+            db.delete(row)
+    for family in desired - existing.keys():
+        db.add(ReviewerFamilyAuthorization(
+            reviewer_id=reviewer_id, family=family, granted_by_reviewer_id=operator.id,
+        ))
+    audit(db, None, "REVIEWER_TECHNICAL_SCOPE_CHANGED", {
+        "target_reviewer_id": reviewer_id, "families": sorted(desired),
+        "authorization_type": "TECHNICAL_REVIEWER_AUTHORIZATION",
+    }, actor_reviewer_id=operator.id)
+    db.commit()
+    return {"reviewer_id": reviewer_id, "technical_authorized_families": sorted(desired),
+            "professional_legal_qualification": "NOT_ASSERTED"}
 
 
 @admin_router.post("", status_code=201)

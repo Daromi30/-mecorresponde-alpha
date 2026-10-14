@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -55,6 +55,19 @@ class Reviewer(Base):
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now, nullable=False)
+
+
+class ReviewerFamilyAuthorization(Base):
+    """Explicit technical scope; it does not assert legal qualification."""
+
+    __tablename__ = "reviewer_family_authorizations"
+    __table_args__ = (UniqueConstraint("reviewer_id", "family", name="uq_reviewer_family_authorization"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    reviewer_id: Mapped[str] = mapped_column(ForeignKey("reviewers.id", ondelete="CASCADE"), nullable=False, index=True)
+    family: Mapped[str] = mapped_column(String(20), nullable=False)
+    granted_by_reviewer_id: Mapped[str] = mapped_column(ForeignKey("reviewers.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
 
 
 class ReviewerSession(Base):
