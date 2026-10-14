@@ -6,6 +6,7 @@ import hmac
 from dataclasses import dataclass
 
 from fastapi import Depends, Header, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .auth_models import Reviewer, ReviewerSession
@@ -89,6 +90,12 @@ def require_admin(
         if principal.reviewer is None:
             _denied(db, case.id, None, "individual_session_required")
             raise HTTPException(404, "Case not found")
+        if (principal.reviewer.role == "reviewer" and db.scalar(select(HumanReview.id).where(
+            HumanReview.case_id == case.id,
+            HumanReview.assigned_reviewer_id == principal.actor_id,
+        )) is None):
+            _denied(db, case.id, principal.actor_id, "assigned_case_required")
+            raise HTTPException(403, "Case is not assigned to this reviewer")
         if method in {"POST", "PUT", "PATCH", "DELETE"}:
             if path.endswith("/assign") and principal.reviewer.role != "operator":
                 _denied(db, case.id, principal.actor_id, "operator_assignment_required")

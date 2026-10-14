@@ -66,7 +66,9 @@ def create_human_review(
         )
     ).first()
     if existing:
-        return existing
+        if case.mode != "PRIVATE_REAL_BETA" or existing.context_json.get("decision_id") == case.current_decision_id:
+            return existing
+        existing.status = "SUPERSEDED"
     review = HumanReview(
         case_id=case.id,
         reason=reason,
@@ -179,6 +181,20 @@ def upsert_fact(
 def get_next_question(db: Session, case: Case) -> dict[str, Any]:
     facts = latest_facts(db, case.id)
     if case.mode == "PRIVATE_REAL_BETA":
+        if case.status == "NEEDS_INFORMATION":
+            request = db.scalar(select(HumanReview).where(
+                HumanReview.case_id == case.id, HumanReview.status == "COMPLETED",
+            ).order_by(HumanReview.completed_at.desc(), HumanReview.id.desc()))
+            if request and request.context_json.get("outcome") == "REQUEST_INFORMATION":
+                keys = request.context_json.get("requested_fields", [])
+                if len(keys) == 1:
+                    from .private_beta_fields import FIELD_SCHEMA
+                    key = keys[0]
+                    field = FIELD_SCHEMA.get(case.family or "", {}).get(key)
+                    if field:
+                        return {"done": False, "question": f"Confirma este dato estructurado: {key}",
+                                "field": key, "input_type": field[0], "phase": "INFORMATION_REQUEST",
+                                "optional": False}
         return next_private_question(facts, case.family or "")
     return next_question(facts, case.family)
 
@@ -524,19 +540,22 @@ def diagnose(db: Session, case: Case):
 
     from .private_beta_release import ensure_release_review
     ensure_release_review(db, case, decision, action)
+    if case.mode == "PRIVATE_REAL_BETA":
+        from .private_beta_review import bind_current_version
+        for open_review in db.scalars(select(HumanReview).where(
+            HumanReview.case_id == case.id, HumanReview.status == "OPEN",
+        )).all():
+            if open_review.reason != "PRE_BETA_EXTERNAL_RELEASE":
+                bind_current_version(db, open_review, case)
 
-    audit(
-        db,
-        case.id,
-        "DIAGNOSIS_GENERATED",
-        {
-            "decision_id": decision.id,
-            "viability": result.viability,
-            "family": case.family,
-            "economic_value": economic_value,
+    audit(db, case.id, "DIAGNOSIS_GENERATED", (
+        {"decision_id": decision.id, "family": case.family}
+        if case.mode == "PRIVATE_REAL_BETA" else {
+            "decision_id": decision.id, "viability": result.viability,
+            "family": case.family, "economic_value": economic_value,
             "claimable_amount": result.claimable_amount,
-        },
-    )
+        }
+    ))
     db.commit()
     return result, decision, action
 
@@ -811,6 +830,11 @@ def prepare_claim_package(db: Session, case: Case) -> dict[str, Any]:
         "legal_basis": legal_basis,
         "text": text,
     }
+    if case.mode == "PRIVATE_REAL_BETA" and case.current_action_id:
+        previous_action = db.get(Action, case.current_action_id)
+        if previous_action is not None and previous_action.status == "OPEN":
+            previous_action.status = "COMPLETED"
+            previous_action.completed_at = datetime.now(timezone.utc)
     action = Action(
         case_id=case.id,
         type="SUBMIT_INITIAL_CLAIM",
@@ -821,17 +845,13 @@ def prepare_claim_package(db: Session, case: Case) -> dict[str, Any]:
     db.flush()
     case.current_action_id = action.id
     case.status = "READY_TO_SUBMIT"
-    audit(
-        db,
-        case.id,
-        "CLAIM_PACKAGE_PREPARED",
-        {
-            "action_id": action.id,
-            "amount": amount,
-            "economic_value": decision.economic_value,
-            "family": case.family,
-        },
-    )
+    audit(db, case.id, "CLAIM_PACKAGE_PREPARED", (
+        {"action_id": action.id, "family": case.family}
+        if case.mode == "PRIVATE_REAL_BETA" else {
+            "action_id": action.id, "amount": amount,
+            "economic_value": decision.economic_value, "family": case.family,
+        }
+    ))
     db.commit()
     db.refresh(action)
     return {"action_id": action.id, **payload}

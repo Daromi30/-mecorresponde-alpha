@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,9 +14,13 @@ from ..case_locking import lock_case_for_update
 from ..db import get_db
 from ..evidence_context import atomic_workflow_transaction
 from ..family_manifest import FAMILY_MANIFEST
-from ..models import Action, Case, Decision, Evidence, Fact
-from ..private_beta_fields import validate_private_fact
+from ..models import Action, Calculation, Case, Decision, Evidence, Fact, LegalRuleVersion, LegalSource, RuleEvaluation
+from ..private_beta_fields import FIELD_SCHEMA, validate_private_fact
 from ..private_beta_release import RELEASE_REASON, INITIAL_FAMILIES, actionable, release_approved
+from ..private_beta_review import (
+    bind_current_version, facts_version, record_resolution, require_assigned_reviewer,
+    require_current_version,
+)
 from ..reviews import HumanReview
 from ..services_v2 import EVALUATORS, audit, create_human_review, diagnose, get_next_question
 
@@ -70,6 +74,7 @@ class StructuredReviewResolution(BaseModel):
     # regenerated immediately by the deterministic Motor. There is no supported dormant
     # REANALYZING queue, so accepting False would create an operational dead end.
     reanalyze: Literal[True] = True
+    reason_code: Literal["FACT_CORRECTION_REQUIRED"] | None = None
 
     @field_validator("fact_updates")
     @classmethod
@@ -101,6 +106,34 @@ class ProfessionalEscalation(BaseModel):
     reviewer_decision: str = Field(min_length=3, max_length=10000)
 
 
+class ReviewChecklist(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    facts_reviewed: StrictBool
+    sources_rules_reviewed: StrictBool
+    uncertainty_reviewed: StrictBool
+    decision_reviewed: StrictBool
+    action_reviewed: StrictBool
+
+    def complete(self) -> bool:
+        return all(value is True for value in self.model_dump().values())
+
+
+class ReleaseApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    checklist: ReviewChecklist
+    reason_code: Literal["CONFIRMED_AS_SUPPORTED"]
+
+
+class PrivateReviewResolution(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    outcome: Literal["REQUEST_INFORMATION", "REJECT_DIAGNOSIS", "BLOCK_ACTION", "ESCALATE"]
+    reason_code: Literal[
+        "INSUFFICIENT_INFORMATION", "DIAGNOSIS_REJECTED", "ACTION_BLOCKED",
+        "LEGAL_UNCERTAINTY", "OUT_OF_SCOPE", "ESCALATION_REQUIRED",
+    ]
+    requested_fields: list[str] = Field(default_factory=list, max_length=1)
+
+
 def _review_or_404(db: Session, review_id: str) -> HumanReview:
     review = db.get(HumanReview, review_id)
     if not review:
@@ -114,9 +147,96 @@ def _complete_review_row(review: HumanReview, reviewer_decision: str) -> None:
     review.completed_at = datetime.now(timezone.utc)
 
 
+@router.get("/reviews/{review_id}/context")
+def private_review_context(review_id: str, db: Session = Depends(get_db),
+                           principal: AdminPrincipal = Depends(require_admin)) -> dict[str, Any]:
+    """Show only this case's current structured material before any resolution."""
+    review = _review_or_404(db, review_id)
+    case = db.get(Case, review.case_id)
+    if case is None or case.mode != "PRIVATE_REAL_BETA" or case.family not in INITIAL_FAMILIES:
+        raise HTTPException(409, "Private review context unavailable")
+    require_assigned_reviewer(db, review, case, principal.reviewer)
+    decision, action = require_current_version(db, review, case)
+    facts = db.scalars(select(Fact).where(Fact.case_id == case.id).order_by(Fact.created_at, Fact.id)).all()
+    current_facts = {fact.key: fact for fact in facts}
+    evidence = db.scalars(select(Evidence).where(Evidence.case_id == case.id)).all()
+    evidence_by_fact: dict[str, list[dict[str, Any]]] = {}
+    for item in evidence:
+        if item.fact_id:
+            evidence_by_fact.setdefault(item.fact_id, []).append({
+                "source_type": item.source_type, "strength": item.strength,
+            })
+    calculations = db.scalars(select(Calculation).where(Calculation.case_id == case.id)).all()
+    evaluations = db.scalars(select(RuleEvaluation).where(RuleEvaluation.case_id == case.id)).all()
+    rule_refs = {(item["rule_id"], item["version"])
+                 for item in (decision.rule_evaluations_json if decision else [])}
+    rule_ids = {rule_id for rule_id, _version in rule_refs}
+    versions = db.scalars(select(LegalRuleVersion).where(LegalRuleVersion.rule_id.in_(rule_ids))).all() if rule_ids else []
+    current_versions = {row.rule_id: row for row in versions if (row.rule_id, row.version) in rule_refs}
+    sources = []
+    for rule in current_versions.values():
+        source = db.get(LegalSource, rule.source_id)
+        if source:
+            sources.append({
+                "rule_id": rule.rule_id, "version": rule.version,
+                "article": rule.article, "title": source.title,
+                "official_url": source.official_url, "status": source.status,
+            })
+    current_evaluations = [row for row in evaluations if row.rule_version_id in {rule.id for rule in current_versions.values()}]
+    latest_evaluations = {row.rule_version_id: row for row in current_evaluations}
+    latest_calculation = calculations[-1] if calculations and decision and decision.claimable_amount is not None else None
+    return {
+        "case_id": case.id, "family": case.family, "case_status": case.status,
+        "review_id": review.id, "review_reason": review.reason,
+        "review_status": review.status, "assigned_reviewer_id": review.assigned_reviewer_id,
+        "technical_reviewer_authorization": case.family,
+        "professional_legal_qualification": "NOT_ASSERTED",
+        "requestable_fields": [
+            {"key": key, "input_type": kind}
+            for key, (kind, _required) in FIELD_SCHEMA[case.family].items()
+        ],
+        "facts_version": facts_version(db, case.id),
+        "facts": [{
+            "id": fact.id, "key": fact.key, "value": fact.value_json.get("value"),
+            "state": fact.state, "user_confirmed": fact.user_confirmed,
+            "created_by": fact.created_by, "evidence": evidence_by_fact.get(fact.id, []),
+        } for fact in sorted(current_facts.values(), key=lambda row: row.key)],
+        "decision": None if decision is None else {
+            "id": decision.id, "viability": decision.viability,
+            "scope_status": decision.scope_status, "claimable_amount": decision.claimable_amount,
+            "economic_value": decision.economic_value, "worth_pursuing": decision.worth_pursuing,
+            "reasoning_summary": decision.reasoning_summary,
+            "counterarguments": decision.counterarguments_snapshot,
+            "rule_evaluations": decision.rule_evaluations_json,
+        },
+        "action": None if action is None else {
+            "id": action.id, "type": action.type, "status": action.status,
+            "payload": action.payload_json,
+        },
+        "calculation": None if latest_calculation is None else {
+            "type": latest_calculation.type, "inputs": latest_calculation.inputs_json,
+            "result": latest_calculation.result, "formula_version": latest_calculation.formula_version,
+        },
+        "rule_evaluations": [{
+            "id": row.id, "rule_version_id": row.rule_version_id,
+            "result": row.result, "missing_facts": row.missing_conditions,
+            "failed_conditions": row.failed_conditions,
+        } for row in latest_evaluations.values()],
+        "sources": sources,
+        "remedies": (action.payload_json or {}).get("remedies", []) if action else [],
+        "burden_of_proof": (action.payload_json or {}).get("burden_of_proof", []) if action else [],
+        "uncertainties": {
+            "counterarguments": decision.counterarguments_snapshot if decision else [],
+            "missing_facts": [value for row in latest_evaluations.values() for value in row.missing_conditions],
+            "failed_conditions": [value for row in latest_evaluations.values() for value in row.failed_conditions],
+        },
+    }
+
+
 @router.post("/reviews/{review_id}/approve-release")
 def approve_private_release(
     review_id: str,
+    payload: ReleaseApproval,
     db: Session = Depends(get_db),
     principal: AdminPrincipal = Depends(require_admin),
 ) -> dict[str, str]:
@@ -125,16 +245,16 @@ def approve_private_release(
     case = lock_case_for_update(db, review.case_id)
     if case is None or case.mode != "PRIVATE_REAL_BETA" or case.family not in INITIAL_FAMILIES:
         raise HTTPException(409, "Private release is unavailable")
-    if principal.reviewer is None or review.assigned_reviewer_id != principal.actor_id:
-        raise HTTPException(403, "Assigned reviewer session required")
-    decision = db.get(Decision, case.current_decision_id) if case.current_decision_id else None
-    action = db.get(Action, case.current_action_id) if case.current_action_id else None
+    require_assigned_reviewer(db, review, case, principal.reviewer)
+    decision, action = require_current_version(db, review, case)
+    if not payload.checklist.complete():
+        raise HTTPException(422, "All substantive review checks must be explicitly true")
     if (
         review.reason != RELEASE_REASON or review.status != "OPEN"
         or decision is None or action is None
         or decision.case_id != case.id or action.case_id != case.id
         or decision.viability not in {"HIGH", "MEDIUM"}
-        or not actionable(action) or action.status != "OPEN"
+        or not actionable(action) or action.status not in {"OPEN", "READY"}
         or review.context_json.get("decision_id") != decision.id
         or review.context_json.get("diagnosis_action_id") != action.id
         or case.status != "HUMAN_REVIEW"
@@ -148,18 +268,96 @@ def approve_private_release(
     if other_open is not None:
         raise HTTPException(409, "Other human review remains pending")
     with atomic_workflow_transaction(db) as commit:
-        review.status = "COMPLETED"
-        review.reviewer_decision = "APPROVED_FOR_EXTERNAL_RELEASE"
-        review.completed_at = datetime.now(timezone.utc)
-        case.status = "DIAGNOSED"
+        from ..auth_models import ReviewerFamilyAuthorization
+        authorization = db.scalar(select(ReviewerFamilyAuthorization).where(
+            ReviewerFamilyAuthorization.reviewer_id == principal.actor_id,
+            ReviewerFamilyAuthorization.family == case.family,
+        ))
+        if authorization is None:
+            raise HTTPException(403, "Family authorization is required")
+        record_resolution(review, "APPROVED_FOR_EXTERNAL_RELEASE", payload.reason_code,
+                          checklist=payload.checklist.model_dump())
+        case.status = "READY_TO_SUBMIT" if action.type == "SUBMIT_INITIAL_CLAIM" else "DIAGNOSED"
         audit(db, case.id, "PRE_BETA_RELEASE_APPROVED", {
-            "review_id": review.id, "decision_id": decision.id,
+            "review_id": review.id, "decision_id": decision.id, "action_id": action.id,
+            "facts_version": facts_version(db, case.id),
+            "reason_code": payload.reason_code, "outcome": "APPROVED_FOR_EXTERNAL_RELEASE",
+            "authorization_id": authorization.id,
         }, actor_reviewer_id=principal.actor_id)
         db.flush()
         if not release_approved(db, case):
             raise HTTPException(409, "Private release approval could not be verified")
         commit()
     return {"status": "RELEASED", "decision_id": decision.id}
+
+
+@router.post("/reviews/{review_id}/resolve-private")
+def resolve_private_review(review_id: str, payload: PrivateReviewResolution,
+                           db: Session = Depends(get_db),
+                           principal: AdminPrincipal = Depends(require_admin)) -> dict[str, Any]:
+    """Non-approval outcomes never manufacture a replacement legal conclusion."""
+    review = _review_or_404(db, review_id)
+    case = lock_case_for_update(db, review.case_id)
+    if case is None or case.mode != "PRIVATE_REAL_BETA" or case.family not in INITIAL_FAMILIES:
+        raise HTTPException(409, "Private review resolution unavailable")
+    require_assigned_reviewer(db, review, case, principal.reviewer)
+    decision, action = require_current_version(db, review, case)
+    allowed_reasons = {
+        "REQUEST_INFORMATION": {"INSUFFICIENT_INFORMATION"},
+        "REJECT_DIAGNOSIS": {"DIAGNOSIS_REJECTED", "OUT_OF_SCOPE"},
+        "BLOCK_ACTION": {"ACTION_BLOCKED"},
+        "ESCALATE": {"LEGAL_UNCERTAINTY", "ESCALATION_REQUIRED"},
+    }
+    if payload.reason_code not in allowed_reasons[payload.outcome]:
+        raise HTTPException(422, "Reason code does not match outcome")
+    if payload.outcome == "REQUEST_INFORMATION":
+        if (not payload.requested_fields or len(payload.requested_fields) != len(set(payload.requested_fields))
+                or any(key not in FIELD_SCHEMA[case.family] for key in payload.requested_fields)):
+            raise HTTPException(422, "Request only distinct, allowlisted structured fields")
+    elif payload.requested_fields:
+        raise HTTPException(422, "Requested fields are only valid for information requests")
+    if payload.outcome == "BLOCK_ACTION" and action is None:
+        raise HTTPException(409, "No current action to block")
+
+    with atomic_workflow_transaction(db) as commit:
+        prior = {
+            "review_id": review.id, "decision_id": case.current_decision_id,
+            "action_id": case.current_action_id,
+            "facts_version": facts_version(db, case.id),
+            "outcome": payload.outcome, "reason_code": payload.reason_code,
+        }
+        if action is not None:
+            action.status = "SUPERSEDED"
+        record_resolution(review, payload.outcome, payload.reason_code)
+        if payload.outcome == "REQUEST_INFORMATION":
+            review.context_json = {**review.context_json, "requested_fields": payload.requested_fields}
+            case.current_decision_id = None
+            case.current_action_id = None
+            case.status = "NEEDS_INFORMATION"
+            prior["requested_fields"] = payload.requested_fields
+        else:
+            if payload.outcome == "REJECT_DIAGNOSIS":
+                case.current_decision_id = None
+                case.current_action_id = None
+                followup_reason = "PRIVATE_BETA_DIAGNOSIS_REJECTED"
+            elif payload.outcome == "BLOCK_ACTION":
+                case.current_action_id = None
+                followup_reason = "PRIVATE_BETA_ACTION_BLOCKED"
+            else:
+                case.current_action_id = None
+                followup_reason = "PRIVATE_BETA_PROFESSIONAL_REVIEW_REQUIRED"
+            followup = create_human_review(db, case, followup_reason, "HIGH", {
+                "source_review_id": review.id, "family": case.family,
+            })
+            db.flush()
+            bind_current_version(db, followup, case)
+            case.status = "HUMAN_REVIEW"
+            prior["followup_review_id"] = followup.id
+        audit(db, case.id, "PRIVATE_BETA_REVIEW_RESOLVED", prior,
+              actor_reviewer_id=principal.actor_id)
+        commit()
+    return {"review_id": review.id, "outcome": payload.outcome,
+            "case_id": case.id, "case_status": case.status, "released": False}
 
 
 @router.get("/review-routing/families")
@@ -205,6 +403,8 @@ def reclassify_unsupported_review(
         raise HTTPException(status_code=409, detail="Case is no longer waiting for assisted classification")
 
     if case.mode == "PRIVATE_REAL_BETA":
+        require_assigned_reviewer(db, review, case, principal.reviewer)
+        require_current_version(db, review, case)
         from ..real_beta_gate import allowed_families, audit_once
         if payload.target_family not in allowed_families():
             audit_once(db, case.id, "REAL_BETA_FAMILY_BLOCKED", {"target_family": payload.target_family})
@@ -277,6 +477,8 @@ def escalate_post_response_review_to_professional(
         raise HTTPException(status_code=404, detail="Case not found")
     if case.status != "HUMAN_REVIEW":
         raise HTTPException(status_code=409, detail="Case is no longer waiting for escalation review")
+    if case.mode == "PRIVATE_REAL_BETA":
+        raise HTTPException(409, "Use the structured private resolution route")
 
     _complete_review_row(review, payload.reviewer_decision)
     complete_current_action(db, case, only_types={"HUMAN_REVIEW"})
@@ -342,8 +544,8 @@ def resolve_structured_review(
     review = _review_or_404(db, review_id)
     if review.status != "OPEN":
         raise HTTPException(status_code=409, detail="Review is not open")
-    if review.reason == RELEASE_REASON:
-        raise HTTPException(status_code=409, detail="Use the dedicated private release review route")
+    if review.reason == RELEASE_REASON and payload.reason_code != "FACT_CORRECTION_REQUIRED":
+        raise HTTPException(status_code=409, detail="Release review fact correction requires its structured reason code")
     if review.reason == "UNSUPPORTED_CLASSIFICATION":
         raise HTTPException(
             status_code=409,
@@ -353,6 +555,11 @@ def resolve_structured_review(
     case = lock_case_for_update(db, review.case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    if case.mode == "PRIVATE_REAL_BETA":
+        require_assigned_reviewer(db, review, case, principal.reviewer)
+        require_current_version(db, review, case)
+        if payload.reason_code != "FACT_CORRECTION_REQUIRED":
+            raise HTTPException(422, "Structured reason code required")
     if (case.family or "") not in EVALUATORS:
         raise HTTPException(
             status_code=409,
@@ -402,7 +609,13 @@ def resolve_structured_review(
                     )
                 )
 
-        _complete_review_row(review, payload.reviewer_decision)
+        if case.mode == "PRIVATE_REAL_BETA":
+            previous_action = db.get(Action, case.current_action_id) if case.current_action_id else None
+            if previous_action is not None:
+                previous_action.status = "SUPERSEDED"
+            record_resolution(review, "CORRECT_STRUCTURED_FACTS", payload.reason_code)
+        else:
+            _complete_review_row(review, payload.reviewer_decision)
         complete_current_action(db, case, only_types={"HUMAN_REVIEW"})
         case.status = "REANALYZING"
         audit(
@@ -416,6 +629,11 @@ def resolve_structured_review(
                 "fact_updates": update_audit,
                 "reanalyze_requested": True,
                 "review_reason": review.reason,
+                **({"reason_code": payload.reason_code, "outcome": "CORRECT_STRUCTURED_FACTS",
+                    "decision_id": review.context_json.get("decision_id"),
+                    "action_id": review.context_json.get("diagnosis_action_id"),
+                    "facts_version": review.context_json.get("facts_version")}
+                   if case.mode == "PRIVATE_REAL_BETA" else {}),
             },
             actor_reviewer_id=principal.actor_id,
         )

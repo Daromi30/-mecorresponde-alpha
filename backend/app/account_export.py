@@ -158,7 +158,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "supersedes_fact_id": row.supersedes_fact_id,
                         "created_at": _json_value(row.created_at),
                     }
-                    for row in facts[case.id]
+                    for row in facts[case.id] if not pending_release or row.created_by == "user"
                 ],
                 "evidence": [
                     {
@@ -171,7 +171,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "strength": row.strength,
                         "created_at": _json_value(row.created_at),
                     }
-                    for row in evidence[case.id]
+                    for row in ([] if pending_release else evidence[case.id])
                 ],
                 "documents": [
                     {
@@ -198,7 +198,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                             for extraction in extraction_by_document[document.id]
                         ],
                     }
-                    for document in documents_by_case[case.id]
+                    for document in ([] if pending_release else documents_by_case[case.id])
                 ],
                 "decisions": [
                     {
@@ -238,7 +238,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "computed_date": _json_value(row.computed_date),
                         "status": row.status,
                     }
-                    for row in deadlines[case.id]
+                    for row in ([] if pending_release else deadlines[case.id])
                 ],
                 "communications": [
                     {
@@ -252,7 +252,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "reference_number": row.reference_number,
                         "document_id": row.document_id,
                     }
-                    for row in communications[case.id]
+                    for row in ([] if pending_release else communications[case.id])
                 ],
                 "outcomes": [
                     {
@@ -267,7 +267,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "verified_by_user": row.verified_by_user,
                         "failure_reason": row.failure_reason,
                     }
-                    for row in outcomes[case.id]
+                    for row in ([] if pending_release else outcomes[case.id])
                 ],
                 "counterarguments": [
                     {
@@ -316,7 +316,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "created_at": _json_value(row.created_at),
                         "completed_at": _json_value(row.completed_at),
                     }
-                    for row in reviews[case.id]
+                    for row in ([] if pending_release else reviews[case.id])
                 ],
                 "audit_events": [
                     {

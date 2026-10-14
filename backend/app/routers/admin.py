@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..admin_auth import AdminPrincipal, require_admin
 from ..auth_models import Reviewer
+from ..private_beta_review import family_authorized
 from ..case_handoff import build_case_handoff
 from ..db import get_db
 from ..models import (
@@ -166,6 +167,11 @@ def review_queue(
     )
     if principal.reviewer is None:
         stmt = stmt.where(Case.mode == "SYNTHETIC")
+    elif principal.reviewer.role == "reviewer":
+        stmt = stmt.where(
+            (Case.mode != "PRIVATE_REAL_BETA")
+            | (HumanReview.assigned_reviewer_id == principal.actor_id)
+        )
     rows = db.scalars(stmt).all()
     result: list[dict[str, Any]] = []
     for review in rows:
@@ -230,7 +236,7 @@ def case_detail(case_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     outcome = db.scalars(select(Outcome).where(Outcome.case_id == case.id)).first()
 
     return {
-        **serialize_case(db, case),
+        **serialize_case(db, case, internal=True),
         "documents": [
             {
                 "id": doc.id,
@@ -301,7 +307,7 @@ def assign_review(
         if payload.assigned_to is not None or payload.reviewer_id is None:
             raise HTTPException(422, "Private assignment requires reviewer_id only")
         target = db.get(Reviewer, payload.reviewer_id)
-        if target is None or target.disabled_at is not None:
+        if target is None or not family_authorized(db, target, case.family):
             raise HTTPException(422, "Reviewer unavailable")
         previous_id = review.assigned_reviewer_id
         review.assigned_reviewer_id = target.id
