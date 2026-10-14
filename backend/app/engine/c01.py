@@ -192,6 +192,19 @@ def evaluate_c01(facts: dict[str, FactValue], *, private_beta: bool = False) -> 
         )
 
     seller_denied = raw(facts, "purchase.seller_denied_conformity", False)
+    if private_beta and seller_denied is True:
+        # The first private beta does not collect the material facts needed to
+        # determine secondary remedies. In particular, absence of severity is
+        # not evidence that the nonconformity is non-minor.
+        return EngineResult(
+            viability="PROFESSIONAL_REVIEW", scope_status="LIMITED_SCOPE", claimable_amount=None,
+            economic_value=economic_value, worth_pursuing="PROFESSIONAL_REVIEW",
+            reasoning_summary="La negativa del vendedor requiere revisión humana de los posibles remedios secundarios. Los hechos estructurados de esta beta no permiten concluir automáticamente reducción del precio ni resolución contractual.",
+            counterarguments=counterarguments, missing_facts=[],
+            next_action="HUMAN_REVIEW_C01_SECONDARY_REMEDIES", rule_result="MANUAL_REVIEW",
+            failed_conditions=["secondary_remedy_facts_unavailable"], calculation=None, sources=sources,
+            remedies=[], burden_of_proof=burden,
+        )
     severity = raw(facts, "purchase.defect_severity")
     remedies = ["REPAIR", "REPLACEMENT"]
     next_action = "PREPARE_CONFORMITY_CLAIM"

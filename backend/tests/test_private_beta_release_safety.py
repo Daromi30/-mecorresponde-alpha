@@ -447,7 +447,6 @@ def test_private_c01_price_is_progressive_and_not_required_for_triage(client, db
         ("purchase.defect_manifested_date", "2026-09-01"),
         ("purchase.nonconformity_reported", True),
         ("purchase.accidental_damage_or_misuse", False),
-        ("purchase.seller_denied_conformity", False),
     ]
     for key, value in preliminary:
         question = client.get(f"/api/cases/{case_id}/next-question").json()
@@ -457,6 +456,8 @@ def test_private_c01_price_is_progressive_and_not_required_for_triage(client, db
     price_question = client.get(f"/api/cases/{case_id}/next-question").json()
     assert price_question["field"] == "purchase.price"
     assert price_question["phase"] == "QUANTIFICATION" and price_question["optional"]
+    assert "purchase.seller_denied_conformity" not in latest_facts(db, case_id)
+    assert "purchase.seller_denied_conformity" in FIELD_SCHEMA["C01"]
     assert "purchase.price" not in latest_facts(db, case_id)
     assert evaluate_c01(latest_facts(db, case_id), private_beta=True).rule_result == "APPLIES"
     assert evaluate_c01(latest_facts(db, case_id), private_beta=True).economic_value is None
@@ -468,6 +469,53 @@ def test_private_c01_price_is_progressive_and_not_required_for_triage(client, db
     decision = db.get(Decision, db.get(Case, case_id).current_decision_id)
     assert decision.viability in {"HIGH", "MEDIUM"}
     assert decision.economic_value is None
+
+
+def test_private_c01_seller_refusal_has_no_unsupported_termination_and_opens_review(
+    client, db, future_test_gate,
+):
+    case_id, _reviewer, _facts = _admit(client, db, "C01")
+    _record_required_facts(client, case_id, [
+        ("purchase.buyer_is_consumer", True),
+        ("purchase.seller_is_business", True),
+        ("purchase.second_hand", False),
+        ("purchase.delivery_date", "2026-08-01"),
+        ("purchase.defect_manifested_date", "2026-09-01"),
+        ("purchase.nonconformity_reported", True),
+        ("purchase.accidental_damage_or_misuse", False),
+    ])
+    assert client.get(f"/api/cases/{case_id}/next-question").json()["field"] == "purchase.price"
+    assert client.post(f"/api/cases/{case_id}/facts", json={
+        "key": "purchase.seller_denied_conformity", "value": True,
+        "state": "confirmed", "user_confirmed": True,
+    }).status_code == 200
+
+    result = evaluate_c01(latest_facts(db, case_id), private_beta=True)
+    assert result.viability == "PROFESSIONAL_REVIEW"
+    assert result.rule_result == "MANUAL_REVIEW"
+    assert result.next_action == "HUMAN_REVIEW_C01_SECONDARY_REMEDIES"
+    assert result.claimable_amount is None
+    assert result.remedies == []
+    assert "TERMINATION_SUBJECT_TO_NON_MINOR_DEFECT" not in result.remedies
+    assert "PRICE_REDUCTION" not in result.remedies
+
+    diagnosis = client.post(f"/api/cases/{case_id}/diagnose")
+    assert diagnosis.status_code == 200, diagnosis.text
+    assert diagnosis.json()["status"] == "PENDING_HUMAN_REVIEW"
+    case = db.get(Case, case_id)
+    decision = db.get(Decision, case.current_decision_id)
+    action = db.get(Action, case.current_action_id)
+    assert decision.viability == "PROFESSIONAL_REVIEW"
+    assert action.type == "HUMAN_REVIEW_C01_SECONDARY_REMEDIES"
+    assert "TERMINATION_SUBJECT_TO_NON_MINOR_DEFECT" not in action.payload_json["remedies"]
+    review = db.scalar(select(HumanReview).where(
+        HumanReview.case_id == case_id,
+        HumanReview.reason == "HUMAN_REVIEW_C01_SECONDARY_REMEDIES",
+        HumanReview.status == "OPEN",
+    ))
+    assert review is not None
+    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
+    assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 409
 
 
 def test_global_synthetic_fields_and_26_family_manifest_are_unchanged():

@@ -93,7 +93,6 @@ def next_private_question(facts: dict[str, FactValue], family: str) -> dict[str,
             ("purchase.defect_manifested_date", "¿Cuándo se manifestó el problema?", "date"),
             ("purchase.nonconformity_reported", "¿Consideras que el producto no funciona o no se ajusta a lo contratado?", "boolean"),
             ("purchase.accidental_damage_or_misuse", "¿Hubo daño accidental o mal uso que pueda explicar el problema?", "boolean"),
-            ("purchase.seller_denied_conformity", "¿El vendedor ya se negó a ponerlo en conformidad?", "boolean"),
         )
         for key, question, input_type in questions:
             if key not in facts:
