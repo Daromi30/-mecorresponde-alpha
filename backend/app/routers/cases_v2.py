@@ -146,7 +146,7 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
                 "assigned_reviewer_id": review.assigned_reviewer_id,
                 "reviewer_decision": review.reviewer_decision,
             }
-            for review in ([] if pending_release else reviews)
+            for review in ([] if private_scope(case) and not internal else reviews)
         ],
     }
 
@@ -521,7 +521,7 @@ def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)
 @router.get("/{case_id}/reviews")
 def reviews(case_id: str, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
-    if private_scope(case) and not release_approved(db, case):
+    if private_scope(case):
         return []
     rows = db.scalars(
         select(HumanReview).where(HumanReview.case_id == case.id).order_by(HumanReview.created_at.desc())

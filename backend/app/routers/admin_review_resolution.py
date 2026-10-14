@@ -166,10 +166,24 @@ def private_review_context(review_id: str, db: Session = Depends(get_db),
             evidence_by_fact.setdefault(item.fact_id, []).append({
                 "source_type": item.source_type, "strength": item.strength,
             })
-    calculations = db.scalars(select(Calculation).where(Calculation.case_id == case.id)).all()
-    evaluations = db.scalars(select(RuleEvaluation).where(RuleEvaluation.case_id == case.id)).all()
-    rule_refs = {(item["rule_id"], item["version"])
-                 for item in (decision.rule_evaluations_json if decision else [])}
+    evaluation_refs = decision.rule_evaluations_json if decision else []
+    evaluation_ids = {item.get("rule_evaluation_id") for item in evaluation_refs}
+    evaluation_ids.discard(None)
+    current_evaluations = db.scalars(select(RuleEvaluation).where(
+        RuleEvaluation.case_id == case.id, RuleEvaluation.id.in_(evaluation_ids)
+    )).all() if evaluation_ids else []
+    if len(current_evaluations) != len(evaluation_refs):
+        raise HTTPException(409, "Diagnosis rule evaluations are not version-bound")
+    calculation_ids = {item.get("calculation_id") for item in evaluation_refs}
+    calculation_ids.discard(None)
+    if len(calculation_ids) > 1:
+        raise HTTPException(409, "Diagnosis calculation binding is inconsistent")
+    calculation = db.scalar(select(Calculation).where(
+        Calculation.case_id == case.id, Calculation.id.in_(calculation_ids)
+    )) if calculation_ids else None
+    if calculation_ids and calculation is None:
+        raise HTTPException(409, "Diagnosis calculation is not available")
+    rule_refs = {(item["rule_id"], item["version"]) for item in evaluation_refs}
     rule_ids = {rule_id for rule_id, _version in rule_refs}
     versions = db.scalars(select(LegalRuleVersion).where(LegalRuleVersion.rule_id.in_(rule_ids))).all() if rule_ids else []
     current_versions = {row.rule_id: row for row in versions if (row.rule_id, row.version) in rule_refs}
@@ -182,9 +196,7 @@ def private_review_context(review_id: str, db: Session = Depends(get_db),
                 "article": rule.article, "title": source.title,
                 "official_url": source.official_url, "status": source.status,
             })
-    current_evaluations = [row for row in evaluations if row.rule_version_id in {rule.id for rule in current_versions.values()}]
-    latest_evaluations = {row.rule_version_id: row for row in current_evaluations}
-    latest_calculation = calculations[-1] if calculations and decision and decision.claimable_amount is not None else None
+    latest_evaluations = {row.id: row for row in current_evaluations}
     return {
         "case_id": case.id, "family": case.family, "case_status": case.status,
         "review_id": review.id, "review_reason": review.reason,
@@ -213,9 +225,9 @@ def private_review_context(review_id: str, db: Session = Depends(get_db),
             "id": action.id, "type": action.type, "status": action.status,
             "payload": action.payload_json,
         },
-        "calculation": None if latest_calculation is None else {
-            "type": latest_calculation.type, "inputs": latest_calculation.inputs_json,
-            "result": latest_calculation.result, "formula_version": latest_calculation.formula_version,
+        "calculation": None if calculation is None else {
+            "id": calculation.id, "type": calculation.type, "inputs": calculation.inputs_json,
+            "result": calculation.result, "formula_version": calculation.formula_version,
         },
         "rule_evaluations": [{
             "id": row.id, "rule_version_id": row.rule_version_id,

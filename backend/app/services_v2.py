@@ -436,8 +436,7 @@ def diagnose(db: Session, case: Case):
     evaluated_rules: list[dict[str, Any]] = []
     for rule_id in FAMILY_RULES.get(case.family or "", []):
         rule = rules[rule_id]
-        db.add(
-            RuleEvaluation(
+        evaluation = RuleEvaluation(
                 case_id=case.id,
                 rule_version_id=rule.id,
                 facts_snapshot=snapshot,
@@ -446,9 +445,11 @@ def diagnose(db: Session, case: Case):
                 failed_conditions=result.failed_conditions,
                 engine_version=f"{(case.family or 'unknown').lower()}-1",
             )
-        )
+        db.add(evaluation)
+        db.flush()
         evaluated_rules.append(
             {
+                "rule_evaluation_id": evaluation.id,
                 "rule_id": rule.rule_id,
                 "version": rule.version,
                 "result": result.rule_result,
@@ -469,9 +470,9 @@ def diagnose(db: Session, case: Case):
             )
         )
 
+    calculation_id = None
     if result.calculation is not None:
-        db.add(
-            Calculation(
+        calculation = Calculation(
                 case_id=case.id,
                 type=result.calculation.get("type", "case_calculation"),
                 inputs_json=result.calculation,
@@ -479,7 +480,11 @@ def diagnose(db: Session, case: Case):
                 result=float(result.claimable_amount or 0.0),
                 explanation="Cálculo determinista reproducible a partir de los hechos confirmados del expediente.",
             )
-        )
+        db.add(calculation)
+        db.flush()
+        calculation_id = calculation.id
+        for evaluation_ref in evaluated_rules:
+            evaluation_ref["calculation_id"] = calculation_id
 
     decision = Decision(
         case_id=case.id,
@@ -504,6 +509,7 @@ def diagnose(db: Session, case: Case):
             "economic_value": economic_value,
             "remedies": remedies,
             "burden_of_proof": burden,
+            "calculation_id": calculation_id,
         },
     )
     db.add(action)

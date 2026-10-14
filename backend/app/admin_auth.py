@@ -93,6 +93,7 @@ def require_admin(
         if (principal.reviewer.role == "reviewer" and db.scalar(select(HumanReview.id).where(
             HumanReview.case_id == case.id,
             HumanReview.assigned_reviewer_id == principal.actor_id,
+            HumanReview.status == "OPEN",
         )) is None):
             _denied(db, case.id, principal.actor_id, "assigned_case_required")
             raise HTTPException(403, "Case is not assigned to this reviewer")

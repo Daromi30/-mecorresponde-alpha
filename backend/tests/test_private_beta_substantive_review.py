@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.auth_models import ReviewerFamilyAuthorization
 from app.family_manifest import FAMILY_MANIFEST
-from app.models import Action, AuditEvent, Case, Decision
+from app.models import Action, AuditEvent, Calculation, Case, Decision, RuleEvaluation
 from app.private_beta_release import RELEASE_REASON, release_approved
 from app.reviews import HumanReview
 from app import real_beta_gate as gate
@@ -226,3 +226,124 @@ def test_private_participant_outputs_stay_neutral_before_review(client, db, futu
         "reviewer_decision": "rubber stamp",
     }).status_code == 409
     assert len(FAMILY_MANIFEST) == 26 and gate.REAL_BETA_LAUNCH_REVIEW_COMPLETE is False
+
+
+def _login_backoffice(client, login_id, password):
+    assert client.post("/api/backoffice-auth/logout").status_code == 200
+    assert client.post("/api/backoffice-auth/login", json={
+        "login_id": login_id, "password": password,
+    }).status_code == 200
+
+
+def _participant_review_metadata_absent(client, case_id, reviewer_ids, private_note):
+    detail = client.get(f"/api/cases/{case_id}")
+    assert detail.status_code == 200
+    assert detail.json()["decisions"] and detail.json()["actions"]
+    assert detail.json()["human_reviews"] == []
+    reviews = client.get(f"/api/cases/{case_id}/reviews")
+    assert reviews.status_code == 200 and reviews.json() == []
+    exported = client.get("/api/auth/export")
+    assert exported.status_code == 200
+    private_export = next(row for row in exported.json()["cases"] if row["id"] == case_id)
+    assert private_export["decisions"] and private_export["actions"]
+    assert private_export["human_reviews"] == private_export["audit_events"] == []
+    for response in (detail.json(), reviews.json(), private_export,
+                     client.get(f"/api/cases/{case_id}/timeline").json(),
+                     client.get(f"/api/cases/{case_id}/quality").json()):
+        rendered = str(response)
+        for forbidden in (*reviewer_ids, private_note, "assigned_reviewer_id", "reviewer_decision",
+                          "reason_code", "checklist", "authorization_id"):
+            assert forbidden not in rendered
+
+
+def test_completed_assignment_does_not_grant_historical_case_read(client, db, future_test_gate):
+    case_id, operator, review = ready(client, db)
+    first = client.post("/api/admin/reviewers", json={
+        "login_id": "reviewer-a", "role": "reviewer", "initial_password": "synthetic-reviewer-a",
+    }).json()["id"]
+    second = client.post("/api/admin/reviewers", json={
+        "login_id": "reviewer-b", "role": "reviewer", "initial_password": "synthetic-reviewer-b",
+    }).json()["id"]
+    for reviewer_id in (first, second):
+        assert client.put(f"/api/admin/reviewers/{reviewer_id}/technical-scope", json={
+            "families": ["E02-A"],
+        }).status_code == 200
+    assert client.post(f"/api/admin/reviews/{review.id}/assign", json={"reviewer_id": first}).status_code == 200
+    _login_backoffice(client, "reviewer-a", "synthetic-reviewer-a")
+    assert client.get(f"/api/admin/cases/{case_id}").status_code == 200
+    assert client.post(f"/api/admin/reviews/{review.id}/resolve-structured", json={
+        "reviewer_decision": "Synthetic fact correction", "reason_code": "FACT_CORRECTION_REQUIRED",
+        "fact_updates": [{"key": "electricity.billing.billed_amount", "value": 130}],
+    }).status_code == 200
+    assert client.get(f"/api/admin/cases/{case_id}").status_code == 403
+    assert client.get(f"/api/admin/cases/{case_id}/handoff").status_code == 403
+    new_review = db.scalar(select(HumanReview).where(
+        HumanReview.case_id == case_id, HumanReview.reason == RELEASE_REASON,
+        HumanReview.status == "OPEN",
+    ))
+    _login_backoffice(client, "testoperator", "synthetic-operator-password")
+    assert client.post(f"/api/admin/reviews/{new_review.id}/assign", json={"reviewer_id": second}).status_code == 200
+    _login_backoffice(client, "reviewer-a", "synthetic-reviewer-a")
+    assert client.get(f"/api/admin/cases/{case_id}").status_code == 403
+    _login_backoffice(client, "reviewer-b", "synthetic-reviewer-b")
+    assert client.get(f"/api/admin/cases/{case_id}").status_code == 200
+
+
+def test_reanalysis_context_uses_exact_artifact_ids_and_never_old_rows(client, db, future_test_gate):
+    case_id, reviewer, review = ready(client, db)
+    assign(client, review, reviewer)
+    first = client.get(f"/api/admin/reviews/{review.id}/context").json()
+    first_eval_ids = {row["id"] for row in first["rule_evaluations"]}
+    first_calc_id = first["calculation"]["id"]
+    assert first_eval_ids and first_calc_id
+    assert db.get(Calculation, first_calc_id).case_id == case_id
+    assert all(db.get(RuleEvaluation, item).case_id == case_id for item in first_eval_ids)
+    assert client.post(f"/api/admin/reviews/{review.id}/resolve-structured", json={
+        "reviewer_decision": "Synthetic correction to amount", "reason_code": "FACT_CORRECTION_REQUIRED",
+        "fact_updates": [{"key": "electricity.billing.billed_amount", "value": 130}],
+    }).status_code == 200
+    current = db.scalar(select(HumanReview).where(
+        HumanReview.case_id == case_id, HumanReview.reason == RELEASE_REASON,
+        HumanReview.status == "OPEN",
+    ))
+    assign(client, current, reviewer)
+    second = client.get(f"/api/admin/reviews/{current.id}/context").json()
+    assert second["decision"]["id"] != first["decision"]["id"]
+    assert second["action"]["id"] != first["action"]["id"]
+    assert second["calculation"]["id"] != first_calc_id
+    assert second["calculation"]["inputs"] != first["calculation"]["inputs"]
+    assert {row["id"] for row in second["rule_evaluations"]}.isdisjoint(first_eval_ids)
+    refs = db.get(Decision, second["decision"]["id"]).rule_evaluations_json
+    assert {row["rule_evaluation_id"] for row in refs} == {row["id"] for row in second["rule_evaluations"]}
+    assert {row["calculation_id"] for row in refs} == {second["calculation"]["id"]}
+
+
+def test_approved_private_diagnosis_never_releases_internal_review_metadata(client, db, future_test_gate):
+    case_id, reviewer, review = ready(client, db)
+    assign(client, review, reviewer)
+    assert client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL).status_code == 200
+    _participant_review_metadata_absent(client, case_id, (reviewer.id,), "Synthetic internal note")
+    # A later structured correction invalidates the old approval, then a new
+    # diagnosis can be approved without publishing the correction note.
+    from app.services_v2 import upsert_fact
+    case = db.get(Case, case_id)
+    upsert_fact(db, case, "electricity.billing.billed_amount", 130,
+                state="confirmed", user_confirmed=True, created_by="user")
+    assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 200
+    new_review = db.scalar(select(HumanReview).where(
+        HumanReview.case_id == case_id, HumanReview.reason == RELEASE_REASON,
+        HumanReview.status == "OPEN",
+    ))
+    assign(client, new_review, reviewer)
+    correction = client.post(f"/api/admin/reviews/{new_review.id}/resolve-structured", json={
+        "reviewer_decision": "Synthetic internal note", "reason_code": "FACT_CORRECTION_REQUIRED",
+        "fact_updates": [{"key": "electricity.billing.billed_amount", "value": 140}],
+    })
+    assert correction.status_code == 200, correction.text
+    final_review = db.scalar(select(HumanReview).where(
+        HumanReview.case_id == case_id, HumanReview.reason == RELEASE_REASON,
+        HumanReview.status == "OPEN",
+    ))
+    assign(client, final_review, reviewer)
+    assert client.post(f"/api/admin/reviews/{final_review.id}/approve-release", json=APPROVAL).status_code == 200
+    _participant_review_metadata_absent(client, case_id, (reviewer.id,), "Synthetic internal note")

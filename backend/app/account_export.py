@@ -316,7 +316,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "created_at": _json_value(row.created_at),
                         "completed_at": _json_value(row.completed_at),
                     }
-                    for row in ([] if pending_release else reviews[case.id])
+                    for row in ([] if private_scope(case) else reviews[case.id])
                 ],
                 "audit_events": [
                     {
@@ -325,7 +325,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "payload": row.payload_json,
                         "created_at": _json_value(row.created_at),
                     }
-                    for row in ([] if pending_release else audits[case.id])
+                    for row in ([] if private_scope(case) else audits[case.id])
                 ],
                 "ai_runs": [
                     {
