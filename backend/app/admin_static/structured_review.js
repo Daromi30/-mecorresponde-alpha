@@ -315,6 +315,7 @@
             reviewer_decision: decision,
             fact_updates: factUpdates,
             reanalyze: true,
+            ...(c.mode === 'PRIVATE_REAL_BETA' ? {reason_code: 'FACT_CORRECTION_REQUIRED'} : {}),
           }),
         });
         const diagnosis = response.updated_diagnosis;

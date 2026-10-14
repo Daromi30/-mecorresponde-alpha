@@ -16,6 +16,7 @@ from app.engine.questions import next_question
 from app.private_beta_fields import FIELD_SCHEMA
 from app.services_v2 import latest_facts
 from app.private_beta_release import RELEASE_REASON, ensure_release_review, release_approved
+from app.private_beta_review import bind_current_version
 from app.reviews import HumanReview
 from app import real_beta_gate as gate
 from app import services_v2 as svc
@@ -40,6 +41,13 @@ CASES = {
     ],
 }
 
+APPROVAL = {
+    "reason_code": "CONFIRMED_AS_SUPPORTED",
+    "checklist": {"facts_reviewed": True, "sources_rules_reviewed": True,
+                  "uncertainty_reviewed": True, "decision_reviewed": True,
+                  "action_reviewed": True},
+}
+
 
 @pytest.fixture
 def future_test_gate(monkeypatch):
@@ -56,6 +64,8 @@ def _admit(client, db, family):
         "login_id": "testoperator", "password": "synthetic-operator-password",
     })
     assert login.status_code == 200
+    scope = client.put(f"/api/admin/reviewers/{reviewer.id}/technical-scope", json={"families": [family]})
+    assert scope.status_code == 200, scope.text
     invite = client.post("/api/admin/real-beta/invitations", json={"expires_in_hours": 24})
     assert invite.status_code == 201
     client.historical_account(f"release-{family.lower()}@example.com", "synthetic-strong-password")
@@ -87,7 +97,7 @@ def _assign_and_approve(client, review, reviewer):
     assert client.post("/api/backoffice-auth/login", json={
         "login_id": "testoperator", "password": "synthetic-operator-password",
     }).status_code == 200
-    approved = client.post(f"/api/admin/reviews/{review.id}/approve-release")
+    approved = client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL)
     assert approved.status_code == 200, approved.text
     return approved
 
@@ -153,9 +163,17 @@ def test_private_release_requires_assigned_reviewer_for_current_decision(
     }).status_code == 409
 
     _assign_and_approve(client, review, reviewer)
-    assert client.post(f"/api/admin/reviews/{review.id}/approve-release").status_code == 409
+    assert client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL).status_code in {403, 409}
     released = client.post(f"/api/cases/{case_id}/prepare-claim")
     assert released.status_code == 200, released.text
+    assert released.json() == {"status": "PENDING_HUMAN_REVIEW", "reason": "External material is not released"}
+    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
+    draft_review = db.scalar(select(HumanReview).where(
+        HumanReview.case_id == case_id, HumanReview.reason == RELEASE_REASON,
+        HumanReview.status == "OPEN",
+    ))
+    assert draft_review is not None and draft_review.id != review.id
+    _assign_and_approve(client, draft_review, reviewer)
     assert client.get(f"/api/cases/{case_id}/handoff").status_code == 200
 
 
@@ -335,8 +353,11 @@ def test_e02_correct_amount_can_be_added_later_by_reviewer_without_release(
         HumanReview.reason == "PRIVATE_BETA_INSUFFICIENT_INFORMATION",
     ))
     assert review is not None and review.status == "OPEN"
+    reviewer = db.scalar(select(Reviewer).where(Reviewer.login_id == "testoperator"))
+    assert client.post(f"/api/admin/reviews/{review.id}/assign", json={"reviewer_id": reviewer.id}).status_code == 200
     completed = client.post(f"/api/admin/reviews/{review.id}/resolve-structured", json={
         "reviewer_decision": "Importe sintético revisado",
+        "reason_code": "FACT_CORRECTION_REQUIRED",
         "fact_updates": [{"key": "electricity.billing.correct_amount", "value": 80}],
     })
     assert completed.status_code == 200, completed.text
@@ -394,7 +415,10 @@ def test_reviewer_fact_write_cannot_restore_private_free_text(client, db, future
     case_id, _reviewer, _facts = _admit(client, db, "C01")
     review = HumanReview(case_id=case_id, reason="TEST_STRUCTURED_FACTS", status="OPEN")
     db.add(review)
+    bind_current_version(db, review, db.get(Case, case_id))
     db.commit()
+    reviewer = db.scalar(select(Reviewer).where(Reviewer.login_id == "testoperator"))
+    assert client.post(f"/api/admin/reviews/{review.id}/assign", json={"reviewer_id": reviewer.id}).status_code == 200
     for key, value in (
         ("purchase.product_name", "producto sintético"),
         ("purchase.defect_description", "descripción sintética"),
@@ -402,6 +426,7 @@ def test_reviewer_fact_write_cannot_restore_private_free_text(client, db, future
     ):
         rejected = client.post(f"/api/admin/reviews/{review.id}/resolve-structured", json={
             "reviewer_decision": "Revisión de prueba sintética",
+            "reason_code": "FACT_CORRECTION_REQUIRED",
             "fact_updates": [{"key": key, "value": value}],
         })
         assert rejected.status_code == 422, rejected.text

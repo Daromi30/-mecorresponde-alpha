@@ -14,6 +14,7 @@ from app.models import AuditEvent, Case
 from app.main import app
 from app.admin_auth import require_admin
 from app.reviews import HumanReview
+from app.private_beta_review import bind_current_version
 from app.services_v2 import create_case, create_human_review
 
 
@@ -54,6 +55,8 @@ def private_review(db, owner_email="private-owner@example.com", token_digest="b"
     case.mode = gate.REAL_MODE
     case.user_id = owner.id
     review = create_human_review(db, case, reason="MATERIAL_FACT_REVIEW", priority="HIGH")
+    db.flush()
+    bind_current_version(db, review, case)
     db.commit()
     return case, review
 
@@ -73,6 +76,7 @@ def test_two_reviewers_have_distinct_server_actors_and_cannot_spoof_assignment(c
     case, review = private_review(db)
 
     op_cookie = login(client, "operator")
+    assert client.put(f"/api/admin/reviewers/{reviewer_a.id}/technical-scope", json={"families": ["E02-A"]}).status_code == 200
     assert client.get("/api/admin/reviews").status_code == 200
     assert client.get(f"/api/admin/cases/{case.id}").status_code == 200
     assert client.get(f"/api/admin/cases/{case.id}/handoff").status_code == 200
@@ -93,7 +97,9 @@ def test_two_reviewers_have_distinct_server_actors_and_cannot_spoof_assignment(c
     use_cookie(client, a_cookie)
     structured = client.post(f"/api/admin/reviews/{review.id}/resolve-structured", json={
         "reviewer_decision": "Importes sintéticos contrastados.",
+        "reason_code": "FACT_CORRECTION_REQUIRED",
         "fact_updates": [
+            {"key": "electricity.billing.billing_period", "value": "2026-07"},
             {"key": "electricity.billing.invoice_date", "value": "2026-07-01"},
             {"key": "electricity.billing.billed_amount", "value": 120.0},
             {"key": "electricity.billing.correct_amount", "value": 80.0},
@@ -102,13 +108,13 @@ def test_two_reviewers_have_distinct_server_actors_and_cannot_spoof_assignment(c
     assert structured.status_code == 200, structured.text
 
     use_cookie(client, b_cookie)
-    assert client.get(f"/api/admin/cases/{case.id}").status_code == 200
-    assert client.get(f"/api/admin/cases/{case.id}/handoff").status_code == 200
+    assert client.get(f"/api/admin/cases/{case.id}").status_code == 403
+    assert client.get(f"/api/admin/cases/{case.id}/handoff").status_code == 403
     db.expire_all()
     reads = db.scalars(select(AuditEvent).where(
         AuditEvent.case_id == case.id, AuditEvent.event_type == "BACKOFFICE_CASE_READ",
     )).all()
-    assert {event.actor_reviewer_id for event in reads} == {operator.id, reviewer_a.id, reviewer_b.id}
+    assert {event.actor_reviewer_id for event in reads} == {operator.id, reviewer_a.id}
     assignment = db.scalar(select(AuditEvent).where(
         AuditEvent.case_id == case.id, AuditEvent.event_type == "HUMAN_REVIEW_ASSIGNED",
     ))
@@ -160,6 +166,7 @@ def test_private_reclassification_and_professional_escalation_use_session_actor(
     db.commit()
 
     login(client, "operator")
+    assert client.put(f"/api/admin/reviewers/{reviewer.id}/technical-scope", json={"families": ["E02-A"]}).status_code == 200
     # An unclassified private case is ineligible under the admission gate: even an
     # operator cannot assign or reclassify it through this administrative route.
     denied = client.post(f"/api/admin/reviews/{routing_review.id}/reclassify", json={
@@ -169,15 +176,15 @@ def test_private_reclassification_and_professional_escalation_use_session_actor(
     assigned = client.post(f"/api/admin/reviews/{escalation_review.id}/assign", json={"reviewer_id": reviewer.id})
     assert assigned.status_code == 200, assigned.text
     login(client, "reviewera")
-    escalated = client.post(f"/api/admin/reviews/{escalation_review.id}/escalate-professional", json={
-        "reviewer_decision": "Escalado ficticio para revisión profesional.",
+    escalated = client.post(f"/api/admin/reviews/{escalation_review.id}/resolve-private", json={
+        "outcome": "ESCALATE", "reason_code": "ESCALATION_REQUIRED",
     })
     assert escalated.status_code == 200, escalated.text
 
     db.expire_all()
     for case, event_type, actor_id in (
         (routing_case, "BACKOFFICE_ACCESS_DENIED", operator.id),
-        (escalation_case, "PROFESSIONAL_ESCALATION_REQUIRED", reviewer.id),
+        (escalation_case, "PRIVATE_BETA_REVIEW_RESOLVED", reviewer.id),
     ):
         event = db.scalar(select(AuditEvent).where(
             AuditEvent.case_id == case.id, AuditEvent.event_type == event_type,
