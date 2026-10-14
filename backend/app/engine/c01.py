@@ -22,7 +22,7 @@ def _add_years(d: date, years: int) -> date:
         return d.replace(month=2, day=28, year=d.year + years)
 
 
-def evaluate_c01(facts: dict[str, FactValue]) -> EngineResult:
+def evaluate_c01(facts: dict[str, FactValue], *, private_beta: bool = False) -> EngineResult:
     sources = [{"title": "TRLGDCU, arts. 117-121 y 124-125", "url": TRLGDCU_URL}]
     missing: list[str] = []
     counterarguments: list[dict[str, Any]] = []
@@ -57,9 +57,23 @@ def evaluate_c01(facts: dict[str, FactValue]) -> EngineResult:
             remedies=[], burden_of_proof=[],
         )
 
-    product = raw(facts, "purchase.product_name")
-    if not product:
-        missing.append("purchase.product_name")
+    if private_beta:
+        # The private-beta boundary records only the participant's structured
+        # allegation; it does not turn that allegation into a verified defect.
+        if raw(facts, "purchase.nonconformity_reported") is not True:
+            return EngineResult(
+                viability="INSUFFICIENT_INFORMATION", scope_status="SUPPORTED", claimable_amount=None,
+                economic_value=None, worth_pursuing="NEEDS_INFORMATION",
+                reasoning_summary="No consta una alegación estructurada suficiente de falta de conformidad. Se necesita información o revisión humana antes de concluir.",
+                counterarguments=[], missing_facts=["purchase.nonconformity_reported"],
+                next_action="HUMAN_REVIEW_NONCONFORMITY", rule_result="PENDING",
+                failed_conditions=[], calculation=None, sources=sources,
+                remedies=[], burden_of_proof=[],
+            )
+    else:
+        product = raw(facts, "purchase.product_name")
+        if not product:
+            missing.append("purchase.product_name")
     delivery = raw(facts, "purchase.delivery_date")
     manifested = raw(facts, "purchase.defect_manifested_date")
     if not delivery:
@@ -70,9 +84,10 @@ def evaluate_c01(facts: dict[str, FactValue]) -> EngineResult:
         missing.append("purchase.defect_manifested_date")
     else:
         manifested = _parse_date(manifested)
-    defect = raw(facts, "purchase.defect_description")
-    if not defect:
-        missing.append("purchase.defect_description")
+    if not private_beta:
+        defect = raw(facts, "purchase.defect_description")
+        if not defect:
+            missing.append("purchase.defect_description")
 
     price = raw(facts, "purchase.price")
     economic_value = round(float(price), 2) if price is not None else None
@@ -177,6 +192,19 @@ def evaluate_c01(facts: dict[str, FactValue]) -> EngineResult:
         )
 
     seller_denied = raw(facts, "purchase.seller_denied_conformity", False)
+    if private_beta and seller_denied is True:
+        # The first private beta does not collect the material facts needed to
+        # determine secondary remedies. In particular, absence of severity is
+        # not evidence that the nonconformity is non-minor.
+        return EngineResult(
+            viability="PROFESSIONAL_REVIEW", scope_status="LIMITED_SCOPE", claimable_amount=None,
+            economic_value=economic_value, worth_pursuing="PROFESSIONAL_REVIEW",
+            reasoning_summary="La negativa del vendedor requiere revisión humana de los posibles remedios secundarios. Los hechos estructurados de esta beta no permiten concluir automáticamente reducción del precio ni resolución contractual.",
+            counterarguments=counterarguments, missing_facts=[],
+            next_action="HUMAN_REVIEW_C01_SECONDARY_REMEDIES", rule_result="MANUAL_REVIEW",
+            failed_conditions=["secondary_remedy_facts_unavailable"], calculation=None, sources=sources,
+            remedies=[], burden_of_proof=burden,
+        )
     severity = raw(facts, "purchase.defect_severity")
     remedies = ["REPAIR", "REPLACEMENT"]
     next_action = "PREPARE_CONFORMITY_CLAIM"

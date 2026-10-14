@@ -9,6 +9,7 @@ class FactValue:
     value: Any
     state: str = "asserted"
     user_confirmed: bool = False
+    source: str | None = None
 
 
 @dataclass

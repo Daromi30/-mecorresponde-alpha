@@ -12,6 +12,7 @@
     'integer',
     'date',
     'date_optional',
+    'month',
     'charges',
     'choice',
   ]);
@@ -44,6 +45,9 @@
     }
     if (type === 'date_optional') {
       return '<input id="answer" type="date">';
+    }
+    if (type === 'month') {
+      return '<input id="answer" type="month" pattern="[1-9][0-9]{3}-(0[1-9]|1[0-2])">';
     }
     if (type === 'choice' || type.startsWith('choice:')) {
       const options = choiceOptions(q);

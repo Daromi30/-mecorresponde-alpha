@@ -4,6 +4,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -89,9 +90,13 @@ def install_fact_write_policy() -> None:
         user_confirmed: bool = True,
         created_by: str = "user",
     ) -> Fact:
+        # Non-user writes take the direct persistence branch below, so the
+        # private-beta allowlist must guard both branches at this boundary.
+        from .private_beta_fields import validate_private_fact
+        validate_private_fact(case, key, value, state=state)
+        if case.mode == "PRIVATE_REAL_BETA" and state == "unknown" and user_confirmed:
+            raise HTTPException(422, "Unknown private facts cannot be confirmed")
         if created_by == "user":
-            from .private_beta_fields import validate_private_fact
-            validate_private_fact(case, key, value, state=state)
             supersede_current_analysis(db, case, fact_key=key, source="user")
             return previous_upsert_fact(
                 db,

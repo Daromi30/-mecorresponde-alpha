@@ -9,21 +9,35 @@ RD88_URL = "https://www.boe.es/eli/es/rd/2026/02/11/88"
 CC_URL = "https://www.boe.es/buscar/act.php?id=BOE-A-1889-4763"
 
 
-def evaluate_e02a(facts: dict[str, FactValue]) -> EngineResult:
+def evaluate_e02a(facts: dict[str, FactValue], *, private_beta: bool = False) -> EngineResult:
     sources = [{"title": "Real Decreto 88/2026, art. 45.2", "url": RD88_URL}]
     missing: list[str] = []
     counterarguments: list[dict] = []
     invoice_date = raw(facts, "electricity.billing.invoice_date")
-    if not invoice_date:
-        missing.append("electricity.billing.invoice_date")
-    elif isinstance(invoice_date, str):
+    period = raw(facts, "electricity.billing.billing_period") if private_beta else None
+    if isinstance(invoice_date, str):
         invoice_date = date.fromisoformat(invoice_date)
+    if private_beta and not period:
+        missing.append("electricity.billing.billing_period")
+    if not private_beta and not invoice_date:
+        missing.append("electricity.billing.invoice_date")
     billed = raw(facts, "electricity.billing.billed_amount")
     due = raw(facts, "electricity.billing.correct_amount")
     if billed is None:
         missing.append("electricity.billing.billed_amount")
     if due is None:
         missing.append("electricity.billing.correct_amount")
+    if private_beta and not invoice_date:
+        # Billing period is not an invoice issue date, even when its month is
+        # wholly before or after the rule's start date.
+        return EngineResult(
+            viability="INSUFFICIENT_INFORMATION", scope_status="SUPPORTED", claimable_amount=None,
+            worth_pursuing="NEEDS_INFORMATION",
+            reasoning_summary="El periodo facturado no acredita el día de emisión de la factura. Sin fecha exacta no puede aplicarse con seguridad la regla temporal.",
+            counterarguments=[], missing_facts=sorted(set(missing + ["electricity.billing.invoice_date"])),
+            next_action="REQUEST_EXACT_DATE_OR_HUMAN_REVIEW", rule_result="PENDING",
+            failed_conditions=["insufficient_date_precision"], calculation=None, sources=sources,
+        )
     if invoice_date and invoice_date < BILLING_RULE_START:
         return EngineResult(
             viability="PROFESSIONAL_REVIEW", scope_status="LEGACY_REVIEW", claimable_amount=None,
@@ -48,7 +62,13 @@ def evaluate_e02a(facts: dict[str, FactValue]) -> EngineResult:
             counterarguments=[], missing_facts=[], next_action="EXPLAIN_NO_OVERBILLING", rule_result="FAILED",
             failed_conditions=["billed_amount_not_above_correct_amount"], calculation=calc, sources=sources,
         )
-    confidence_high = verified(facts, "electricity.billing.billed_amount") and verified(facts, "electricity.billing.correct_amount")
+    correct_fact = facts.get("electricity.billing.correct_amount")
+    correct_amount_credible = verified(facts, "electricity.billing.correct_amount")
+    if private_beta:
+        # A participant's confirmation is provenance, not independent verification.
+        correct_amount_credible = bool(correct_fact and correct_fact.source in {"human", "engine"}
+                                         and correct_fact.state == "confirmed")
+    confidence_high = verified(facts, "electricity.billing.billed_amount") and correct_amount_credible
     if raw(facts, "company.asserts_correct_amount", False):
         counterarguments.append({"type": "CORRECT_AMOUNT_DISPUTED", "status": "open", "impact": "critical", "origin": "company_response"})
     elif not confidence_high:
