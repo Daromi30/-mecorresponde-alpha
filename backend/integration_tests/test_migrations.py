@@ -135,6 +135,9 @@ def test_reviewer_migration_from_0008_preserves_historical_audit_and_reverses():
     backend_dir = Path(__file__).resolve().parents[1]
     config = Config(str(backend_dir / "alembic.ini"))
     config.set_main_option("script_location", str(backend_dir / "alembic"))
+    # Recreate the historical 0009 schema: ORM create_all also includes later tables.
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE reviewer_family_authorizations"))
     with engine.begin() as conn:
         config.attributes["connection"] = conn
         command.stamp(config, "0009_backoffice_identity")
