@@ -1,11 +1,13 @@
 """P0-10 synthetic checks. Production private-beta launch stays disabled."""
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.auth_models import ReviewerFamilyAuthorization
 from app.family_manifest import FAMILY_MANIFEST
-from app.models import Action, AuditEvent, Calculation, Case, Decision, RuleEvaluation
+from app.models import Action, AuditEvent, Calculation, Case, Decision, Evidence, RuleEvaluation
+from app.main import app
 from app.private_beta_release import RELEASE_REASON, release_approved
 from app.reviews import HumanReview
 from app import real_beta_gate as gate
@@ -287,6 +289,78 @@ def test_completed_assignment_does_not_grant_historical_case_read(client, db, fu
     assert client.get(f"/api/admin/cases/{case_id}").status_code == 403
     _login_backoffice(client, "reviewer-b", "synthetic-reviewer-b")
     assert client.get(f"/api/admin/cases/{case_id}").status_code == 200
+
+
+def test_revoked_family_scope_immediately_removes_all_private_reads(client, db, future_test_gate):
+    case_id, operator, review = ready(client, db)
+    created = client.post("/api/admin/reviewers", json={
+        "login_id": "scoped-reviewer", "role": "reviewer",
+        "initial_password": "synthetic-scoped-password",
+    })
+    assert created.status_code == 201
+    reviewer_id = created.json()["id"]
+    scope_url = f"/api/admin/reviewers/{reviewer_id}/technical-scope"
+    assert client.put(scope_url, json={"families": ["E02-A"]}).status_code == 200
+    assert client.post(f"/api/admin/reviews/{review.id}/assign", json={
+        "reviewer_id": reviewer_id,
+    }).status_code == 200
+    with TestClient(app) as reviewer_client:
+        assert reviewer_client.post("/api/backoffice-auth/login", json={
+            "login_id": "scoped-reviewer", "password": "synthetic-scoped-password",
+        }).status_code == 200
+        case_url = f"/api/admin/cases/{case_id}"
+        handoff_url = f"{case_url}/handoff"
+        context_url = f"/api/admin/reviews/{review.id}/context"
+        queue_url = "/api/admin/reviews"
+        assert reviewer_client.get(case_url).status_code == 200
+        assert reviewer_client.get(handoff_url).status_code == 200
+        assert reviewer_client.get(context_url).status_code == 200
+        assert review.id in {row["id"] for row in reviewer_client.get(queue_url).json()}
+
+        assert client.put(scope_url, json={"families": []}).status_code == 200
+        db.expire_all()
+        assert db.get(HumanReview, review.id).status == "OPEN"
+        assert db.get(HumanReview, review.id).assigned_reviewer_id == reviewer_id
+        assert reviewer_client.get(case_url).status_code == 403
+        assert reviewer_client.get(handoff_url).status_code == 403
+        assert reviewer_client.get(context_url).status_code == 403
+        assert review.id not in {row["id"] for row in reviewer_client.get(queue_url).json()}
+        assert reviewer_client.post(f"/api/admin/reviews/{review.id}/approve-release",
+                                    json=APPROVAL).status_code == 403
+        assert reviewer_client.post(f"/api/admin/reviews/{review.id}/resolve-private", json={
+            "outcome": "BLOCK_ACTION", "reason_code": "ACTION_BLOCKED",
+        }).status_code == 403
+        assert client.put(scope_url, json={"families": ["E02-A"]}).status_code == 200
+        assert reviewer_client.get(case_url).status_code == 200
+        assert not release_approved(db, db.get(Case, case_id))
+
+
+@pytest.mark.parametrize("note", [None, "Synthetic evidence note for one fact"])
+def test_private_fact_correction_needs_no_general_narrative(client, db, future_test_gate, note):
+    case_id, reviewer, review = ready(client, db)
+    assign(client, review, reviewer)
+    url = f"/api/admin/reviews/{review.id}/resolve-structured"
+    fact_update = {"key": "electricity.billing.billed_amount", "value": 130}
+    if note is not None:
+        fact_update["note"] = note
+    payload = {"reason_code": "FACT_CORRECTION_REQUIRED", "fact_updates": [fact_update]}
+    assert client.post(url, json={"fact_updates": [fact_update]}).status_code in {409, 422}
+    assert client.post(url, json={"reason_code": "FACT_CORRECTION_REQUIRED"}).status_code == 422
+    response = client.post(url, json=payload)
+    assert response.status_code == 200, response.text
+    db.expire_all()
+    stored = db.get(HumanReview, review.id)
+    assert stored.status == "COMPLETED"
+    assert stored.reviewer_decision == "CORRECT_STRUCTURED_FACTS"
+    assert stored.context_json["reason_code"] == "FACT_CORRECTION_REQUIRED"
+    events = db.scalars(select(AuditEvent).where(AuditEvent.case_id == case_id)).all()
+    assert all("reviewer_decision" not in str(event.payload_json) for event in events)
+    if note:
+        assert all(note not in str(event.payload_json) for event in events)
+    evidence = db.scalar(select(Evidence).where(
+        Evidence.case_id == case_id, Evidence.source_type == "human",
+    ))
+    assert evidence is not None and evidence.excerpt == note
 
 
 def test_reanalysis_context_uses_exact_artifact_ids_and_never_old_rows(client, db, future_test_gate):

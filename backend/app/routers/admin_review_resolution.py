@@ -68,7 +68,7 @@ class HumanFactUpdate(BaseModel):
 class StructuredReviewResolution(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    reviewer_decision: str = Field(min_length=3, max_length=10000)
+    reviewer_decision: str | None = Field(default=None, min_length=3, max_length=10000)
     fact_updates: list[HumanFactUpdate] = Field(min_length=1, max_length=25)
     # Structured human review changes facts; the legal conclusion must therefore be
     # regenerated immediately by the deterministic Motor. There is no supported dormant
@@ -572,6 +572,8 @@ def resolve_structured_review(
         require_current_version(db, review, case)
         if payload.reason_code != "FACT_CORRECTION_REQUIRED":
             raise HTTPException(422, "Structured reason code required")
+    elif payload.reviewer_decision is None:
+        raise HTTPException(422, "Reviewer decision required for synthetic review")
     if (case.family or "") not in EVALUATORS:
         raise HTTPException(
             status_code=409,

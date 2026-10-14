@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..admin_auth import AdminPrincipal, require_admin
-from ..auth_models import Reviewer
+from ..auth_models import Reviewer, ReviewerFamilyAuthorization
 from ..private_beta_review import family_authorized
 from ..case_handoff import build_case_handoff
 from ..db import get_db
@@ -168,9 +168,15 @@ def review_queue(
     if principal.reviewer is None:
         stmt = stmt.where(Case.mode == "SYNTHETIC")
     elif principal.reviewer.role == "reviewer":
+        authorized_family = select(ReviewerFamilyAuthorization.id).where(
+            ReviewerFamilyAuthorization.reviewer_id == principal.actor_id,
+            ReviewerFamilyAuthorization.family == Case.family,
+        ).exists()
         stmt = stmt.where(
             (Case.mode != "PRIVATE_REAL_BETA")
-            | (HumanReview.assigned_reviewer_id == principal.actor_id)
+            | ((HumanReview.status == "OPEN")
+               & (HumanReview.assigned_reviewer_id == principal.actor_id)
+               & authorized_family)
         )
     rows = db.scalars(stmt).all()
     result: list[dict[str, Any]] = []

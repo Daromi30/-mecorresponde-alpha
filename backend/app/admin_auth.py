@@ -14,6 +14,7 @@ from .backoffice_auth import session_from_request
 from .config import settings
 from .db import get_db
 from .models import Case
+from .private_beta_review import family_authorized
 from .real_beta_gate import REAL_MODE, require_real_case_mutation
 from .reviews import HumanReview
 from .services_v2 import audit
@@ -90,13 +91,17 @@ def require_admin(
         if principal.reviewer is None:
             _denied(db, case.id, None, "individual_session_required")
             raise HTTPException(404, "Case not found")
-        if (principal.reviewer.role == "reviewer" and db.scalar(select(HumanReview.id).where(
-            HumanReview.case_id == case.id,
-            HumanReview.assigned_reviewer_id == principal.actor_id,
-            HumanReview.status == "OPEN",
-        )) is None):
-            _denied(db, case.id, principal.actor_id, "assigned_case_required")
-            raise HTTPException(403, "Case is not assigned to this reviewer")
+        if principal.reviewer.role == "reviewer":
+            if not family_authorized(db, principal.reviewer, case.family):
+                _denied(db, case.id, principal.actor_id, "family_authorization_required")
+                raise HTTPException(403, "Reviewer is not authorized for this family")
+            if db.scalar(select(HumanReview.id).where(
+                HumanReview.case_id == case.id,
+                HumanReview.assigned_reviewer_id == principal.actor_id,
+                HumanReview.status == "OPEN",
+            )) is None:
+                _denied(db, case.id, principal.actor_id, "assigned_case_required")
+                raise HTTPException(403, "Case is not assigned to this reviewer")
         if method in {"POST", "PUT", "PATCH", "DELETE"}:
             if path.endswith("/assign") and principal.reviewer.role != "operator":
                 _denied(db, case.id, principal.actor_id, "operator_assignment_required")
