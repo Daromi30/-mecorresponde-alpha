@@ -18,6 +18,17 @@ def make_review(db):
     return case, review
 
 
+def test_synthetic_structured_review_still_requires_reviewer_decision(client, db):
+    case, review = make_review(db)
+    response = client.post(
+        f"/api/admin/reviews/{review.id}/resolve-structured",
+        headers=ADMIN,
+        json={"fact_updates": [{"key": "electricity.billing.correct_amount", "value": 80.0}]},
+    )
+    assert response.status_code == 422
+    assert db.get(HumanReview, review.id).status == "OPEN"
+
+
 def test_structured_review_rejects_reanalysis_opt_out_without_mutation(client, db):
     case, review = make_review(db)
     before = db.scalar(select(func.count()).select_from(Fact).where(Fact.case_id == case.id))

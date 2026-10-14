@@ -53,7 +53,7 @@ def case_for_update_or_404(db: Session, case_id: str) -> Case:
     return case
 
 
-def serialize_case(db: Session, case: Case):
+def serialize_case(db: Session, case: Case, *, internal: bool = False):
     execution_outcome = db.scalar(select(Outcome).where(Outcome.case_id == case.id))
     latest_execution = db.scalar(
         select(AuditEvent)
@@ -66,7 +66,7 @@ def serialize_case(db: Session, case: Case):
     deadlines = db.scalars(select(Deadline).where(Deadline.case_id == case.id)).all()
     evidence = db.scalars(select(Evidence).where(Evidence.case_id == case.id).order_by(Evidence.created_at.asc())).all()
     reviews = db.scalars(select(HumanReview).where(HumanReview.case_id == case.id).order_by(HumanReview.created_at.desc())).all()
-    pending_release = private_scope(case) and not release_approved(db, case)
+    pending_release = private_scope(case) and not internal and not release_approved(db, case)
     return {
         "id": case.id,
         "mode": case.mode,
@@ -87,7 +87,7 @@ def serialize_case(db: Session, case: Case):
                 **latest_execution.payload_json,
                 "non_monetary_result": execution_outcome.non_monetary_result if execution_outcome else None,
             }
-            if latest_execution is not None else None
+            if latest_execution is not None and not pending_release else None
         ),
         "opened_at": case.opened_at,
         "facts": [
@@ -100,7 +100,7 @@ def serialize_case(db: Session, case: Case):
                 "created_by": fact.created_by,
                 "supersedes_fact_id": fact.supersedes_fact_id,
             }
-            for fact in facts
+            for fact in facts if not pending_release or fact.created_by == "user"
         ],
         "evidence": [
             {
@@ -112,7 +112,7 @@ def serialize_case(db: Session, case: Case):
                 "excerpt": item.excerpt,
                 "strength": item.strength,
             }
-            for item in evidence
+            for item in ([] if pending_release else evidence)
         ],
         "decisions": [
             {
@@ -135,7 +135,7 @@ def serialize_case(db: Session, case: Case):
         ],
         "deadlines": [
             {"id": deadline.id, "type": deadline.deadline_type, "computed_date": deadline.computed_date, "status": deadline.status}
-            for deadline in deadlines
+            for deadline in ([] if pending_release else deadlines)
         ],
         "human_reviews": [
             {
@@ -146,7 +146,7 @@ def serialize_case(db: Session, case: Case):
                 "assigned_reviewer_id": review.assigned_reviewer_id,
                 "reviewer_decision": review.reviewer_decision,
             }
-            for review in reviews
+            for review in ([] if private_scope(case) and not internal else reviews)
         ],
     }
 
@@ -363,11 +363,22 @@ def run_diagnosis(case_id: str, db: Session = Depends(get_db)):
 @router.post("/{case_id}/prepare-claim")
 def prepare_claim(case_id: str, db: Session = Depends(get_db)):
     case = case_for_update_or_404(db, case_id)
+    if private_scope(case) and case.status == "READY_TO_SUBMIT" and release_approved(db, case):
+        current = db.get(Action, case.current_action_id) if case.current_action_id else None
+        if current is not None and current.type == "SUBMIT_INITIAL_CLAIM" and current.status == "READY":
+            return {"action_id": current.id, **current.payload_json}
     with atomic_workflow_transaction(db) as commit:
         try:
             package = prepare_claim_package(db, case)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+        if private_scope(case):
+            from ..private_beta_release import ensure_release_review
+            decision = db.get(Decision, case.current_decision_id)
+            draft_action = db.get(Action, case.current_action_id)
+            ensure_release_review(db, case, decision, draft_action)
+            commit()
+            return PENDING_RESPONSE
         commit()
         return package
 
@@ -510,6 +521,8 @@ def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)
 @router.get("/{case_id}/reviews")
 def reviews(case_id: str, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
+    if private_scope(case):
+        return []
     rows = db.scalars(
         select(HumanReview).where(HumanReview.case_id == case.id).order_by(HumanReview.created_at.desc())
     ).all()

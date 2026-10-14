@@ -237,10 +237,10 @@
       <div class="meta">Usa esta vía cuando la revisión confirma o corrige hechos del expediente. El Motor volverá a aplicar sus reglas; aquí no se introduce manualmente el veredicto ni la base jurídica.</div>
       <div id="structuredFactRows"></div>
       <button type="button" class="secondary" id="addStructuredFact">Añadir hecho</button>
-      <div style="margin-top:10px">
+      ${c.mode === 'PRIVATE_REAL_BETA' ? '' : `<div style="margin-top:10px">
         <div class="meta">Conclusión del revisor</div>
         <textarea id="structuredReviewerDecision" placeholder="Qué se ha comprobado, qué evidencia lo sustenta y por qué se modifica el expediente"></textarea>
-      </div>
+      </div>`}
       <div class="meta" style="margin:10px 0">Los hechos estructurados se reanalizan siempre con las reglas del Motor.</div>
       <button type="button" id="resolveStructuredReview">Guardar hechos y reanalizar</button>
       <div id="structuredReviewResult"></div>`;
@@ -279,8 +279,8 @@
 
     document.getElementById('resolveStructuredReview').addEventListener('click', async () => {
       const resultEl = document.getElementById('structuredReviewResult');
-      const decision = document.getElementById('structuredReviewerDecision').value.trim();
-      if (decision.length < 3) {
+      const decision = document.getElementById('structuredReviewerDecision')?.value.trim() || '';
+      if (c.mode !== 'PRIVATE_REAL_BETA' && decision.length < 3) {
         resultEl.innerHTML = '<div class="danger">Escribe una conclusión de revisión.</div>';
         return;
       }
@@ -312,9 +312,10 @@
         const response = await api(`/api/admin/reviews/${reviewId}/resolve-structured`, {
           method: 'POST',
           body: JSON.stringify({
-            reviewer_decision: decision,
+            ...(c.mode === 'PRIVATE_REAL_BETA' ? {} : {reviewer_decision: decision}),
             fact_updates: factUpdates,
             reanalyze: true,
+            ...(c.mode === 'PRIVATE_REAL_BETA' ? {reason_code: 'FACT_CORRECTION_REQUIRED'} : {}),
           }),
         });
         const diagnosis = response.updated_diagnosis;

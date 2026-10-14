@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -228,6 +228,8 @@ def case_timeline(case_id: str, db: Session = Depends(get_db)):
             "at": case.opened_at,
         }
     ]
+    if private_scope(case) and not release_approved(db, case):
+        return {"case_id": case.id, "current_status": case.status, "events": events}
 
     documents = db.scalars(
         select(Document).where(Document.case_id == case.id).order_by(Document.uploaded_at.asc())
@@ -325,7 +327,8 @@ def case_timeline(case_id: str, db: Session = Depends(get_db)):
             }
         )
 
-    events.sort(key=lambda item: item["at"])
+    events.sort(key=lambda item: item["at"].replace(tzinfo=timezone.utc)
+                if item["at"].tzinfo is None else item["at"])
     return {
         "case_id": case.id,
         "current_status": case.status,

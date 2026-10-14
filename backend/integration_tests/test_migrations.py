@@ -7,6 +7,8 @@ from sqlalchemy import inspect, text
 import app.auth_models  # noqa: F401
 import app.models  # noqa: F401
 import app.reviews  # noqa: F401
+from app.auth_models import Reviewer
+from app.backoffice_auth import create_reviewer
 from app.db import Base, SessionLocal, engine
 from app.migrations import upgrade_database
 from app.models import AuditEvent, Case, Document
@@ -34,7 +36,7 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id) is not None
         revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0011_document_storage_ops"
+        assert revision == "0012_substantive_private_review"
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
         assert db.get(Case, sentinel_id).demo_scenario_id is None
 
@@ -49,6 +51,7 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     assert "real_beta_invitations" in tables
     assert "reviewers" in tables
     assert "reviewer_sessions" in tables
+    assert "reviewer_family_authorizations" in tables
     assert "actor_reviewer_id" in {column["name"] for column in inspector.get_columns("audit_events")}
     assert "assigned_reviewer_id" in {column["name"] for column in inspector.get_columns("human_reviews")}
     assert "mode" in {column["name"] for column in inspector.get_columns("cases")}
@@ -104,7 +107,7 @@ def test_real_beta_migration_upgrades_legacy_rows_and_is_reversible():
     upgrade_database()
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0011_document_storage_ops"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0012_substantive_private_review"
     assert "real_beta_invitations" in inspect(engine).get_table_names()
 
     with engine.begin() as conn:
@@ -132,6 +135,9 @@ def test_reviewer_migration_from_0008_preserves_historical_audit_and_reverses():
     backend_dir = Path(__file__).resolve().parents[1]
     config = Config(str(backend_dir / "alembic.ini"))
     config.set_main_option("script_location", str(backend_dir / "alembic"))
+    # Recreate the historical 0009 schema: ORM create_all also includes later tables.
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE reviewer_family_authorizations"))
     with engine.begin() as conn:
         config.attributes["connection"] = conn
         command.stamp(config, "0009_backoffice_identity")
@@ -143,7 +149,7 @@ def test_reviewer_migration_from_0008_preserves_historical_audit_and_reverses():
     with SessionLocal() as db:
         assert db.get(Case, case_id).mode == "SYNTHETIC"
         assert db.get(AuditEvent, event_id).actor_reviewer_id is None
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0011_document_storage_ops"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0012_substantive_private_review"
     assert "reviewers" in inspect(engine).get_table_names()
 
     with engine.begin() as conn:
@@ -154,6 +160,35 @@ def test_reviewer_migration_from_0008_preserves_historical_audit_and_reverses():
     assert "actor_reviewer_id" not in {column["name"] for column in inspector.get_columns("audit_events")}
     with engine.connect() as conn:
         assert conn.execute(text("SELECT id FROM audit_events WHERE id = :id"), {"id": event_id}).scalar_one() == event_id
+
+
+def test_substantive_review_scope_migration_is_empty_and_reversible():
+    Base.metadata.drop_all(bind=engine)
+    drop_version_table()
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        reviewer = create_reviewer(db, "synthetic-migration-reviewer", "synthetic-migration-password", "reviewer")
+        db.commit()
+        reviewer_id = reviewer.id
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE reviewer_family_authorizations"))
+    backend_dir = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_dir / "alembic"))
+    with engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.stamp(config, "0011_document_storage_ops")
+    upgrade_database()
+    with SessionLocal() as db:
+        assert db.get(Reviewer, reviewer_id) is not None
+        assert db.execute(text("SELECT COUNT(*) FROM reviewer_family_authorizations")).scalar_one() == 0
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0012_substantive_private_review"
+    with engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.downgrade(config, "0011_document_storage_ops")
+    assert "reviewer_family_authorizations" not in inspect(engine).get_table_names()
+    with SessionLocal() as db:
+        assert db.get(Reviewer, reviewer_id) is not None
 
 
 def test_document_storage_reconciliation_migration_preserves_historical_document_and_reverses():
