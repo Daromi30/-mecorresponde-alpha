@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app import real_beta_gate as gate
 from app.auth_models import RealBetaInvitation, RealBetaRelease, ReleaseApproval, User
@@ -176,6 +177,12 @@ def test_membership_and_release_output_rollback(db, synthetic_prerequisites):
     db.commit()
     assert gate.admission_active(db, member.id)
     assert not gate.admission_active(db, outsider.id)
+    invite.revoked_at = gate.utcnow()
+    db.commit()
+    assert not gate.admission_active(db, member.id)
+    invite.revoked_at = None
+    db.commit()
+    assert gate.admission_active(db, member.id)
     case = Case(mode=gate.REAL_MODE, user_id=member.id,
                 real_beta_release_id=release.id, family="E02-A")
     db.add(case)
@@ -188,9 +195,17 @@ def test_membership_and_release_output_rollback(db, synthetic_prerequisites):
     with pytest.raises(HTTPException) as denied:
         upsert_fact(db, case, "electricity.billing.billing_period", "2026-09")
     assert denied.value.status_code == 403
-    invite.revoked_at = gate.utcnow()
+
+
+def test_release_close_remains_closed_after_new_database_session(db, synthetic_prerequisites):
+    user = _user(db)
+    release, _, _ = eligible_test_release(db, [user])
+    with Session(db.bind) as restarted_session:
+        assert gate.real_beta_gate_open(restarted_session)
+    release.status = "CLOSED"
     db.commit()
-    assert not gate.admission_active(db, member.id)
+    with Session(db.bind) as restarted_session:
+        assert not gate.real_beta_gate_open(restarted_session)
 
 
 def test_evaluation_exception_is_closed(db, synthetic_prerequisites, monkeypatch):
