@@ -16,6 +16,7 @@ from app.db import Base
 from app.models import AuditEvent, Case
 from app.reviews import HumanReview
 from app import real_beta_gate as gate
+from release_test_support import eligible_test_release
 
 
 ADMIN = {"X-Admin-Token": "test-admin-token"}
@@ -26,7 +27,11 @@ def _register(client, email):
     client.historical_account(email, "strong-password-for-real-beta-tests")
 
 
-def _invite(client, db):
+def _invite(client, db, target_email):
+    target = db.scalar(select(User).where(User.email == target_email))
+    assert target is not None
+    if not db.query(gate.RealBetaRelease).count():
+        eligible_test_release(db, [target], families=("E02-A",))
     if db.query(Reviewer).count() == 0:
         create_reviewer(db, "testoperator", "synthetic-operator-password", "operator")
         db.commit()
@@ -34,7 +39,9 @@ def _invite(client, db):
         "login_id": "testoperator", "password": "synthetic-operator-password",
     })
     assert logged_in.status_code == 200, logged_in.text
-    response = client.post("/api/admin/real-beta/invitations", json={"expires_in_hours": 24})
+    response = client.post("/api/admin/real-beta/invitations", json={
+        "expires_in_hours": 24, "target_user_id": target.id,
+    })
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -48,7 +55,6 @@ def simulated_gate(monkeypatch):
 
 
 def test_gate_is_default_off_and_invalid_allowlist_fails_closed(client, monkeypatch):
-    assert gate.REAL_BETA_LAUNCH_REVIEW_COMPLETE is False
     assert gate.technical_prerequisites_ready() is False
     assert gate.real_beta_gate_open() is False
     for value in ("", "1", "yes", "enabled", "false"):
@@ -70,12 +76,12 @@ def test_gate_is_default_off_and_invalid_allowlist_fails_closed(client, monkeypa
 
 
 def test_invitation_one_time_account_binding_revocation_and_no_secret_audit(client, db, simulated_gate):
-    invitation = _invite(client, db)
+    _register(client, "first-real-beta@example.com")
+    invitation = _invite(client, db, "first-real-beta@example.com")
     stored = db.get(RealBetaInvitation, invitation["invitation_id"])
     assert stored.token_digest == hashlib.sha256(invitation["token"].encode()).hexdigest()
     assert invitation["token"] not in str(stored.__dict__)
 
-    _register(client, "first-real-beta@example.com")
     accepted = client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]})
     assert accepted.status_code == 200, accepted.text
     db.expire_all()
@@ -114,15 +120,15 @@ def test_invitation_one_time_account_binding_revocation_and_no_secret_audit(clie
 
 
 def test_expired_invite_and_family_rejection_do_not_persist_intake(client, db, simulated_gate):
-    invitation = _invite(client, db)
     _register(client, "expiry-real-beta@example.com")
+    invitation = _invite(client, db, "expiry-real-beta@example.com")
     stored = db.get(RealBetaInvitation, invitation["invitation_id"])
     stored.expires_at = gate.utcnow() - timedelta(seconds=1)
     db.commit()
     assert client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]}).status_code == 404
     assert stored.status == "ISSUED"
 
-    another = _invite(client, db)
+    another = _invite(client, db, "expiry-real-beta@example.com")
     assert client.post("/api/real-beta/invitations/accept", json={"token": another["token"]}).status_code == 200
     before = db.query(Case).count()
     rejected = client.post("/api/real-beta/cases", json={"family": "C01", "age_18_plus_attested": True})
@@ -136,8 +142,8 @@ def test_expired_invite_and_family_rejection_do_not_persist_intake(client, db, s
 def test_private_case_intake_rejects_missing_noninitial_and_free_text_payloads(
     client, db, simulated_gate,
 ):
-    invitation = _invite(client, db)
     _register(client, "structured-intake@example.com")
+    invitation = _invite(client, db, "structured-intake@example.com")
     assert client.post(
         "/api/real-beta/invitations/accept", json={"token": invitation["token"]},
     ).status_code == 200
@@ -160,8 +166,8 @@ def test_private_case_intake_rejects_missing_noninitial_and_free_text_payloads(
 
 
 def test_revoked_unaccepted_and_unknown_invites_share_non_enumerating_response(client, db, simulated_gate):
-    invitation = _invite(client, db)
     _register(client, "invalid-real-beta@example.com")
+    invitation = _invite(client, db, "invalid-real-beta@example.com")
     assert client.post(f"/api/admin/real-beta/invitations/{invitation['invitation_id']}/revoke").status_code == 200
     revoked = client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]})
     unknown = client.post("/api/real-beta/invitations/accept", json={"token": "not-an-invitation-" + "x" * 40})
@@ -170,8 +176,8 @@ def test_revoked_unaccepted_and_unknown_invites_share_non_enumerating_response(c
 
 
 def test_real_case_mutation_blocks_when_gate_closes_but_owner_can_read(client, db, simulated_gate, monkeypatch):
-    invitation = _invite(client, db)
     _register(client, "closure-real-beta@example.com")
+    invitation = _invite(client, db, "closure-real-beta@example.com")
     assert client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]}).status_code == 200
     case_id = client.post("/api/real-beta/cases", json={"family": "E02-A", "age_18_plus_attested": True}).json()["id"]
     review = HumanReview(case_id=case_id, reason="TEST_REVIEW", status="OPEN")
@@ -185,8 +191,9 @@ def test_real_case_mutation_blocks_when_gate_closes_but_owner_can_read(client, d
 
 
 def test_admin_invitation_requires_admin_secret(client):
-    assert client.post("/api/admin/real-beta/invitations", json={"expires_in_hours": 24}).status_code == 401
-    assert client.post("/api/admin/real-beta/invitations", json={"expires_in_hours": 24}, headers=ADMIN).status_code == 403
+    payload = {"expires_in_hours": 24, "target_user_id": "00000000-0000-0000-0000-000000000001"}
+    assert client.post("/api/admin/real-beta/invitations", json=payload).status_code == 401
+    assert client.post("/api/admin/real-beta/invitations", json=payload, headers=ADMIN).status_code == 403
 
 
 def test_direct_private_api_requires_login_even_when_gate_is_simulated_open(client, simulated_gate):
@@ -195,8 +202,8 @@ def test_direct_private_api_requires_login_even_when_gate_is_simulated_open(clie
 
 
 def test_admission_expires_at_exact_boundary_and_does_not_delete_case(client, db, simulated_gate):
-    invitation = _invite(client, db)
     _register(client, "boundary-real-beta@example.com")
+    invitation = _invite(client, db, "boundary-real-beta@example.com")
     assert client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]}).status_code == 200
     user = db.scalar(select(User).where(User.email == "boundary-real-beta@example.com"))
     item = db.get(RealBetaInvitation, invitation["invitation_id"])

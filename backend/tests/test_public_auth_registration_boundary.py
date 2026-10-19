@@ -9,7 +9,7 @@ from app.auth_models import AuthThrottleState, EmailActionToken, User, UserSessi
 from app.auth_throttle import login_throttle
 from app.config import settings
 from app.models import AuditEvent
-from app.real_beta_gate import REAL_BETA_LAUNCH_REVIEW_COMPLETE
+from app.real_beta_gate import real_beta_gate_open
 
 
 def test_registration_is_closed_without_any_identity_persistence(client, db, caplog):
@@ -183,7 +183,7 @@ def test_historical_account_login_me_logout_and_email_requests_remain_closed(cli
 
 
 def test_real_beta_interlocks_and_public_demo_remain_as_before(client):
-    assert REAL_BETA_LAUNCH_REVIEW_COMPLETE is False
+    assert real_beta_gate_open() is False
     assert settings.real_beta_enabled == "false"
     assert settings.real_beta_allowlist == ""
     scenarios = client.get("/api/demo/scenarios")
