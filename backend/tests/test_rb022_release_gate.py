@@ -197,6 +197,45 @@ def test_membership_and_release_output_rollback(db, synthetic_prerequisites):
     assert denied.value.status_code == 403
 
 
+def test_accepted_membership_survives_token_expiry_but_not_release_revocation(
+    db, synthetic_prerequisites,
+):
+    member = _user(db)
+    release, _, _ = eligible_test_release(db, [member])
+    invite = RealBetaInvitation(
+        release_id=release.id, intended_user_id=member.id,
+        accepted_by_user_id=member.id, status="ACCEPTED",
+        token_digest="b" * 64, accepted_at=gate.utcnow() - timedelta(hours=2),
+        expires_at=gate.utcnow() - timedelta(hours=1),
+    )
+    db.add(invite)
+    db.commit()
+    assert gate.admission_active(db, member.id)
+
+    release.status = "REVOKED"
+    db.commit()
+    assert not gate.admission_active(db, member.id)
+
+
+def test_membership_is_scoped_to_its_release(db, synthetic_prerequisites):
+    member = _user(db)
+    first, _, _ = eligible_test_release(db, [member])
+    db.add(RealBetaInvitation(
+        release_id=first.id, intended_user_id=member.id,
+        accepted_by_user_id=member.id, status="ACCEPTED",
+        token_digest="c" * 64, accepted_at=gate.utcnow(),
+        expires_at=gate.utcnow() - timedelta(seconds=1),
+    ))
+    db.commit()
+    assert gate.admission_active(db, member.id)
+
+    first.status = "CLOSED"
+    db.commit()
+    second, _, _ = eligible_test_release(db, [member])
+    assert gate.eligible_release(db).id == second.id
+    assert not gate.admission_active(db, member.id)
+
+
 def test_release_close_remains_closed_after_new_database_session(db, synthetic_prerequisites):
     user = _user(db)
     release, _, _ = eligible_test_release(db, [user])

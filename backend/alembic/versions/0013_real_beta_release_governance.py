@@ -7,7 +7,7 @@ unbound and therefore cannot admit anyone under the new gate.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0013_real_beta_release_governance"
+revision = "0013_real_beta_governance"
 down_revision = "0012_substantive_private_review"
 branch_labels = None
 depends_on = None

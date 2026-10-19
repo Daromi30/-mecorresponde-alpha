@@ -201,28 +201,31 @@ def test_direct_private_api_requires_login_even_when_gate_is_simulated_open(clie
     assert client.post("/api/real-beta/invitations/accept", json={"token": "x" * 43}).status_code == 401
 
 
-def test_admission_expires_at_exact_boundary_and_does_not_delete_case(client, db, simulated_gate):
-    _register(client, "boundary-real-beta@example.com")
-    invitation = _invite(client, db, "boundary-real-beta@example.com")
+def test_accepted_membership_and_case_mutation_survive_invitation_token_expiry(
+    client, db, simulated_gate,
+):
+    _register(client, "token-expiry-real-beta@example.com")
+    invitation = _invite(client, db, "token-expiry-real-beta@example.com")
     assert client.post("/api/real-beta/invitations/accept", json={"token": invitation["token"]}).status_code == 200
-    user = db.scalar(select(User).where(User.email == "boundary-real-beta@example.com"))
+    user = db.scalar(select(User).where(User.email == "token-expiry-real-beta@example.com"))
     item = db.get(RealBetaInvitation, invitation["invitation_id"])
-    deadline = gate.utcnow() + timedelta(minutes=5)
-    item.expires_at = deadline
-    db.commit()
-    assert gate.admission_active(db, user.id, deadline - timedelta(microseconds=1))
-    assert not gate.admission_active(db, user.id, deadline)
-    assert not gate.admission_active(db, user.id, deadline + timedelta(microseconds=1))
-    item.expires_at = gate.utcnow() + timedelta(hours=1)
-    db.commit()
     created = client.post("/api/real-beta/cases", json={"family": "E02-A", "age_18_plus_attested": True})
     assert created.status_code == 201, created.text
+
+    # The timestamp belonged to the one-time acceptance secret. It is not a
+    # second, implicit membership expiry after successful acceptance.
     item.expires_at = gate.utcnow() - timedelta(seconds=1)
     db.commit()
-    assert client.post("/api/real-beta/cases", json={"family": "E02-A", "age_18_plus_attested": True}).status_code == 403
-    assert client.post(f"/api/cases/{created.json()['id']}/diagnose").status_code == 403
+    assert gate.admission_active(db, user.id)
+    assert client.post(f"/api/cases/{created.json()['id']}/diagnose").status_code == 200
     assert client.get(f"/api/cases/{created.json()['id']}").status_code == 200
     assert db.get(Case, created.json()["id"]) is not None
+
+    release = db.get(gate.RealBetaRelease, item.release_id)
+    release.status = "CLOSED"
+    db.commit()
+    assert not gate.admission_active(db, user.id)
+    assert client.post(f"/api/cases/{created.json()['id']}/diagnose").status_code == 403
 
 
 def test_non_initial_family_cannot_enter_private_beta(client, db, simulated_gate, monkeypatch):

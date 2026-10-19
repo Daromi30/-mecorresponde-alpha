@@ -167,7 +167,10 @@ def admission_active(db: Session, user_id: str, at: datetime | None = None) -> b
             RealBetaInvitation.status == "ACCEPTED",
             RealBetaInvitation.revoked_at.is_(None),
         )).all()
-        return any(utc(invitation.expires_at) > moment for invitation in invitations)
+        # expires_at limits only how long an ISSUED invitation secret can be
+        # accepted. Once accepted, release eligibility, cohort membership and
+        # explicit revocation govern the membership lifecycle.
+        return bool(invitations)
     except Exception:
         return False
 

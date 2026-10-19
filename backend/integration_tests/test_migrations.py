@@ -36,7 +36,7 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id) is not None
         revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0013_real_beta_release_governance"
+        assert revision == "0013_real_beta_governance"
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
         assert db.get(Case, sentinel_id).demo_scenario_id is None
 
@@ -111,7 +111,7 @@ def test_real_beta_migration_upgrades_legacy_rows_and_is_reversible():
     upgrade_database()
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0013_real_beta_release_governance"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0013_real_beta_governance"
     assert "real_beta_invitations" in inspect(engine).get_table_names()
 
     with engine.begin() as conn:
@@ -153,7 +153,7 @@ def test_reviewer_migration_from_0008_preserves_historical_audit_and_reverses():
     with SessionLocal() as db:
         assert db.get(Case, case_id).mode == "SYNTHETIC"
         assert db.get(AuditEvent, event_id).actor_reviewer_id is None
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0013_real_beta_release_governance"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0013_real_beta_governance"
     assert "reviewers" in inspect(engine).get_table_names()
 
     with engine.begin() as conn:
@@ -186,7 +186,7 @@ def test_substantive_review_scope_migration_is_empty_and_reversible():
     with SessionLocal() as db:
         assert db.get(Reviewer, reviewer_id) is not None
         assert db.execute(text("SELECT COUNT(*) FROM reviewer_family_authorizations")).scalar_one() == 0
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0013_real_beta_release_governance"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0013_real_beta_governance"
     with engine.begin() as conn:
         config.attributes["connection"] = conn
         command.downgrade(config, "0011_document_storage_ops")
