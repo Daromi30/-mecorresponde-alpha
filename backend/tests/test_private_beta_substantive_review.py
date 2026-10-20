@@ -20,7 +20,7 @@ def future_test_gate(monkeypatch):
     monkeypatch.setattr(settings, "real_beta_enabled", "true")
     monkeypatch.setattr(settings, "real_beta_allowlist", "E02-A,C01")
     monkeypatch.setattr(gate, "technical_prerequisites_ready", lambda: True)
-    assert gate.REAL_BETA_LAUNCH_REVIEW_COMPLETE is False
+    assert gate.real_beta_gate_open() is False
 
 
 def ready(client, db, family="E02-A"):
@@ -227,7 +227,7 @@ def test_private_participant_outputs_stay_neutral_before_review(client, db, futu
     assert client.post(f"/api/admin/reviews/{review.id}/complete", json={
         "reviewer_decision": "rubber stamp",
     }).status_code == 409
-    assert len(FAMILY_MANIFEST) == 26 and gate.REAL_BETA_LAUNCH_REVIEW_COMPLETE is False
+    assert len(FAMILY_MANIFEST) == 26 and gate.real_beta_gate_open() is False
 
 
 def _login_backoffice(client, login_id, password):

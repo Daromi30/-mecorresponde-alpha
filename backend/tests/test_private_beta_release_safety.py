@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.auth_models import Reviewer
+from app.auth_models import RealBetaRelease, Reviewer, User
 from app.backoffice_auth import create_reviewer
 from app.config import settings
 from app.family_manifest import FAMILY_MANIFEST
@@ -20,6 +20,7 @@ from app.private_beta_review import bind_current_version
 from app.reviews import HumanReview
 from app import real_beta_gate as gate
 from app import services_v2 as svc
+from release_test_support import eligible_test_release
 
 
 CASES = {
@@ -54,7 +55,7 @@ def future_test_gate(monkeypatch):
     monkeypatch.setattr(settings, "real_beta_enabled", "true")
     monkeypatch.setattr(settings, "real_beta_allowlist", "E02-A,C01")
     monkeypatch.setattr(gate, "technical_prerequisites_ready", lambda: True)
-    assert gate.REAL_BETA_LAUNCH_REVIEW_COMPLETE is False
+    assert settings.real_beta_enabled == "true"  # Test-only; no release exists yet.
 
 
 def _admit(client, db, family):
@@ -66,9 +67,14 @@ def _admit(client, db, family):
     assert login.status_code == 200
     scope = client.put(f"/api/admin/reviewers/{reviewer.id}/technical-scope", json={"families": [family]})
     assert scope.status_code == 200, scope.text
-    invite = client.post("/api/admin/real-beta/invitations", json={"expires_in_hours": 24})
-    assert invite.status_code == 201
-    client.historical_account(f"release-{family.lower()}@example.com", "synthetic-strong-password")
+    email = f"release-{family.lower()}@example.com"
+    client.historical_account(email, "synthetic-strong-password")
+    user = db.scalar(select(User).where(User.email == email))
+    eligible_test_release(db, [user])
+    invite = client.post("/api/admin/real-beta/invitations", json={
+        "expires_in_hours": 24, "target_user_id": user.id,
+    })
+    assert invite.status_code == 201, invite.text
     accept = client.post("/api/real-beta/invitations/accept", json={"token": invite.json()["token"]})
     assert accept.status_code == 200
     created = client.post("/api/real-beta/cases", json={
@@ -224,6 +230,29 @@ def test_fact_change_and_rediagnosis_cannot_reuse_prior_release_approval(
     assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
 
 
+def test_release_approval_cannot_survive_global_rollback(client, db, future_test_gate):
+    case_id, reviewer, facts = _admit(client, db, "E02-A")
+    _record_required_facts(client, case_id, facts)
+    assert client.post(f"/api/cases/{case_id}/diagnose").status_code == 200
+    review = db.scalar(select(HumanReview).where(
+        HumanReview.case_id == case_id, HumanReview.reason == RELEASE_REASON,
+        HumanReview.status == "OPEN",
+    ))
+    _assign_and_approve(client, review, reviewer)
+    case = db.get(Case, case_id)
+    assert release_approved(db, case)
+    release = db.get(RealBetaRelease, case.real_beta_release_id)
+    release.status = "CLOSED"
+    db.commit()
+    assert not gate.real_beta_gate_open(db)
+    assert not release_approved(db, case)
+    detail = client.get(f"/api/cases/{case_id}")
+    assert detail.status_code == 200
+    assert detail.json()["decisions"] == detail.json()["actions"] == []
+    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
+    assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 403
+
+
 @pytest.mark.parametrize("family,wrong_key", [
     ("E02-A", "electricity.billing.unlisted"),
     ("C01", "purchase.unlisted"),
@@ -238,7 +267,7 @@ def test_private_fact_allowlist_rejects_unknown_fields(client, db, future_test_g
 
 
 def test_adult_attestation_is_strict_and_does_not_open_the_production_interlock(client, db, future_test_gate):
-    assert gate.REAL_BETA_LAUNCH_REVIEW_COMPLETE is False
+    assert gate.real_beta_gate_open() is False
     case_id, _reviewer, _facts = _admit(client, db, "E02-A")
     assert db.get(Case, case_id) is not None
     for value in (None, False, "true", 1):
@@ -246,12 +275,12 @@ def test_adult_attestation_is_strict_and_does_not_open_the_production_interlock(
         if value is not None:
             payload["age_18_plus_attested"] = value
         assert client.post("/api/real-beta/cases", json=payload).status_code == 422
-    assert gate.REAL_BETA_LAUNCH_REVIEW_COMPLETE is False
+    assert gate.real_beta_gate_open() is False
 
 
 def test_true_attestation_alone_never_opens_real_beta():
     assert len(FAMILY_MANIFEST) == 26
-    assert gate.REAL_BETA_LAUNCH_REVIEW_COMPLETE is False
+    assert gate.real_beta_gate_open() is False
     assert gate.technical_prerequisites_ready() is False
     assert gate.real_beta_gate_open() is False
 

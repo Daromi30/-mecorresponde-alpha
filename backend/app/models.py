@@ -23,6 +23,9 @@ class Case(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     mode: Mapped[str] = mapped_column(String(20), default="SYNTHETIC", nullable=False)
+    real_beta_release_id: Mapped[str | None] = mapped_column(
+        ForeignKey("real_beta_releases.id", ondelete="RESTRICT"), nullable=True, index=True,
+    )
     demo_scenario_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     status: Mapped[str] = mapped_column(String(40), default="NEW", index=True)
     service_level: Mapped[str] = mapped_column(String(30), default="AUTOMATED_GUIDANCE")

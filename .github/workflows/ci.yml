@@ -64,7 +64,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Run PostgreSQL persistence smoke test
-        run: python -m pytest -q integration_tests/test_postgres_persistence.py
+        run: python -m pytest -q integration_tests/test_postgres_persistence.py integration_tests/test_real_beta_quotas.py
 
   postgres-backup-restore:
     runs-on: ubuntu-latest

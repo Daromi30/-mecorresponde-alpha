@@ -41,6 +41,13 @@ from .reviews import HumanReview
 gateway = DeterministicAlphaGateway()
 
 
+def _require_private_mutation(db: Session, case: Case) -> None:
+    # Direct service calls must not bypass the same boundary as HTTP handlers.
+    if case.mode == "PRIVATE_REAL_BETA":
+        from .real_beta_gate import require_real_case_mutation
+        require_real_case_mutation(db, case)
+
+
 def audit(
     db: Session, case_id: str | None, event_type: str,
     payload: dict[str, Any] | None = None, *, actor_reviewer_id: str | None = None,
@@ -58,6 +65,7 @@ def create_human_review(
     priority: str = "NORMAL",
     context: dict[str, Any] | None = None,
 ) -> HumanReview:
+    _require_private_mutation(db, case)
     existing = db.scalars(
         select(HumanReview).where(
             HumanReview.case_id == case.id,
@@ -130,6 +138,7 @@ def upsert_fact(
     user_confirmed: bool = True,
     created_by: str = "user",
 ) -> Fact:
+    _require_private_mutation(db, case)
     validate_private_fact(case, key, value, state=state)
     if case.mode == "PRIVATE_REAL_BETA" and state == "unknown" and user_confirmed:
         raise HTTPException(422, "Unknown private facts cannot be confirmed")
@@ -406,6 +415,7 @@ FAMILY_RULES = {
 
 
 def diagnose(db: Session, case: Case):
+    _require_private_mutation(db, case)
     evaluator = EVALUATORS.get(case.family or "")
     if not evaluator:
         raise ValueError("This case family is not automated in the current alpha")
@@ -577,6 +587,7 @@ def confirm_document_fact(
     excerpt: str | None = None,
     materiality: str = "critical",
 ) -> Fact:
+    _require_private_mutation(db, case)
     validate_private_fact(case, key, value, state="confirmed")
     prev = db.scalars(
         select(Fact).where(Fact.case_id == case.id, Fact.key == key).order_by(Fact.created_at.desc())
@@ -617,6 +628,7 @@ def confirm_document_fact(
 
 
 def analyze_company_response(db: Session, case: Case, text: str):
+    _require_private_mutation(db, case)
     result = gateway.analyze_response(text)
     evidence = current_company_response_evidence()
     db.add(AIRun(case_id=case.id, task="analyze_response", structured_output=result))
@@ -686,6 +698,7 @@ def analyze_company_response(db: Session, case: Case, text: str):
 
 
 def prepare_claim_package(db: Session, case: Case) -> dict[str, Any]:
+    _require_private_mutation(db, case)
     decision = db.scalars(
         select(Decision).where(Decision.case_id == case.id).order_by(Decision.created_at.desc())
     ).first()

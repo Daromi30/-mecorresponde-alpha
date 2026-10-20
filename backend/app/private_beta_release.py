@@ -63,6 +63,13 @@ def release_approved(db: Session, case: Case) -> bool:
     """Whether the current participant-facing result can be shown or acted on."""
     if not private_scope(case):
         return True
+    # An earlier case approval is never a capability to survive rollback.
+    # Import locally because the shared gate uses INITIAL_FAMILIES.
+    from .real_beta_gate import require_real_case_mutation
+    try:
+        require_real_case_mutation(db, case)
+    except Exception:
+        return False
     if case.family not in INITIAL_FAMILIES or not case.current_decision_id:
         return False
     decision = db.get(Decision, case.current_decision_id)

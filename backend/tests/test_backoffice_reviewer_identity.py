@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app import real_beta_gate as gate
-from app.auth_models import RealBetaInvitation, Reviewer, ReviewerSession, User
+from app.auth_models import RealBetaInvitation, RealBetaRelease, ReleaseApproval, ReleaseAuthority, Reviewer, ReviewerSession, User
 from app.auth_throttle import AuthThrottleState
 from app.backoffice_auth import COOKIE, create_reviewer, login_throttle
 from app.config import settings
@@ -15,7 +15,8 @@ from app.main import app
 from app.admin_auth import require_admin
 from app.reviews import HumanReview
 from app.private_beta_review import bind_current_version
-from app.services_v2 import create_case, create_human_review
+from app.services_v2 import create_case
+from release_test_support import eligible_test_release
 
 
 ADMIN = {"X-Admin-Token": "test-admin-token"}
@@ -46,15 +47,35 @@ def private_review(db, owner_email="private-owner@example.com", token_digest="b"
     owner = User(email=owner_email, password_hash="synthetic")
     db.add(owner)
     db.flush()
+    release = db.scalar(select(RealBetaRelease))
+    if release is None:
+        release, _, _ = eligible_test_release(db, [owner], families=("E02-A",))
+    elif owner.id not in release.cohort_user_ids_json:
+        release.version += 1
+        release.cohort_user_ids_json = [*release.cohort_user_ids_json, owner.id]
+        release.scope_fingerprint = gate.scope_fingerprint(release)
+        for authority in db.scalars(select(ReleaseAuthority)).all():
+            db.add(ReleaseApproval(
+                release_id=release.id, release_version=release.version,
+                scope_fingerprint=release.scope_fingerprint, authority_id=authority.id,
+                authority_type=authority.authority_type,
+            ))
+        db.commit()
     invitation = RealBetaInvitation(
-        token_digest=token_digest, status="ACCEPTED", accepted_by_user_id=owner.id,
+        token_digest=token_digest, status="ACCEPTED", release_id=release.id,
+        intended_user_id=owner.id, accepted_by_user_id=owner.id,
         accepted_at=gate.utcnow(), expires_at=gate.utcnow() + timedelta(hours=2),
     )
     db.add(invitation)
     case = create_case(db, "La factura de luz es incorrecta y me han cobrado de más")
     case.mode = gate.REAL_MODE
     case.user_id = owner.id
-    review = create_human_review(db, case, reason="MATERIAL_FACT_REVIEW", priority="HIGH")
+    case.real_beta_release_id = release.id
+    # Seed historical private rows directly: a newly closed gate must prevent
+    # service mutations, but existing owner/backoffice read boundaries remain testable.
+    review = HumanReview(case_id=case.id, reason="MATERIAL_FACT_REVIEW", priority="HIGH", status="OPEN")
+    case.status = "HUMAN_REVIEW"
+    db.add(review)
     db.flush()
     bind_current_version(db, review, case)
     db.commit()
@@ -63,7 +84,7 @@ def private_review(db, owner_email="private-owner@example.com", token_digest="b"
 
 @pytest.fixture
 def simulated_gate(monkeypatch):
-    assert gate.REAL_BETA_LAUNCH_REVIEW_COMPLETE is False
+    assert gate.real_beta_gate_open() is False
     monkeypatch.setattr(settings, "real_beta_enabled", "true")
     monkeypatch.setattr(settings, "real_beta_allowlist", "E02-A")
     monkeypatch.setattr(gate, "technical_prerequisites_ready", lambda: True)
