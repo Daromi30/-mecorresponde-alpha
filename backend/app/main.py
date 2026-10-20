@@ -94,6 +94,8 @@ def _cross_site_block_response() -> JSONResponse:
         content={"detail": "Cross-site state-changing request blocked"},
     )
     response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -251,7 +253,14 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.5.0-alpha", lifespan=lifespan)
+app = FastAPI(
+    title=settings.app_name,
+    version="0.5.0-alpha",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -288,45 +297,25 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
         if (origin and not origin_allowed) or (fetch_site == "cross-site" and not origin_allowed):
             return _cross_site_block_response()
 
-    is_document_upload = (
-        method == "POST"
-        and path.startswith("/api/cases/")
-        and path.endswith("/documents")
-    )
-    if is_document_upload:
-        try:
-            status = storage_status()
-        except StorageConfigurationError as exc:
-            return JSONResponse(
-                status_code=503,
-                content={"detail": f"Document storage is not configured: {exc}"},
-            )
-        if not status.uploads_allowed:
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "detail": "Document upload is disabled until persistent object storage is configured."
-                },
-            )
-
     response = await call_next(request)
-    sensitive_api = (
-        path == "/api/cases"
-        or path.startswith("/api/cases/")
-        or path.startswith("/api/real-beta")
-        or path.startswith("/api/admin")
-        or path.startswith("/api/backoffice-auth")
-        or path.startswith("/api/auth")
-        or path.startswith("/backoffice")
+    private_prefixes = (
+        "/api/cases", "/api/real-beta", "/api/admin",
+        "/api/backoffice-auth", "/api/auth", "/backoffice",
     )
-    if sensitive_api:
+    private_surface = any(
+        path == prefix or path.startswith(f"{prefix}/") for prefix in private_prefixes
+    )
+    if private_surface:
         response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
 
     always_noindex = (
         path.startswith("/api/")
         or path.startswith("/health")
         or path.startswith("/demo")
         or path.startswith("/backoffice")
+        or path in {"/docs", "/redoc", "/openapi.json"}
     )
     # Privacy information can become complete before public indexing is approved.
     # Keep that page out of search results until the same explicit launch gate is
@@ -334,7 +323,10 @@ async def safety_headers_and_storage_guard(request: Request, call_next):
     public_indexable_surface = (
         path == "/" or path == "/privacidad" or path.startswith("/reclamar")
     )
-    if always_noindex or (public_indexable_surface and not settings.public_indexing_ready):
+    if (
+        not private_surface
+        and (always_noindex or (public_indexable_surface and not settings.public_indexing_ready))
+    ):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
 
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -412,7 +404,14 @@ def privacy_information_page():
 
 @app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
 def robots_txt():
-    lines = ["User-agent: *", "Allow: /"]
+    # This is crawl guidance only. Authentication and authorization remain the
+    # actual boundary; broad prefixes avoid advertising individual private routes.
+    lines = [
+        "User-agent: *",
+        "Disallow: /api/",
+        "Disallow: /backoffice/",
+        "Allow: /",
+    ]
     if settings.public_indexing_ready:
         lines.append(f"Sitemap: {_public_base_url()}/sitemap.xml")
     return PlainTextResponse("\n".join(lines) + "\n")
