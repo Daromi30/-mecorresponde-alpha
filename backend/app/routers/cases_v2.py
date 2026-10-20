@@ -31,7 +31,10 @@ from ..services_v2 import (
     EVALUATORS, analyze_company_response, audit, confirm_document_fact, create_case, create_human_review,
     diagnose, get_next_question, prepare_claim_package, upsert_fact,
 )
-from ..storage import StorageIntegrityError, StorageWriteError, UnsafeDocumentUpload
+from ..storage import (
+    StorageConfigurationError, StorageIntegrityError, StorageWriteError,
+    UnsafeDocumentUpload, storage_status,
+)
 
 router = APIRouter(
     prefix="/api/cases",
@@ -287,6 +290,18 @@ def charges(case_id: str, payload: ChargesInput, db: Session = Depends(get_db)):
 @router.post("/{case_id}/documents")
 async def documents(case_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
     case = case_for_update_or_404(db, case_id)
+    # Authorization dependencies have completed before this provider check, so
+    # unauthenticated callers cannot probe storage state with guessed case IDs.
+    try:
+        status = storage_status()
+    except StorageConfigurationError as exc:
+        raise HTTPException(
+            503, "Document upload is disabled until persistent object storage is configured."
+        ) from exc
+    if not status.uploads_allowed:
+        raise HTTPException(
+            503, "Document upload is disabled until persistent object storage is configured."
+        )
     data = await file.read(settings.max_upload_bytes + 1)
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(413, f"Max {settings.max_upload_bytes // (1024 * 1024)} MB in internal alpha")

@@ -103,6 +103,7 @@ def test_render_blocks_document_upload_until_storage_is_persistent(client, monke
     ).json()
     response = client.post(
         f"/api/cases/{case['id']}/documents",
+        headers={"X-Case-Token": case["access_token"]},
         files={"file": ("factura.txt", b"mantenimiento 8,99 EUR", "text/plain")},
     )
     assert response.status_code == 503
