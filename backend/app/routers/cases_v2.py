@@ -16,6 +16,7 @@ from ..documents import DocumentUploadPersistenceError, save_upload
 from ..evidence_context import atomic_workflow_transaction, current_outcome_evidence
 from ..models import Action, AuditEvent, Case, Communication, Deadline, Decision, Document, Evidence, Fact, Outcome
 from ..private_beta_fields import validate_private_fact
+from ..private_beta_exclusions import DOWNLOADABLE_DRAFT, capability_allowed
 from ..private_beta_release import PENDING_RESPONSE, private_scope, release_approved
 from ..reviews import HumanReview
 from ..schemas_v2 import (
@@ -77,7 +78,7 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
         "title": case.title,
         "raw_intake": case.raw_intake,
         "current_decision_id": None if pending_release else case.current_decision_id,
-        "current_action_id": None if pending_release else case.current_action_id,
+        "current_action_id": None if private_scope(case) and not internal else case.current_action_id,
         "release_status": (
             "NOT_RELEASED" if pending_release and not case.current_decision_id
             else "PENDING_HUMAN_REVIEW" if pending_release else "RELEASED"
@@ -131,7 +132,7 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
         ],
         "actions": [
             {"id": action.id, "type": action.type, "status": action.status, "payload": action.payload_json}
-            for action in ([] if pending_release else actions)
+            for action in ([] if private_scope(case) and not internal else actions)
         ],
         "deadlines": [
             {"id": deadline.id, "type": deadline.deadline_type, "computed_date": deadline.computed_date, "status": deadline.status}
@@ -364,9 +365,8 @@ def run_diagnosis(case_id: str, db: Session = Depends(get_db)):
 def prepare_claim(case_id: str, db: Session = Depends(get_db)):
     case = case_for_update_or_404(db, case_id)
     if private_scope(case) and case.status == "READY_TO_SUBMIT" and release_approved(db, case):
-        current = db.get(Action, case.current_action_id) if case.current_action_id else None
-        if current is not None and current.type == "SUBMIT_INITIAL_CLAIM" and current.status == "READY":
-            return {"action_id": current.id, **current.payload_json}
+        if not capability_allowed(case, DOWNLOADABLE_DRAFT):
+            raise HTTPException(409, "Downloadable drafts are unavailable for the private beta")
     with atomic_workflow_transaction(db) as commit:
         try:
             package = prepare_claim_package(db, case)

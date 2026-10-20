@@ -17,6 +17,7 @@ from .document_storage_reconciliation import (
     create_put_intent, reconcile_document_storage_operations,
 )
 from .models import AuditEvent, Case, Document, DocumentExtraction, Evidence, Fact
+from .private_beta_exclusions import DOCUMENT_UPLOAD, require_capability
 from .storage import (
     DocumentStorage, ObjectProbe, UnsafeDocumentUpload,
     get_document_storage, object_key, read_verified_document, validate_document_bytes,
@@ -60,6 +61,9 @@ def save_upload(
     *,
     storage: DocumentStorage | None = None,
 ):
+    # Service-level boundary: callers cannot bypass the HTTP dependency or
+    # reach validation, storage, extraction, persistence or audit side effects.
+    require_capability(case, DOCUMENT_UPLOAD)
     canonical_mime = validate_document_bytes(filename, content_type, data)
     storage = storage or get_document_storage()
 

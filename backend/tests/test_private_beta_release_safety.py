@@ -180,7 +180,12 @@ def test_private_release_requires_assigned_reviewer_for_current_decision(
     ))
     assert draft_review is not None and draft_review.id != review.id
     _assign_and_approve(client, draft_review, reviewer)
-    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 200
+    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
+    assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 409
+    participant_case = client.get(f"/api/cases/{case_id}")
+    assert participant_case.status_code == 200
+    assert participant_case.json()["current_action_id"] is None
+    assert participant_case.json()["actions"] == []
 
 
 def test_fact_change_and_rediagnosis_cannot_reuse_prior_release_approval(

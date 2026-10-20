@@ -85,6 +85,14 @@
     panel.classList.remove('hidden');
 
     const currentStatus = typeof caseData !== 'undefined' ? caseData?.status : null;
+    const currentMode = typeof caseData !== 'undefined' ? caseData?.mode : null;
+    if (currentMode === 'PRIVATE_REAL_BETA') {
+      panel.innerHTML = `
+        <div class="label">Documentación</div>
+        <h3>Subida de archivos desactivada en la beta privada</h3>
+        <div class="notice">Este canal no acepta ni conserva archivos. Continúa únicamente con los campos expresamente habilitados.</div>`;
+      return;
+    }
     if (terminalStatuses.has(currentStatus)) {
       panel.innerHTML = `
         <div class="label">Documentación</div>

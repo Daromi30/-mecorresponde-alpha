@@ -32,16 +32,21 @@
             </tr>`).join('')}</tbody></table>`
         : '<div class="empty">Este expediente todavía no tiene una evaluación jurídica trazada.</div>';
 
+      const privateBeta = caseData.mode === 'PRIVATE_REAL_BETA';
       section.innerHTML = `
         <h3>Paquete de revisión / escalado</h3>
         <div class="meta">Resumen estructurado del expediente para gestión asistida o revisión profesional. No sustituye la revisión profesional cuando el Motor la exige.</div>
         <div style="margin:10px 0">${sourceRows}</div>
-        <button type="button" class="secondary" id="downloadAdminHandoff">Descargar paquete estructurado</button>
+        ${privateBeta
+          ? '<span class="meta">Consulta interna únicamente · descarga desactivada para la beta privada</span>'
+          : '<button type="button" class="secondary" id="downloadAdminHandoff">Descargar paquete estructurado</button>'}
         <span class="meta" style="margin-left:8px">${esc(handoff.current_facts?.length || 0)} hechos actuales · ${esc(handoff.open_human_review_count || 0)} revisiones abiertas</span>`;
 
-      document.getElementById('downloadAdminHandoff').addEventListener('click', () => {
-        downloadJson(`mecorresponde-handoff-${caseData.id}.json`, handoff);
-      });
+      if (!privateBeta) {
+        document.getElementById('downloadAdminHandoff').addEventListener('click', () => {
+          downloadJson(`mecorresponde-handoff-${caseData.id}.json`, handoff);
+        });
+      }
     } catch (error) {
       section.innerHTML = `<h3>Paquete de revisión / escalado</h3><div class="danger">${esc(error.message)}</div>`;
     }

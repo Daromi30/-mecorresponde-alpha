@@ -60,17 +60,18 @@
 
   function applyActionVisibility() {
     const status = caseData?.status || 'INTAKE';
+    const privateBeta = caseData?.mode === 'PRIVATE_REAL_BETA';
 
     // A card is actionable only in its exact lifecycle phase. This prevents stale
     // controls from remaining visible after refreshes and producing predictable 409s.
-    setCardVisible('claimCard', status === 'READY_TO_SUBMIT' && hasCurrentDecision());
+    setCardVisible('claimCard', !privateBeta && status === 'READY_TO_SUBMIT' && hasCurrentDecision());
     setCardVisible('responseCard', status === 'WAITING_RESPONSE' && hasCurrentDecision());
     setCardVisible('outcomeCard', status === 'RESOLVED_PENDING_EXECUTION' && hasCurrentDecision());
 
     // READY_TO_SUBMIT must survive login/re-entry without asking the user to
     // "prepare" an already prepared action again. The persisted current action
     // contains the exact claim payload and legal provenance produced by the Motor.
-    restorePreparedClaim();
+    if (!privateBeta) restorePreparedClaim();
   }
 
   function applyPhaseGuard() {
