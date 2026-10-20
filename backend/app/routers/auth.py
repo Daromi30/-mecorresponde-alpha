@@ -46,6 +46,7 @@ from ..email_delivery import (
     send_transactional_email,
 )
 from ..models import Case
+from ..private_beta_exclusions import AUTOMATIC_EMAIL, user_capability_allowed
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = logging.getLogger("uvicorn.error")
@@ -234,6 +235,8 @@ def request_email_verification(
 ):
     if user.email_verified_at is not None:
         return {"status": "already_verified"}
+    if not user_capability_allowed(db, user.id, AUTOMATIC_EMAIL):
+        raise HTTPException(status_code=503, detail="Verification email is unavailable for the private beta")
     _require_operational_email()
     verification_email_throttle.check(db, user.email)
     verification_email_throttle.hit(db, user.email)
@@ -283,7 +286,11 @@ def request_password_reset(payload: EmailRequest, db: Session = Depends(get_db))
     db.commit()
 
     user = db.scalar(select(User).where(User.email == email))
-    if user and user.disabled_at is None:
+    if (
+        user
+        and user.disabled_at is None
+        and user_capability_allowed(db, user.id, AUTOMATIC_EMAIL)
+    ):
         token = issue_action_token(db, user, purpose=PASSWORD_RESET, ttl=PASSWORD_RESET_TTL)
         link = action_link("reset-password", token)
         try:

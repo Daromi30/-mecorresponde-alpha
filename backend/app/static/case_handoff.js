@@ -49,7 +49,8 @@
   function renderCaseHandoff() {
     const panel = ensurePanel();
     if (!panel) return;
-    panel.classList.toggle('hidden', !caseId);
+    const privateBeta = typeof caseData !== 'undefined' && caseData?.mode === 'PRIVATE_REAL_BETA';
+    panel.classList.toggle('hidden', !caseId || privateBeta);
   }
 
   const originalRefresh = refresh;

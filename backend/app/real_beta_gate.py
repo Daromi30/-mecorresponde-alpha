@@ -21,9 +21,9 @@ from .config import settings
 from .db import engine
 from .family_manifest import FAMILY_MANIFEST
 from .models import AuditEvent, Case
+from .private_beta_exclusions import exclusions_ready
 from .private_beta_release import INITIAL_FAMILIES
 from .privacy_information import privacy_information_status
-from .storage import StorageConfigurationError, storage_status
 
 
 REAL_MODE = "PRIVATE_REAL_BETA"
@@ -61,13 +61,13 @@ def allowed_families() -> frozenset[str]:
 
 
 def technical_prerequisites_ready() -> bool:
-    if engine.dialect.name != "postgresql" or not privacy_information_status(settings).ready:
-        return False
-    if not settings.transactional_email_operational:
-        return False
     try:
-        return storage_status().persistent
-    except StorageConfigurationError:
+        return (
+            engine.dialect.name == "postgresql"
+            and privacy_information_status(settings).ready
+            and exclusions_ready()
+        )
+    except Exception:
         return False
 
 

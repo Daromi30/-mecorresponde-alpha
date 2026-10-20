@@ -14,6 +14,7 @@ from .auth import get_user_from_request
 from .config import settings
 from .db import Base, get_db
 from .models import Action, AuditEvent, Case
+from .private_beta_exclusions import DOCUMENT_UPLOAD, capability_allowed
 
 
 class CaseAccess(Base):
@@ -111,7 +112,7 @@ def _block_terminal_document_upload(request: Request, case: Case) -> None:
 def _block_private_real_document_upload(request: Request, case: Case) -> None:
     """Keep real document ingestion closed for the initial private beta."""
     if (
-        case.mode == "PRIVATE_REAL_BETA"
+        not capability_allowed(case, DOCUMENT_UPLOAD)
         and request.method.upper() == "POST"
         and request.url.path.rstrip("/").endswith("/documents")
     ):

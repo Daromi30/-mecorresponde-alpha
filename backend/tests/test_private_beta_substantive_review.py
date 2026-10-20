@@ -200,11 +200,10 @@ def test_prepared_draft_needs_its_own_review_before_handoff(client, db, future_t
     assert draft_review is not None and draft_review.id != review.id
     assign(client, draft_review, reviewer)
     assert client.post(f"/api/admin/reviews/{draft_review.id}/approve-release", json=APPROVAL).status_code == 200
-    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 200
+    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
     first_package = client.post(f"/api/cases/{case_id}/prepare-claim")
     second_package = client.post(f"/api/cases/{case_id}/prepare-claim")
-    assert first_package.status_code == second_package.status_code == 200
-    assert first_package.json() == second_package.json()
+    assert first_package.status_code == second_package.status_code == 409
     assert release_approved(db, db.get(Case, case_id))
 
 
@@ -240,7 +239,8 @@ def _login_backoffice(client, login_id, password):
 def _participant_review_metadata_absent(client, case_id, reviewer_ids, private_note):
     detail = client.get(f"/api/cases/{case_id}")
     assert detail.status_code == 200
-    assert detail.json()["decisions"] and detail.json()["actions"]
+    assert detail.json()["decisions"] and detail.json()["actions"] == []
+    assert detail.json()["current_action_id"] is None
     assert detail.json()["human_reviews"] == []
     reviews = client.get(f"/api/cases/{case_id}/reviews")
     assert reviews.status_code == 200 and reviews.json() == []
