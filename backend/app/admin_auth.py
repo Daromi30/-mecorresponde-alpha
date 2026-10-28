@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .auth_models import Reviewer, ReviewerSession
 from .backoffice_auth import session_from_request
+from .backoffice_permissions import ASSIGN_REVIEWS, MANAGE_REVIEWERS, has_capability
 from .config import settings
 from .db import get_db
 from .models import Case
@@ -75,7 +76,7 @@ def require_admin(
     method = request.method.upper()
 
     if path.startswith("/api/admin/reviewers") or path.startswith("/api/admin/real-beta"):
-        if principal.reviewer is None or principal.reviewer.role != "operator":
+        if not has_capability(principal.reviewer, MANAGE_REVIEWERS):
             _denied(db, None, principal.actor_id, "operator_required")
             raise HTTPException(403, "Operator session required")
         return principal
@@ -131,7 +132,7 @@ def require_admin(
         method in {"POST", "PUT", "PATCH", "DELETE"}
         and path.endswith("/assign")
         and principal.reviewer is not None
-        and principal.reviewer.role != "operator"
+        and not has_capability(principal.reviewer, ASSIGN_REVIEWS)
     ):
         _denied(db, case.id if case is not None else None, principal.actor_id, "operator_assignment_required")
         raise HTTPException(403, "Operator session required")

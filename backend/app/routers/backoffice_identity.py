@@ -3,20 +3,24 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..admin_auth import require_admin
 from ..auth import hash_password, verify_password
-from ..auth_models import Reviewer, ReviewerFamilyAuthorization
+from ..auth_models import Reviewer, ReviewerFamilyAuthorization, ReviewerSession
+from ..backoffice_permissions import (
+    MANAGE_REVIEWERS, MANAGE_TECHNICAL_SCOPE, ROLE_CAPABILITIES, has_capability,
+)
 from ..backoffice_auth import (
     authenticate, clear_cookie, create_reviewer, issue_session, normalize_login,
     require_session, revoke_sessions, session_from_request, utcnow, validate_password,
 )
 from ..db import get_db
+from ..family_manifest import FAMILY_MANIFEST
+from ..reviews import HumanReview
 from ..services_v2 import audit
 
 
@@ -58,12 +62,12 @@ class PasswordReset(BaseModel):
 
 class TechnicalFamilyScope(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    families: list[Literal["E02-A", "C01"]] = Field(max_length=2)
+    families: list[str] = Field(max_length=26)
 
 
 def _operator(request: Request) -> Reviewer:
     principal = getattr(request.state, "admin_principal", None)
-    if principal is None or principal.reviewer is None or principal.reviewer.role != "operator":
+    if principal is None or not has_capability(principal.reviewer, MANAGE_REVIEWERS):
         raise HTTPException(403, "Operator session required")
     return principal.reviewer
 
@@ -161,14 +165,63 @@ def list_reviewers(request: Request, db: Session = Depends(get_db)):
     } for row in rows]
 
 
+@admin_router.get("/access-review")
+def access_review(request: Request, db: Session = Depends(get_db)):
+    """Return the effective, non-secret access inventory for periodic review."""
+    operator = _operator(request)
+    rows = db.scalars(select(Reviewer).order_by(Reviewer.created_at.asc())).all()
+    inventory = []
+    moment = utcnow()
+    for row in rows:
+        active_sessions = db.scalar(
+            select(func.count()).select_from(ReviewerSession).where(
+                ReviewerSession.reviewer_id == row.id,
+                ReviewerSession.revoked_at.is_(None),
+                ReviewerSession.expires_at > moment,
+            )
+        ) or 0
+        open_assignments = db.scalar(
+            select(func.count()).select_from(HumanReview).where(
+                HumanReview.assigned_reviewer_id == row.id,
+                HumanReview.status == "OPEN",
+            )
+        ) or 0
+        families = db.scalars(select(ReviewerFamilyAuthorization.family).where(
+            ReviewerFamilyAuthorization.reviewer_id == row.id,
+        )).all()
+        inventory.append({
+            "reviewer_id": row.id,
+            "role": row.role,
+            "active": row.disabled_at is None,
+            "capabilities": sorted(ROLE_CAPABILITIES.get(row.role, frozenset()))
+            if row.disabled_at is None else [],
+            "technical_authorized_families": sorted(families),
+            "active_sessions": int(active_sessions),
+            "open_assignments": int(open_assignments),
+        })
+    audit(db, None, "BACKOFFICE_ACCESS_REVIEWED", {
+        "reviewer_count": len(inventory), "permission_matrix_version": 1,
+    }, actor_reviewer_id=operator.id)
+    db.commit()
+    return {
+        "permission_matrix_version": 1,
+        "fail_closed": True,
+        "roles": {role: sorted(capabilities) for role, capabilities in ROLE_CAPABILITIES.items()},
+        "reviewers": inventory,
+    }
+
+
 @admin_router.put("/{reviewer_id}/technical-scope")
 def set_technical_scope(reviewer_id: str, payload: TechnicalFamilyScope, request: Request,
                         db: Session = Depends(get_db)):
     """Operator grant/revocation is explicit; existing reviewers start with no scope."""
     operator = _operator(request)
     target = _target(db, reviewer_id)
-    if target.disabled_at is not None or len(payload.families) != len(set(payload.families)):
-        raise HTTPException(422, "Active reviewer and distinct families required")
+    if (not has_capability(operator, MANAGE_TECHNICAL_SCOPE)
+            or target.disabled_at is not None
+            or len(payload.families) != len(set(payload.families))
+            or any(family not in FAMILY_MANIFEST for family in payload.families)):
+        raise HTTPException(422, "Active reviewer and distinct supported families required")
     existing = {row.family: row for row in db.scalars(select(ReviewerFamilyAuthorization).where(
         ReviewerFamilyAuthorization.reviewer_id == reviewer_id,
     )).all()}

@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app import real_beta_gate as gate
-from app.auth_models import RealBetaInvitation, RealBetaRelease, ReleaseApproval, ReleaseAuthority, Reviewer, ReviewerSession, User
+from app.auth_models import RealBetaInvitation, RealBetaRelease, ReleaseApproval, ReleaseAuthority, Reviewer, ReviewerFamilyAuthorization, ReviewerSession, User
 from app.auth_throttle import AuthThrottleState
 from app.backoffice_auth import COOKIE, create_reviewer, login_throttle
 from app.config import settings
@@ -345,3 +345,56 @@ def test_last_operator_cannot_be_disabled_or_demoted(client, db):
     db.expire_all()
     assert db.get(Reviewer, operator.id).disabled_at is None
     assert db.get(Reviewer, operator.id).role == "operator"
+
+
+def test_access_review_exposes_effective_permissions_without_secrets_and_offboarding_is_immediate(
+    client, db, simulated_gate,
+):
+    operator = seed(db, "access-operator", "operator")
+    reviewer = seed(db, "access-reviewer")
+    case, review = private_review(db, owner_email="access-owner@example.com", token_digest="e" * 64)
+
+    operator_cookie = login(client, "access-operator")
+    scope = client.put(
+        f"/api/admin/reviewers/{reviewer.id}/technical-scope",
+        json={"families": ["E02-A", "T01"]},
+    )
+    assert scope.status_code == 200, scope.text
+    assigned = client.post(f"/api/admin/reviews/{review.id}/assign", json={"reviewer_id": reviewer.id})
+    assert assigned.status_code == 200, assigned.text
+
+    report = client.get("/api/admin/reviewers/access-review")
+    assert report.status_code == 200, report.text
+    body = report.json()
+    assert body["fail_closed"] is True
+    assert body["roles"] == {
+        "operator": ["assign_reviews", "manage_reviewers", "manage_technical_scope", "view_all_cases"],
+        "reviewer": ["work_assigned_cases"],
+    }
+    reviewed = next(item for item in body["reviewers"] if item["reviewer_id"] == reviewer.id)
+    assert reviewed["technical_authorized_families"] == ["E02-A", "T01"]
+    assert reviewed["open_assignments"] == 1
+    assert "login_id" not in reviewed and "password" not in str(body).lower()
+
+    reviewer_cookie = login(client, "access-reviewer")
+    assert client.get(f"/api/admin/cases/{case.id}").status_code == 200
+    use_cookie(client, operator_cookie)
+    disabled = client.post(f"/api/admin/reviewers/{reviewer.id}/disable")
+    assert disabled.status_code == 200, disabled.text
+
+    use_cookie(client, reviewer_cookie)
+    assert client.get(f"/api/admin/cases/{case.id}").status_code == 401
+    db.expire_all()
+    assert db.get(Reviewer, reviewer.id).disabled_at is not None
+    assert all(row.revoked_at is not None for row in db.scalars(select(ReviewerSession).where(
+        ReviewerSession.reviewer_id == reviewer.id,
+    )).all())
+    assert db.scalar(select(ReviewerFamilyAuthorization.id).where(
+        ReviewerFamilyAuthorization.reviewer_id == reviewer.id,
+        ReviewerFamilyAuthorization.family == "T01",
+    )) is not None
+    event = db.scalar(select(AuditEvent).where(
+        AuditEvent.event_type == "BACKOFFICE_ACCESS_REVIEWED",
+        AuditEvent.actor_reviewer_id == operator.id,
+    ))
+    assert event is not None
