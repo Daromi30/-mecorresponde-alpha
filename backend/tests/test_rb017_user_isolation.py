@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.backoffice_auth import COOKIE, create_reviewer
 from app.db import Base
-from app.models import Case, Fact
+from app.models import AuditEvent, Case, Fact
 from app.reviews import HumanReview
 from app.security import CaseAccess, generate_case_token, hash_case_token, require_case_access
 from app.services_v2 import create_case
@@ -147,6 +147,140 @@ def test_reviewers_only_see_and_mutate_individually_assigned_cases(client, db):
     assert {item["case_id"] for item in queue_b.json()} == {case_b.id}
     assert client.get(f"/api/admin/cases/{case_a.id}").status_code == 403
     assert cookie_a != cookie_b
+
+
+def test_reviewer_queue_never_exposes_completed_assignments(client, db):
+    operator = create_reviewer(db, "rb017-queue-operator", PASSWORD, "operator")
+    reviewer = create_reviewer(db, "rb017-queue-reviewer", PASSWORD, "reviewer")
+    case = create_case(db, "Caso sintético con revisión completada")
+    review = HumanReview(
+        case_id=case.id, reason="RB017", priority="HIGH", status="OPEN"
+    )
+    db.add(review)
+    db.commit()
+
+    _login_reviewer(client, operator.login_id)
+    assigned = client.post(
+        f"/api/admin/reviews/{review.id}/assign",
+        json={"reviewer_id": reviewer.id},
+    )
+    assert assigned.status_code == 200, assigned.text
+    review.status = "COMPLETED"
+    db.commit()
+
+    _login_reviewer(client, reviewer.login_id)
+    assert client.get("/api/admin/reviews?status=COMPLETED").json() == []
+    assert client.get(f"/api/admin/cases/{case.id}").status_code == 403
+    assert client.get("/api/admin/stats").json()["total_cases"] == 0
+
+    _login_reviewer(client, operator.login_id)
+    completed = client.get("/api/admin/reviews?status=COMPLETED")
+    assert completed.status_code == 200
+    assert {item["id"] for item in completed.json()} == {review.id}
+    assert client.get(f"/api/admin/cases/{case.id}").status_code == 200
+
+
+def test_review_routes_require_the_exact_assigned_open_review(client, db):
+    operator = create_reviewer(db, "rb017-exact-operator", PASSWORD, "operator")
+    reviewer_a = create_reviewer(db, "rb017-exact-a", PASSWORD, "reviewer")
+    reviewer_b = create_reviewer(db, "rb017-exact-b", PASSWORD, "reviewer")
+    case = create_case(db, "Caso sintético con dos revisiones simultáneas")
+    review_a = HumanReview(
+        case_id=case.id, reason="RB017_A", priority="HIGH", status="OPEN"
+    )
+    review_b = HumanReview(
+        case_id=case.id, reason="RB017_B", priority="HIGH", status="OPEN"
+    )
+    db.add_all([review_a, review_b])
+    db.commit()
+
+    _login_reviewer(client, operator.login_id)
+    for review, reviewer in ((review_a, reviewer_a), (review_b, reviewer_b)):
+        assigned = client.post(
+            f"/api/admin/reviews/{review.id}/assign",
+            json={"reviewer_id": reviewer.id},
+        )
+        assert assigned.status_code == 200, assigned.text
+
+    _login_reviewer(client, reviewer_a.login_id)
+    assert {item["id"] for item in client.get("/api/admin/reviews").json()} == {
+        review_a.id
+    }
+    assert client.post(
+        f"/api/admin/reviews/{review_a.id}/complete",
+        json={"reviewer_decision": "La autorización exacta A es válida"},
+    ).status_code == 409
+    assert client.get(f"/api/admin/reviews/{review_b.id}/context").status_code == 403
+    assert client.post(
+        f"/api/admin/reviews/{review_b.id}/complete",
+        json={"reviewer_decision": "Intento sobre review B"},
+    ).status_code == 403
+
+    _login_reviewer(client, reviewer_b.login_id)
+    assert {item["id"] for item in client.get("/api/admin/reviews").json()} == {
+        review_b.id
+    }
+    assert client.post(
+        f"/api/admin/reviews/{review_b.id}/complete",
+        json={"reviewer_decision": "La autorización exacta B es válida"},
+    ).status_code == 409
+    assert client.get(f"/api/admin/reviews/{review_a.id}/context").status_code == 403
+    assert client.post(
+        f"/api/admin/reviews/{review_a.id}/complete",
+        json={"reviewer_decision": "Intento sobre review A"},
+    ).status_code == 403
+
+
+def test_legacy_reassignment_removes_individual_reviewer_authority(client, db):
+    operator = create_reviewer(db, "rb017-reassign-operator", PASSWORD, "operator")
+    reviewer_a = create_reviewer(db, "rb017-reassign-a", PASSWORD, "reviewer")
+    reviewer_b = create_reviewer(db, "rb017-reassign-b", PASSWORD, "reviewer")
+    case = create_case(db, "Caso sintético con reasignación legacy")
+    review = HumanReview(
+        case_id=case.id, reason="RB017", priority="HIGH", status="OPEN"
+    )
+    db.add(review)
+    db.commit()
+
+    _login_reviewer(client, operator.login_id)
+    first = client.post(
+        f"/api/admin/reviews/{review.id}/assign",
+        json={"reviewer_id": reviewer_a.id},
+    )
+    assert first.status_code == 200, first.text
+    legacy = client.post(
+        f"/api/admin/reviews/{review.id}/assign",
+        json={"assigned_to": "legacy-synthetic-pool"},
+    )
+    assert legacy.status_code == 200, legacy.text
+    assert legacy.json()["assigned_reviewer_id"] is None
+    db.expire_all()
+    assert db.get(HumanReview, review.id).assigned_reviewer_id is None
+    latest_assignment = db.scalar(
+        select(AuditEvent)
+        .where(
+            AuditEvent.case_id == case.id,
+            AuditEvent.event_type == "HUMAN_REVIEW_ASSIGNED",
+        )
+        .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+    )
+    assert latest_assignment.payload_json["previous_reviewer_id"] == reviewer_a.id
+
+    _login_reviewer(client, reviewer_a.login_id)
+    assert client.get("/api/admin/reviews").json() == []
+    assert client.get(f"/api/admin/cases/{case.id}").status_code == 403
+
+    _login_reviewer(client, operator.login_id)
+    assert client.get(f"/api/admin/cases/{case.id}").status_code == 200
+    reassigned = client.post(
+        f"/api/admin/reviews/{review.id}/assign",
+        json={"reviewer_id": reviewer_b.id},
+    )
+    assert reassigned.status_code == 200, reassigned.text
+    assert reassigned.json()["assigned_reviewer_id"] == reviewer_b.id
+
+    _login_reviewer(client, reviewer_b.login_id)
+    assert client.get(f"/api/admin/cases/{case.id}").status_code == 200
 
 
 def _request(case_id: str, token: str) -> Request:

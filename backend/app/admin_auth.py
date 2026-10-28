@@ -83,6 +83,14 @@ def require_admin(
     case_id = request.path_params.get("case_id")
     review_id = request.path_params.get("review_id")
     review = db.get(HumanReview, review_id) if review_id else None
+    if (
+        review_id
+        and review is None
+        and principal.reviewer is not None
+        and principal.reviewer.role == "reviewer"
+    ):
+        _denied(db, None, principal.actor_id, "review_not_found")
+        raise HTTPException(404, "Review not found")
     if review is not None:
         case_id = review.case_id
     case = db.get(Case, case_id) if case_id else None
@@ -97,15 +105,27 @@ def require_admin(
         ):
             _denied(db, case.id, principal.actor_id, "family_authorization_required")
             raise HTTPException(403, "Reviewer is not authorized for this family")
-        if db.scalar(
+        exact_review_authorized = (
+            review is not None
+            and review.status == "OPEN"
+            and review.assigned_reviewer_id == principal.actor_id
+        )
+        case_assignment_authorized = review is None and db.scalar(
             select(HumanReview.id).where(
                 HumanReview.case_id == case.id,
                 HumanReview.assigned_reviewer_id == principal.actor_id,
                 HumanReview.status == "OPEN",
             )
-        ) is None:
-            _denied(db, case.id, principal.actor_id, "assigned_case_required")
-            raise HTTPException(403, "Case is not assigned to this reviewer")
+        ) is not None
+        if not (exact_review_authorized or case_assignment_authorized):
+            reason = "assigned_review_required" if review is not None else "assigned_case_required"
+            _denied(db, case.id, principal.actor_id, reason)
+            raise HTTPException(
+                403,
+                "Review is not assigned to this reviewer"
+                if review is not None
+                else "Case is not assigned to this reviewer",
+            )
 
     if (
         method in {"POST", "PUT", "PATCH", "DELETE"}

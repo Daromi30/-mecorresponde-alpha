@@ -167,6 +167,20 @@ def review_queue(
     principal: AdminPrincipal = Depends(require_admin),
 ) -> list[dict[str, Any]]:
     limit = max(1, min(limit, 200))
+    if (
+        principal.reviewer is not None
+        and principal.reviewer.role == "reviewer"
+        and status != "OPEN"
+    ):
+        audit(
+            db,
+            None,
+            "BACKOFFICE_QUEUE_READ",
+            {"status": status, "private_count": 0, "result": "non_open_status_denied"},
+            actor_reviewer_id=principal.actor_id,
+        )
+        db.commit()
+        return []
     stmt = (
         select(HumanReview).join(Case, HumanReview.case_id == Case.id)
         .where(HumanReview.status == status)
@@ -334,8 +348,14 @@ def assign_review(
             raise HTTPException(422, "Private assignment requires reviewer_id only")
         if payload.assigned_to is None:
             raise HTTPException(422, "assigned_to is required")
+        previous_id = review.assigned_reviewer_id
+        review.assigned_reviewer_id = None
         review.assigned_to = payload.assigned_to.strip()
-        payload_json = {"review_id": review.id, "assigned_to": review.assigned_to}
+        payload_json = {
+            "review_id": review.id,
+            "assigned_to": review.assigned_to,
+            **({"previous_reviewer_id": previous_id} if previous_id else {}),
+        }
     audit(db, review.case_id, "HUMAN_REVIEW_ASSIGNED", payload_json, actor_reviewer_id=principal.actor_id)
     db.commit()
     return {
