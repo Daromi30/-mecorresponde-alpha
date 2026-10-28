@@ -87,25 +87,40 @@ def require_admin(
         case_id = review.case_id
     case = db.get(Case, case_id) if case_id else None
 
+    if (
+        case is not None
+        and principal.reviewer is not None
+        and principal.reviewer.role == "reviewer"
+    ):
+        if case.mode == REAL_MODE and not family_authorized(
+            db, principal.reviewer, case.family
+        ):
+            _denied(db, case.id, principal.actor_id, "family_authorization_required")
+            raise HTTPException(403, "Reviewer is not authorized for this family")
+        if db.scalar(
+            select(HumanReview.id).where(
+                HumanReview.case_id == case.id,
+                HumanReview.assigned_reviewer_id == principal.actor_id,
+                HumanReview.status == "OPEN",
+            )
+        ) is None:
+            _denied(db, case.id, principal.actor_id, "assigned_case_required")
+            raise HTTPException(403, "Case is not assigned to this reviewer")
+
+    if (
+        method in {"POST", "PUT", "PATCH", "DELETE"}
+        and path.endswith("/assign")
+        and principal.reviewer is not None
+        and principal.reviewer.role != "operator"
+    ):
+        _denied(db, case.id if case is not None else None, principal.actor_id, "operator_assignment_required")
+        raise HTTPException(403, "Operator session required")
+
     if case is not None and case.mode == REAL_MODE:
         if principal.reviewer is None:
             _denied(db, case.id, None, "individual_session_required")
             raise HTTPException(404, "Case not found")
-        if principal.reviewer.role == "reviewer":
-            if not family_authorized(db, principal.reviewer, case.family):
-                _denied(db, case.id, principal.actor_id, "family_authorization_required")
-                raise HTTPException(403, "Reviewer is not authorized for this family")
-            if db.scalar(select(HumanReview.id).where(
-                HumanReview.case_id == case.id,
-                HumanReview.assigned_reviewer_id == principal.actor_id,
-                HumanReview.status == "OPEN",
-            )) is None:
-                _denied(db, case.id, principal.actor_id, "assigned_case_required")
-                raise HTTPException(403, "Case is not assigned to this reviewer")
         if method in {"POST", "PUT", "PATCH", "DELETE"}:
-            if path.endswith("/assign") and principal.reviewer.role != "operator":
-                _denied(db, case.id, principal.actor_id, "operator_assignment_required")
-                raise HTTPException(403, "Operator session required")
             if (review is not None and review.assigned_reviewer_id is not None
                     and principal.reviewer.role == "reviewer"
                     and review.assigned_reviewer_id != principal.actor_id):
