@@ -56,12 +56,12 @@ def _review_or_404(db: Session, review_id: str) -> HumanReview:
     return review
 
 
-def _distinct_cases_for_event(db: Session, event_type: str, synthetic_only: bool = False) -> int:
+def _distinct_cases_for_event(db: Session, event_type: str, scope: Any = True) -> int:
     stmt = select(func.count(func.distinct(AuditEvent.case_id))).where(
         AuditEvent.event_type == event_type, AuditEvent.case_id.is_not(None),
     )
-    if synthetic_only:
-        stmt = stmt.join(Case, AuditEvent.case_id == Case.id).where(Case.mode == "SYNTHETIC")
+    if scope is not True:
+        stmt = stmt.join(Case, AuditEvent.case_id == Case.id).where(scope)
     return int(
         db.scalar(stmt)
         or 0
@@ -75,8 +75,16 @@ def admin_health() -> dict[str, str]:
 
 @router.get("/stats")
 def admin_stats(db: Session = Depends(get_db), principal: AdminPrincipal = Depends(require_admin)) -> dict[str, Any]:
-    synthetic_only = principal.reviewer is None
-    scope = Case.mode == "SYNTHETIC" if synthetic_only else True
+    if principal.reviewer is None:
+        scope = Case.mode == "SYNTHETIC"
+    elif principal.reviewer.role == "reviewer":
+        assigned_case_ids = select(HumanReview.case_id).where(
+            HumanReview.assigned_reviewer_id == principal.actor_id,
+            HumanReview.status == "OPEN",
+        )
+        scope = Case.id.in_(assigned_case_ids)
+    else:
+        scope = True
     open_reviews = db.scalar(
         select(func.count()).select_from(HumanReview).join(Case, HumanReview.case_id == Case.id)
         .where(HumanReview.status == "OPEN", scope)
@@ -124,10 +132,10 @@ def admin_stats(db: Session = Depends(get_db), principal: AdminPrincipal = Depen
 
     funnel = {
         "started": int(total_cases),
-        "diagnosed": _distinct_cases_for_event(db, "DIAGNOSIS_GENERATED", synthetic_only),
-        "action_prepared": _distinct_cases_for_event(db, "CLAIM_PACKAGE_PREPARED", synthetic_only),
-        "submitted": _distinct_cases_for_event(db, "CLAIM_SUBMITTED", synthetic_only),
-        "response_analyzed": _distinct_cases_for_event(db, "RESPONSE_ANALYZED", synthetic_only),
+        "diagnosed": _distinct_cases_for_event(db, "DIAGNOSIS_GENERATED", scope),
+        "action_prepared": _distinct_cases_for_event(db, "CLAIM_PACKAGE_PREPARED", scope),
+        "submitted": _distinct_cases_for_event(db, "CLAIM_SUBMITTED", scope),
+        "response_analyzed": _distinct_cases_for_event(db, "RESPONSE_ANALYZED", scope),
         "resolved_verified": int(verified_resolutions),
     }
 
@@ -159,6 +167,20 @@ def review_queue(
     principal: AdminPrincipal = Depends(require_admin),
 ) -> list[dict[str, Any]]:
     limit = max(1, min(limit, 200))
+    if (
+        principal.reviewer is not None
+        and principal.reviewer.role == "reviewer"
+        and status != "OPEN"
+    ):
+        audit(
+            db,
+            None,
+            "BACKOFFICE_QUEUE_READ",
+            {"status": status, "private_count": 0, "result": "non_open_status_denied"},
+            actor_reviewer_id=principal.actor_id,
+        )
+        db.commit()
+        return []
     stmt = (
         select(HumanReview).join(Case, HumanReview.case_id == Case.id)
         .where(HumanReview.status == status)
@@ -173,10 +195,8 @@ def review_queue(
             ReviewerFamilyAuthorization.family == Case.family,
         ).exists()
         stmt = stmt.where(
-            (Case.mode != "PRIVATE_REAL_BETA")
-            | ((HumanReview.status == "OPEN")
-               & (HumanReview.assigned_reviewer_id == principal.actor_id)
-               & authorized_family)
+            HumanReview.assigned_reviewer_id == principal.actor_id,
+            (Case.mode != "PRIVATE_REAL_BETA") | authorized_family,
         )
     rows = db.scalars(stmt).all()
     result: list[dict[str, Any]] = []
@@ -309,21 +329,33 @@ def assign_review(
     case = _case_or_404(db, review.case_id)
     if review.status != "OPEN":
         raise HTTPException(status_code=409, detail="Review is not open")
-    if case.mode == "PRIVATE_REAL_BETA":
-        if payload.assigned_to is not None or payload.reviewer_id is None:
-            raise HTTPException(422, "Private assignment requires reviewer_id only")
+    if payload.reviewer_id is not None:
+        if payload.assigned_to is not None:
+            raise HTTPException(422, "Use reviewer_id or assigned_to, not both")
         target = db.get(Reviewer, payload.reviewer_id)
-        if target is None or not family_authorized(db, target, case.family):
+        if (
+            target is None
+            or target.disabled_at is not None
+            or (case.mode == "PRIVATE_REAL_BETA" and not family_authorized(db, target, case.family))
+        ):
             raise HTTPException(422, "Reviewer unavailable")
         previous_id = review.assigned_reviewer_id
         review.assigned_reviewer_id = target.id
         review.assigned_to = target.login_id  # display compatibility, never actor identity
         payload_json = {"review_id": review.id, "assigned_reviewer_id": target.id, "previous_reviewer_id": previous_id}
     else:
+        if case.mode == "PRIVATE_REAL_BETA":
+            raise HTTPException(422, "Private assignment requires reviewer_id only")
         if payload.assigned_to is None:
             raise HTTPException(422, "assigned_to is required")
+        previous_id = review.assigned_reviewer_id
+        review.assigned_reviewer_id = None
         review.assigned_to = payload.assigned_to.strip()
-        payload_json = {"review_id": review.id, "assigned_to": review.assigned_to}
+        payload_json = {
+            "review_id": review.id,
+            "assigned_to": review.assigned_to,
+            **({"previous_reviewer_id": previous_id} if previous_id else {}),
+        }
     audit(db, review.case_id, "HUMAN_REVIEW_ASSIGNED", payload_json, actor_reviewer_id=principal.actor_id)
     db.commit()
     return {
