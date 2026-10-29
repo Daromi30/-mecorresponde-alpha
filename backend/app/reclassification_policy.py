@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from . import services_v2 as svc
 from .family_manifest import FAMILY_MANIFEST
+from .derived_invalidation import invalidate_case_derivatives
 from .models import Action, Case, Decision
 
 
@@ -171,12 +172,16 @@ def install_reclassification_policy() -> None:
             _complete_reclassification_action(action)
             target = FAMILY_MANIFEST[target_family]
             visited_families.append(source_family)
+            invalidate_case_derivatives(
+                db,
+                case,
+                reason="family_reclassification",
+                mutation="engine_reclassification",
+            )
             case.family = target.code
             case.vertical = target.vertical
             case.title = target.title
             case.status = "INTAKE"
-            case.current_decision_id = None
-            case.current_action_id = None
             svc.audit(
                 db,
                 case.id,

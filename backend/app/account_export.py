@@ -123,11 +123,15 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
     exported_cases: list[dict[str, Any]] = []
     for case in cases:
         pending_release = private_scope(case) and not release_approved(db, case)
+        valid_decision_ids = {row.id for row in decisions[case.id] if row.invalidated_at is None}
+        valid_action_ids = {row.id for row in actions[case.id] if row.status != "SUPERSEDED"}
+        current_decision_id = case.current_decision_id if case.current_decision_id in valid_decision_ids else None
+        current_action_id = case.current_action_id if case.current_action_id in valid_action_ids else None
         exported_cases.append(
             {
                 "id": case.id,
                 "release_status": (
-                    "NOT_RELEASED" if pending_release and not case.current_decision_id
+                    "NOT_RELEASED" if pending_release and not current_decision_id
                     else "PENDING_HUMAN_REVIEW" if pending_release else "RELEASED"
                 ),
                 "status": case.status,
@@ -137,8 +141,8 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                 "jurisdiction": case.jurisdiction,
                 "title": case.title,
                 "raw_intake": case.raw_intake,
-                "current_decision_id": None if pending_release else case.current_decision_id,
-                "current_action_id": None if pending_release else case.current_action_id,
+                "current_decision_id": None if pending_release else current_decision_id,
+                "current_action_id": None if pending_release else current_action_id,
                 "schema_version": case.schema_version,
                 "opened_at": _json_value(case.opened_at),
                 "closed_at": _json_value(case.closed_at),
@@ -215,6 +219,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "created_at": _json_value(row.created_at),
                     }
                     for row in ([] if pending_release else decisions[case.id])
+                    if row.invalidated_at is None
                 ],
                 "actions": [
                     {
@@ -226,6 +231,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "completed_at": _json_value(row.completed_at),
                     }
                     for row in ([] if pending_release else actions[case.id])
+                    if row.status != "SUPERSEDED"
                 ],
                 "deadlines": [
                     {
@@ -317,6 +323,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "completed_at": _json_value(row.completed_at),
                     }
                     for row in ([] if private_scope(case) else reviews[case.id])
+                    if row.status != "SUPERSEDED"
                 ],
                 "audit_events": [
                     {

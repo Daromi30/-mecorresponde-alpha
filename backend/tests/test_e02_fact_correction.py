@@ -46,7 +46,7 @@ def test_e02_correction_invalidates_then_rediagnoses_without_new_case(client, db
     assert reopened["status"] == "INTAKE"
     assert reopened["current_decision_id"] is None
     assert reopened["current_action_id"] is None
-    assert any(d["id"] == old_decision for d in reopened["decisions"])
+    assert all(d["id"] != old_decision for d in reopened["decisions"])
     facts = [f for f in reopened["facts"] if f["key"] == KEY]
     assert len(facts) == 2
     assert facts[-1]["supersedes_fact_id"] == facts[0]["id"]
@@ -67,7 +67,7 @@ def test_e02_correction_invalidates_then_rediagnoses_without_new_case(client, db
     active = client.get(f"/api/cases/{case_id}").json()
     assert active["id"] == case_id
     assert active["current_decision_id"] != old_decision
-    assert len(active["decisions"]) == 2
+    assert len(active["decisions"]) == 1
     assert next(d for d in active["decisions"] if d["id"] == active["current_decision_id"])["claimable_amount"] == 20
 
 

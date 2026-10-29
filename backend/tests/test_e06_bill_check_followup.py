@@ -137,9 +137,10 @@ def test_e06_mismatching_bill_reclassifies_to_e02a_without_rewriting_source_deci
     assert source_decision is not None
     assert source_decision.viability == "LOW"
     assert source_decision.scope_status == "SUPPORTED"
+    assert source_decision.invalidated_at is not None
     assert source_action is not None
     assert source_action.type == "RECLASSIFY_E02_A"
-    assert source_action.status == "COMPLETED"
+    assert source_action.status == "SUPERSEDED"
 
     source_diagnosis_event = next(
         event
