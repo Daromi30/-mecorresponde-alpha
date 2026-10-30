@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
@@ -9,7 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import services_v2 as svc
-from .models import Action, Case, Document, Evidence, Fact
+from .derived_invalidation import invalidate_case_derivatives
+from .models import Case, Document, Evidence, Fact
 
 
 _INSTALLED = False
@@ -56,29 +56,6 @@ def install_fact_write_policy() -> None:
     previous_confirm_document_fact = svc.confirm_document_fact
     previous_analyze_company_response = svc.analyze_company_response
 
-    def supersede_current_analysis(db: Session, case: Case, *, fact_key: str, source: str) -> None:
-        previous_action_id = case.current_action_id
-        previous_decision_id = case.current_decision_id
-        current = db.get(Action, previous_action_id) if previous_action_id else None
-        if current is not None and current.case_id == case.id and current.status != "COMPLETED":
-            current.status = "SUPERSEDED"
-            current.completed_at = datetime.now(timezone.utc)
-        if previous_action_id or previous_decision_id:
-            svc.audit(
-                db,
-                case.id,
-                "CURRENT_ANALYSIS_SUPERSEDED",
-                {
-                    "fact_key": fact_key,
-                    "source": source,
-                    "previous_action_id": previous_action_id,
-                    "previous_decision_id": previous_decision_id,
-                },
-            )
-        case.current_action_id = None
-        case.current_decision_id = None
-        case.status = "INTAKE"
-
     def upsert_fact_with_source_aware_lifecycle(
         db: Session,
         case: Case,
@@ -97,7 +74,11 @@ def install_fact_write_policy() -> None:
         if case.mode == "PRIVATE_REAL_BETA" and state == "unknown" and user_confirmed:
             raise HTTPException(422, "Unknown private facts cannot be confirmed")
         if created_by == "user":
-            supersede_current_analysis(db, case, fact_key=key, source="user")
+            invalidate_case_derivatives(
+                db, case, reason="material_fact_mutation", mutation="user_fact",
+                fact_key=key, source="user",
+            )
+            case.status = "INTAKE"
             return previous_upsert_fact(
                 db,
                 case,
@@ -183,7 +164,11 @@ def install_fact_write_policy() -> None:
         excerpt: str | None = None,
         materiality: str = "critical",
     ) -> Fact:
-        supersede_current_analysis(db, case, fact_key=key, source="document")
+        invalidate_case_derivatives(
+            db, case, reason="material_fact_mutation", mutation="document_fact",
+            fact_key=key, source="document",
+        )
+        case.status = "INTAKE"
         return previous_confirm_document_fact(
             db,
             case,

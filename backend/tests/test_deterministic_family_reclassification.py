@@ -31,7 +31,7 @@ def _assert_reclassified(db, case_id: str, source_action: str, target_family: st
     assert case.vertical == FAMILY_MANIFEST[target_family].vertical
     assert case.title == FAMILY_MANIFEST[target_family].title
     historical = [item for item in _actions(db, case_id) if item.type == source_action]
-    assert historical and all(item.status == "COMPLETED" for item in historical)
+    assert historical and all(item.status == "SUPERSEDED" for item in historical)
     event = db.scalars(
         select(AuditEvent)
         .where(

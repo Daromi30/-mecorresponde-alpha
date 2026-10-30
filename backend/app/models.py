@@ -205,6 +205,7 @@ class Decision(Base):
     counterarguments_snapshot: Mapped[list[Any]] = mapped_column(JSON, default=list)
     rule_evaluations_json: Mapped[list[Any]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Action(Base):

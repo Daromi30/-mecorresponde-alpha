@@ -12,6 +12,7 @@ from ..admin_auth import AdminPrincipal, require_admin
 from ..case_lifecycle import complete_current_action, set_current_action
 from ..case_locking import lock_case_for_update
 from ..db import get_db
+from ..derived_invalidation import invalidate_case_derivatives
 from ..evidence_context import atomic_workflow_transaction
 from ..family_manifest import FAMILY_MANIFEST
 from ..models import Action, Calculation, Case, Decision, Evidence, Fact, LegalRuleVersion, LegalSource, RuleEvaluation
@@ -427,6 +428,13 @@ def reclassify_unsupported_review(
     with atomic_workflow_transaction(db) as commit:
         entry = FAMILY_MANIFEST[payload.target_family]
         previous_vertical = case.vertical
+        invalidate_case_derivatives(
+            db,
+            case,
+            reason="family_reclassification",
+            mutation="assisted_reclassification",
+            exclude_review_ids=frozenset({review.id}),
+        )
         case.family = entry.code
         case.vertical = entry.vertical
         case.title = entry.title

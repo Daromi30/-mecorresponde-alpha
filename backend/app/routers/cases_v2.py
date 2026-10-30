@@ -71,6 +71,10 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
     evidence = db.scalars(select(Evidence).where(Evidence.case_id == case.id).order_by(Evidence.created_at.asc())).all()
     reviews = db.scalars(select(HumanReview).where(HumanReview.case_id == case.id).order_by(HumanReview.created_at.desc())).all()
     pending_release = private_scope(case) and not internal and not release_approved(db, case)
+    valid_decision_ids = {row.id for row in decisions if row.invalidated_at is None}
+    valid_action_ids = {row.id for row in actions if row.status != "SUPERSEDED"}
+    current_decision_id = case.current_decision_id if case.current_decision_id in valid_decision_ids else None
+    current_action_id = case.current_action_id if case.current_action_id in valid_action_ids else None
     return {
         "id": case.id,
         "mode": case.mode,
@@ -80,10 +84,10 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
         "family": case.family,
         "title": case.title,
         "raw_intake": case.raw_intake,
-        "current_decision_id": None if pending_release else case.current_decision_id,
-        "current_action_id": None if private_scope(case) and not internal else case.current_action_id,
+        "current_decision_id": None if pending_release else current_decision_id,
+        "current_action_id": None if private_scope(case) and not internal else current_action_id,
         "release_status": (
-            "NOT_RELEASED" if pending_release and not case.current_decision_id
+            "NOT_RELEASED" if pending_release and not current_decision_id
             else "PENDING_HUMAN_REVIEW" if pending_release else "RELEASED"
         ),
         "execution_verification": (
@@ -130,12 +134,15 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
                 "counterarguments": decision.counterarguments_snapshot,
                 "rule_evaluations": decision.rule_evaluations_json,
                 "created_at": decision.created_at,
+                **({"invalidated_at": decision.invalidated_at} if internal else {}),
             }
             for decision in ([] if pending_release else decisions)
+            if internal or decision.invalidated_at is None
         ],
         "actions": [
             {"id": action.id, "type": action.type, "status": action.status, "payload": action.payload_json}
             for action in ([] if private_scope(case) and not internal else actions)
+            if internal or action.status != "SUPERSEDED"
         ],
         "deadlines": [
             {"id": deadline.id, "type": deadline.deadline_type, "computed_date": deadline.computed_date, "status": deadline.status}
@@ -151,6 +158,7 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
                 "reviewer_decision": review.reviewer_decision,
             }
             for review in ([] if private_scope(case) and not internal else reviews)
+            if internal or review.status != "SUPERSEDED"
         ],
     }
 
