@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .auth_models import Reviewer, ReviewerFamilyAuthorization
+from .family_manifest import FAMILY_MANIFEST
 from .models import Action, Case, Decision, Fact
 from .reviews import HumanReview
 
@@ -35,7 +36,7 @@ def facts_version(db: Session, case_id: str) -> str:
 
 def family_authorized(db: Session, reviewer: Reviewer | None, family: str | None) -> bool:
     return bool(
-        reviewer is not None and reviewer.disabled_at is None and family in {"E02-A", "C01"}
+        reviewer is not None and reviewer.disabled_at is None and family in FAMILY_MANIFEST
         and db.scalar(select(ReviewerFamilyAuthorization.id).where(
             ReviewerFamilyAuthorization.reviewer_id == reviewer.id,
             ReviewerFamilyAuthorization.family == family,
