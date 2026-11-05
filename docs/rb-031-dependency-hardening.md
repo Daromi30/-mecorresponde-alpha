@@ -5,12 +5,17 @@ runtime feature flag or enabling the real beta.
 
 ## Enforced baseline
 
-- `backend/requirements.txt` remains the human-maintained direct dependency
-  policy.
+- `backend/requirements.in` is the human-maintained direct dependency policy.
 - `backend/requirements.lock` contains the fully resolved dependency graph with
   exact versions and SHA-256 hashes.
+- `backend/requirements.txt` is a compatibility entrypoint that enables
+  `--require-hashes` and includes only `requirements.lock`. The persisted legacy
+  Render command therefore installs the same hashed graph instead of resolving
+  direct dependency ranges.
 - GitHub Actions and Render install only the lock with `--require-hashes` and
   run `pip check` after installation.
+- Root `.python-version` pins Python `3.14.3`; Render reads this file for its
+  native Python runtime and GitHub Actions reads the same file.
 - Third-party GitHub Actions are pinned to immutable commit SHAs, with their
   reviewed major versions retained as comments.
 - The Render service remains on the free plan and all runtime gates keep their
@@ -24,9 +29,10 @@ resulting complete lock at the time of review.
 
 ## Controlled update procedure
 
-1. Change only the necessary direct constraint in `requirements.txt`.
+1. Change only the necessary direct constraint in `requirements.in`.
 2. Regenerate the lock with `pip-compile --upgrade --generate-hashes
-   --strip-extras --no-emit-index-url --no-emit-trusted-host`.
+   --strip-extras --no-emit-index-url --no-emit-trusted-host`, using
+   `requirements.in` as the only source.
 3. Review the resolved diff and run `pip-audit` against the lock.
 4. Install the lock with `--require-hashes`, run `pip check`, and execute the
    full relevant test suite before review.

@@ -18,7 +18,7 @@ def _canonical(name: str) -> str:
 
 
 def test_lock_covers_direct_dependencies_with_exact_versions_and_hashes():
-    source = (BACKEND_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    source = (BACKEND_ROOT / "requirements.in").read_text(encoding="utf-8")
     lock = (BACKEND_ROOT / "requirements.lock").read_text(encoding="utf-8")
     direct = {
         _canonical(re.split(r"[<>=!\[]", line, maxsplit=1)[0])
@@ -40,6 +40,17 @@ def test_lock_covers_direct_dependencies_with_exact_versions_and_hashes():
     assert "pypdf==6.21.4" in lock
 
 
+def test_legacy_render_entrypoint_forces_the_hashed_lock():
+    legacy = (BACKEND_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    active_lines = [
+        line.strip()
+        for line in legacy.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert active_lines == ["--require-hashes", "-r requirements.lock"]
+    assert not any(re.match(r"^[A-Za-z0-9]", line) for line in active_lines)
+
+
 def test_ci_and_render_install_only_the_hashed_lock_and_actions_are_sha_pinned():
     workflow_texts = [
         path.read_text(encoding="utf-8")
@@ -49,6 +60,8 @@ def test_ci_and_render_install_only_the_hashed_lock_and_actions_are_sha_pinned()
     action_refs = re.findall(r"uses:\s+[^@\s]+@([^\s#]+)", combined)
     assert action_refs
     assert all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in action_refs)
+    assert combined.count("python-version-file: '.python-version'") == 4
+    assert "python-version:" not in combined
     assert "cache-dependency-path: backend/requirements.lock" in combined
     assert combined.count("--require-hashes -r requirements.lock") == 4
     assert "pip install -r requirements.txt" not in combined
@@ -58,6 +71,14 @@ def test_ci_and_render_install_only_the_hashed_lock_and_actions_are_sha_pinned()
     assert "--require-hashes -r requirements.lock" in render
     assert "python -m pip check" in render
     assert "plan: free" in render
+
+
+def test_python_runtime_is_fully_pinned_for_ci_and_render():
+    pin = (REPOSITORY_ROOT / ".python-version").read_text(encoding="utf-8").strip()
+    assert pin == "3.14.3"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", pin)
+    render = (REPOSITORY_ROOT / "render.yaml").read_text(encoding="utf-8")
+    assert "runtime: python" in render
 
 
 def test_dependency_change_does_not_open_runtime_controls():
