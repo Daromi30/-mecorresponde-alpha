@@ -6,7 +6,7 @@ services:
     region: frankfurt
     repo: https://github.com/Daromi30/-mecorresponde-alpha
     branch: main
-    buildCommand: cd backend && pip install -r requirements.txt
+    buildCommand: cd backend && python -m pip install --require-hashes -r requirements.lock && python -m pip check
     startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health/persistence
     autoDeployTrigger: commit
