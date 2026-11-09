@@ -31,6 +31,7 @@ def test_legal_rule_governance_rollback_never_manufactures_approval():
             title="Synthetic migration source",
             official_url="https://example.invalid/synthetic",
         ))
+        db.flush()
         rule = LegalRuleVersion(
             rule_id="SYNTHETIC_RULE",
             version=1,
