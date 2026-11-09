@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from .case_lifecycle import complete_current_action, set_current_action
 from .legal_source_registry import is_trusted_official_legal_url
+from .legal_rule_governance import allowed_for_case
 from .models import Action, AuditEvent, Case, Decision, Fact, LegalRuleVersion, LegalSource
 
 
@@ -54,7 +55,7 @@ def _decision_remedies(decision: Decision) -> list[str]:
     return result
 
 
-def _verified_legal_basis(db: Session, decision: Decision) -> list[dict[str, Any]]:
+def _verified_legal_basis(db: Session, decision: Decision, case: Case) -> list[dict[str, Any]]:
     """Resolve citations from the exact reviewed rule versions used by the decision."""
     basis: list[dict[str, Any]] = []
     seen: set[tuple[str, int]] = set()
@@ -71,11 +72,13 @@ def _verified_legal_basis(db: Session, decision: Decision) -> list[dict[str, Any
             select(LegalRuleVersion).where(
                 LegalRuleVersion.rule_id == rule_id,
                 LegalRuleVersion.version == version,
-                LegalRuleVersion.review_status == "approved",
             )
         )
-        if rule is None:
-            raise ValueError(f"Reviewed legal rule version missing for {rule_id} v{version}")
+        from .private_beta_release import release_approved
+        if rule is None or not allowed_for_case(
+            rule, case, case_release_approved=release_approved(db, case)
+        ):
+            raise ValueError(f"Eligible legal rule version missing for {rule_id} v{version}")
         source = db.get(LegalSource, rule.source_id)
         if source is None or source.status != "active" or not is_trusted_official_legal_url(source.official_url):
             raise ValueError(f"Verified official legal source missing for {rule_id} v{version}")
@@ -498,7 +501,7 @@ def prepare_registered_claim_package(db: Session, case: Case) -> dict[str, Any]:
         remedies=_decision_remedies(decision),
     )
     rendered = renderer(context)
-    legal_basis = _verified_legal_basis(db, decision)
+    legal_basis = _verified_legal_basis(db, decision, case)
     amount = round(float(rendered.get("amount") or 0.0), 2)
     payload = {
         "claim_type": rendered["claim_type"],

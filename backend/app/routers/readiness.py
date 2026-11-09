@@ -10,6 +10,7 @@ from ..admin_auth import require_admin
 from ..config import settings
 from ..db import engine, get_db
 from ..family_manifest import FAMILY_MANIFEST, supported_family_codes
+from ..legal_rule_governance import TECHNICALLY_EXECUTABLE_STATUSES
 from ..models import LegalRuleVersion, LegalSource
 from ..privacy_information import privacy_information_status
 from ..services_v2 import EVALUATORS, FAMILY_RULES
@@ -91,11 +92,21 @@ def _storage_check() -> dict[str, Any]:
     )
 
 
-def _legal_catalog_check(db: Session) -> dict[str, Any]:
+def _legal_catalog_checks(db: Session) -> tuple[dict[str, Any], dict[str, Any]]:
     source_count = int(db.scalar(select(func.count()).select_from(LegalSource)) or 0)
-    approved_rows = db.scalars(
-        select(LegalRuleVersion).where(LegalRuleVersion.review_status == "approved")
+    technical_rows = db.scalars(
+        select(LegalRuleVersion).where(
+            LegalRuleVersion.review_status.in_(TECHNICALLY_EXECUTABLE_STATUSES)
+        )
     ).all()
+    approved_rows = db.scalars(
+        select(LegalRuleVersion).where(
+            LegalRuleVersion.review_status == "approved",
+            LegalRuleVersion.reviewed_by.is_not(None),
+            func.length(func.trim(LegalRuleVersion.reviewed_by)) > 0,
+        )
+    ).all()
+    technical_rule_ids = {row.rule_id for row in technical_rows}
     approved_keys = {(row.rule_id, row.version) for row in approved_rows}
     approved_rule_ids = {row.rule_id for row in approved_rows}
     required_rule_ids = {
@@ -103,25 +114,44 @@ def _legal_catalog_check(db: Session) -> dict[str, Any]:
         for entry in FAMILY_MANIFEST.values()
         for rule_id in entry.rule_ids
     }
-    missing_rule_ids = sorted(required_rule_ids - approved_rule_ids)
-    ok = source_count > 0 and not missing_rule_ids and bool(approved_keys)
-    return _check(
-        "reviewed_legal_catalog",
-        ok,
-        label="Catálogo jurídico revisado",
+    missing_technical_rule_ids = sorted(required_rule_ids - technical_rule_ids)
+    missing_approved_rule_ids = sorted(required_rule_ids - approved_rule_ids)
+    technical = _check(
+        "technical_legal_catalog",
+        source_count > 0 and not missing_technical_rule_ids and bool(technical_rows),
+        label="Catálogo jurídico ejecutable con datos sintéticos",
         detail=(
-            "Todas las familias registradas tienen sus reglas jurídicas aprobadas en el catálogo."
-            if ok
-            else "Faltan fuentes o reglas aprobadas para una o más familias registradas."
+            "Todas las familias tienen fuentes y versiones técnicas trazables para pruebas sintéticas."
+            if not missing_technical_rule_ids
+            else "Faltan fuentes o versiones técnicas para una o más familias."
         ),
         severity="INTERNAL_BETA_BLOCKER",
         metadata={
             "official_sources": source_count,
-            "approved_rule_versions": len(approved_keys),
+            "technical_rule_versions": len(technical_rows),
             "required_rule_ids": len(required_rule_ids),
-            "missing_rule_ids": missing_rule_ids,
+            "missing_rule_ids": missing_technical_rule_ids,
+            "legal_approval": "PENDING",
         },
     )
+    professional = _check(
+        "reviewed_legal_catalog",
+        source_count > 0 and not missing_approved_rule_ids and bool(approved_keys),
+        label="Catálogo jurídico aprobado profesionalmente",
+        detail=(
+            "Todas las familias registradas tienen reglas con aprobación profesional atribuida."
+            if not missing_approved_rule_ids
+            else "La aprobación profesional sigue pendiente para una o más familias."
+        ),
+        severity="BETA_BLOCKER",
+        metadata={
+            "official_sources": source_count,
+            "approved_rule_versions": len(approved_keys),
+            "required_rule_ids": len(required_rule_ids),
+            "missing_rule_ids": missing_approved_rule_ids,
+        },
+    )
+    return technical, professional
 
 
 def _family_registry_check() -> dict[str, Any]:
@@ -172,7 +202,7 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
         metadata={"backend": backend},
     )
     family_registry = _family_registry_check()
-    legal_catalog = _legal_catalog_check(db)
+    technical_legal_catalog, reviewed_legal_catalog = _legal_catalog_checks(db)
     protected_backoffice = _check(
         "protected_backoffice",
         bool(settings.admin_api_token.strip()),
@@ -203,7 +233,8 @@ def beta_readiness(db: Session = Depends(get_db)) -> dict[str, Any]:
             },
         ),
         family_registry,
-        legal_catalog,
+        technical_legal_catalog,
+        reviewed_legal_catalog,
         protected_backoffice,
         _check(
             "all_family_acceptance",

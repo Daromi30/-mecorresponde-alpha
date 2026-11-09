@@ -45,7 +45,7 @@ def test_current_decision_exposes_exact_official_legal_sources(client):
         assert item["title"]
         assert item["official_url"].startswith("https://")
         assert item["jurisdiction"] == "ES"
-        assert item["review_status"] == "approved"
+        assert item["review_status"] == "technical_draft"
 
 
 def test_sources_are_empty_before_diagnosis(client):

@@ -29,7 +29,8 @@ def test_alpha_problem_page_is_reachable_but_not_indexable(client):
     assert "Mantenimiento cobrado después de cambiar de compañía de luz" in response.text
     assert "no decide por sí sola tu caso" in response.text
     assert "Motor de Resolución" in response.text
-    assert "https://www.boe.es/" in response.text
+    assert "https://www.boe.es/" not in response.text
+    assert "Las fuentes aplicables se mostrar" in response.text
     assert "default-src 'self'" in response.headers["content-security-policy"]
 
 

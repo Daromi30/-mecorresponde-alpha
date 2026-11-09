@@ -259,9 +259,14 @@ def _ensure_rule(
             conditions_json=conditions,
             consequence_json=consequence,
             interpretation=interpretation,
+            review_status="technical_draft",
         )
         db.add(rule)
         db.flush()
+    elif rule.review_status == "approved" and not (rule.reviewed_by or "").strip():
+        # Historical seed data used ``approved`` as a technical readiness flag.
+        # It was never professional approval and must not retain that meaning.
+        rule.review_status = "technical_draft"
     return rule
 
 

@@ -5,7 +5,7 @@ from html import escape
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -32,6 +32,8 @@ def _legal_sources(db: Session, family: str) -> list[dict[str, str]]:
         .where(
             LegalRuleVersion.rule_id.in_(manifest.rule_ids),
             LegalRuleVersion.review_status == "approved",
+            LegalRuleVersion.reviewed_by.is_not(None),
+            func.length(func.trim(LegalRuleVersion.reviewed_by)) > 0,
         )
         .order_by(LegalRuleVersion.rule_id.asc(), LegalRuleVersion.version.desc())
     ).all()
