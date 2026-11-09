@@ -170,18 +170,17 @@ def test_private_release_requires_assigned_reviewer_for_current_decision(
 
     _assign_and_approve(client, review, reviewer)
     assert client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL).status_code in {403, 409}
+    assert release_approved(db, db.get(Case, case_id))
     released = client.post(f"/api/cases/{case_id}/prepare-claim")
-    assert released.status_code == 200, released.text
-    assert released.json() == {"status": "PENDING_HUMAN_REVIEW", "reason": "External material is not released"}
+    assert released.status_code == 422
+    assert "Eligible legal rule version missing" in released.json()["detail"]
     assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
-    draft_review = db.scalar(select(HumanReview).where(
-        HumanReview.case_id == case_id, HumanReview.reason == RELEASE_REASON,
+    assert not db.scalars(select(HumanReview).where(
+        HumanReview.case_id == case_id,
+        HumanReview.reason == RELEASE_REASON,
         HumanReview.status == "OPEN",
-    ))
-    assert draft_review is not None and draft_review.id != review.id
-    _assign_and_approve(client, draft_review, reviewer)
-    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
-    assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 409
+    )).all()
+    assert client.post(f"/api/cases/{case_id}/submission", json={"submitted_on": "2026-09-01"}).status_code == 409
     participant_case = client.get(f"/api/cases/{case_id}")
     assert participant_case.status_code == 200
     assert participant_case.json()["current_action_id"] is None

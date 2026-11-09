@@ -74,10 +74,7 @@ def _verified_legal_basis(db: Session, decision: Decision, case: Case) -> list[d
                 LegalRuleVersion.version == version,
             )
         )
-        from .private_beta_release import release_approved
-        if rule is None or not allowed_for_case(
-            rule, case, case_release_approved=release_approved(db, case)
-        ):
+        if rule is None or not allowed_for_case(rule, case):
             raise ValueError(f"Eligible legal rule version missing for {rule_id} v{version}")
         source = db.get(LegalSource, rule.source_id)
         if source is None or source.status != "active" or not is_trusted_official_legal_url(source.official_url):

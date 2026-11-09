@@ -39,10 +39,7 @@ def _verified_basis_for_preparable_decision(db, decision, case):
                 LegalRuleVersion.version == version,
             )
         )
-        from .private_beta_release import release_approved
-        if rule is None or not allowed_for_case(
-            rule, case, case_release_approved=release_approved(db, case)
-        ):
+        if rule is None or not allowed_for_case(rule, case):
             raise ValueError(f"Eligible legal rule version missing for {rule_id} v{version}")
         source = db.get(LegalSource, rule.source_id)
         if (

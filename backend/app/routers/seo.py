@@ -5,12 +5,13 @@ from html import escape
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import get_db
 from ..family_manifest import FAMILY_MANIFEST
+from ..legal_rule_governance import professionally_approved
 from ..models import LegalRuleVersion, LegalSource
 from ..seo_pages import SEO_BY_PATH, SEO_PROBLEM_PAGES
 
@@ -32,8 +33,6 @@ def _legal_sources(db: Session, family: str) -> list[dict[str, str]]:
         .where(
             LegalRuleVersion.rule_id.in_(manifest.rule_ids),
             LegalRuleVersion.review_status == "approved",
-            LegalRuleVersion.reviewed_by.is_not(None),
-            func.length(func.trim(LegalRuleVersion.reviewed_by)) > 0,
         )
         .order_by(LegalRuleVersion.rule_id.asc(), LegalRuleVersion.version.desc())
     ).all()
@@ -41,6 +40,8 @@ def _legal_sources(db: Session, family: str) -> list[dict[str, str]]:
     seen: set[str] = set()
     result: list[dict[str, str]] = []
     for row in rows:
+        if not professionally_approved(row):
+            continue
         if row.rule_id in seen:
             continue
         source = db.get(LegalSource, row.source_id)

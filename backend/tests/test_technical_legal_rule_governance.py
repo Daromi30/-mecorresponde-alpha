@@ -1,11 +1,14 @@
 from types import SimpleNamespace
 
+from sqlalchemy import select
+
 from app.legal_rule_governance import (
     allowed_for_case,
     professionally_approved,
     technically_executable,
 )
 from app.models import LegalRuleVersion
+from app.services_v2 import seed_legal
 
 
 def rule(status="technical_draft", reviewed_by=None):
@@ -28,13 +31,14 @@ def test_technical_draft_executes_only_with_synthetic_data():
     assert not allowed_for_case(draft, case("PRIVATE_REAL_BETA"))
 
 
-def test_case_level_professional_release_can_use_draft_for_that_case_only():
+def test_operational_case_release_cannot_use_or_globally_approve_a_draft():
     draft = rule()
-    assert allowed_for_case(
-        draft,
-        case("PRIVATE_REAL_BETA"),
-        case_release_approved=True,
+    operationally_released_case = SimpleNamespace(
+        mode="PRIVATE_REAL_BETA",
+        release_approved=True,
     )
+    assert not allowed_for_case(draft, operationally_released_case)
+    assert draft.review_status == "technical_draft"
 
 
 def test_approval_state_without_reviewer_attribution_fails_closed():
@@ -44,10 +48,16 @@ def test_approval_state_without_reviewer_attribution_fails_closed():
     assert not allowed_for_case(unattributed, case("PRIVATE_REAL_BETA"))
 
 
-def test_attributed_professional_approval_allows_real_case_rule():
+def test_free_text_reviewer_never_proves_professional_approval():
     approved = rule("approved", "professional-review-reference")
-    assert professionally_approved(approved)
-    assert allowed_for_case(approved, case("PRIVATE_REAL_BETA"))
+    assert not professionally_approved(approved)
+    assert not allowed_for_case(approved, case("PRIVATE_REAL_BETA"))
+
+
+def test_unknown_or_future_modes_fail_closed_even_for_technical_drafts():
+    draft = rule()
+    for mode in (None, "", "FUTURE_MODE", "synthetic"):
+        assert not allowed_for_case(draft, case(mode))
 
 
 def test_unknown_or_pending_rule_state_is_never_executable():
@@ -55,3 +65,19 @@ def test_unknown_or_pending_rule_state_is_never_executable():
     assert not technically_executable(pending)
     assert not professionally_approved(pending)
     assert not allowed_for_case(pending, case("SYNTHETIC"))
+
+
+def test_seed_demotes_legacy_approved_rule_even_with_free_text_reviewer(db):
+    legacy = db.scalar(select(LegalRuleVersion).where(
+        LegalRuleVersion.rule_id == "ELEC_ADDON_END_WITH_SUPPLY",
+    ))
+    legacy.review_status = "approved"
+    legacy.reviewed_by = "arbitrary legacy text"
+    db.commit()
+
+    seed_legal(db)
+    db.flush()
+
+    assert legacy.review_status == "technical_draft"
+    assert legacy.reviewed_by == "arbitrary legacy text"
+    assert not professionally_approved(legacy)

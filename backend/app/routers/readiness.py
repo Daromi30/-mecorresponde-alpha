@@ -10,7 +10,7 @@ from ..admin_auth import require_admin
 from ..config import settings
 from ..db import engine, get_db
 from ..family_manifest import FAMILY_MANIFEST, supported_family_codes
-from ..legal_rule_governance import TECHNICALLY_EXECUTABLE_STATUSES
+from ..legal_rule_governance import TECHNICALLY_EXECUTABLE_STATUSES, professionally_approved
 from ..models import LegalRuleVersion, LegalSource
 from ..privacy_information import privacy_information_status
 from ..services_v2 import EVALUATORS, FAMILY_RULES
@@ -99,13 +99,10 @@ def _legal_catalog_checks(db: Session) -> tuple[dict[str, Any], dict[str, Any]]:
             LegalRuleVersion.review_status.in_(TECHNICALLY_EXECUTABLE_STATUSES)
         )
     ).all()
-    approved_rows = db.scalars(
-        select(LegalRuleVersion).where(
-            LegalRuleVersion.review_status == "approved",
-            LegalRuleVersion.reviewed_by.is_not(None),
-            func.length(func.trim(LegalRuleVersion.reviewed_by)) > 0,
-        )
-    ).all()
+    approved_rows = [
+        row for row in db.scalars(select(LegalRuleVersion)).all()
+        if professionally_approved(row)
+    ]
     technical_rule_ids = {row.rule_id for row in technical_rows}
     approved_keys = {(row.rule_id, row.version) for row in approved_rows}
     approved_rule_ids = {row.rule_id for row in approved_rows}

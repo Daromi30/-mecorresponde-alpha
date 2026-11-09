@@ -14,20 +14,17 @@ def upgrade() -> None:
     rules = sa.table(
         "legal_rule_versions",
         sa.column("review_status", sa.String()),
-        sa.column("reviewed_by", sa.String()),
     )
     op.execute(
         rules.update()
         .where(rules.c.review_status == "approved")
-        .where(sa.or_(rules.c.reviewed_by.is_(None), rules.c.reviewed_by == ""))
         .values(review_status="technical_draft")
     )
 
 
 def downgrade() -> None:
-    rules = sa.table("legal_rule_versions", sa.column("review_status", sa.String()))
-    op.execute(
-        rules.update()
-        .where(rules.c.review_status == "technical_draft")
-        .values(review_status="approved")
-    )
+    # Deliberately data-preserving. The historical ``approved`` value did not
+    # prove professional approval, so a downgrade cannot safely reconstruct it.
+    # Keeping ``technical_draft`` is conservative and prevents rollback from
+    # manufacturing legal authority.
+    pass

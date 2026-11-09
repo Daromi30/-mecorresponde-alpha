@@ -184,27 +184,21 @@ def test_valid_review_is_version_bound_and_revocation_blocks_old_approval(client
     assert not release_approved(db, case)  # A new authorization cannot resurrect an old approval.
 
 
-def test_prepared_draft_needs_its_own_review_before_handoff(client, db, future_test_gate):
+def test_operational_review_cannot_prepare_claim_from_unapproved_rule(client, db, future_test_gate):
     case_id, reviewer, review = ready(client, db)
     assign(client, review, reviewer)
     assert client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL).status_code == 200
     prepared = client.post(f"/api/cases/{case_id}/prepare-claim")
-    assert prepared.status_code == 200 and prepared.json()["status"] == "PENDING_HUMAN_REVIEW"
-    assert "text" not in str(prepared.json()) and "amount" not in str(prepared.json())
+    assert prepared.status_code == 422
+    assert "Eligible legal rule version missing" in prepared.json()["detail"]
     assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
     assert client.post(f"/api/cases/{case_id}/submission", json={"submitted_on": "2026-09-01"}).status_code == 409
-    draft_review = db.scalar(select(HumanReview).where(
-        HumanReview.case_id == case_id, HumanReview.reason == RELEASE_REASON,
-        HumanReview.status == "OPEN",
-    ))
-    assert draft_review is not None and draft_review.id != review.id
-    assign(client, draft_review, reviewer)
-    assert client.post(f"/api/admin/reviews/{draft_review.id}/approve-release", json=APPROVAL).status_code == 200
-    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
-    first_package = client.post(f"/api/cases/{case_id}/prepare-claim")
-    second_package = client.post(f"/api/cases/{case_id}/prepare-claim")
-    assert first_package.status_code == second_package.status_code == 409
     assert release_approved(db, db.get(Case, case_id))
+    assert not db.scalars(select(HumanReview).where(
+        HumanReview.case_id == case_id,
+        HumanReview.reason == RELEASE_REASON,
+        HumanReview.status == "OPEN",
+    )).all()
 
 
 def test_private_participant_outputs_stay_neutral_before_review(client, db, future_test_gate):

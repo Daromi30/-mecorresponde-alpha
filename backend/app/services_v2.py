@@ -263,9 +263,10 @@ def _ensure_rule(
         )
         db.add(rule)
         db.flush()
-    elif rule.review_status == "approved" and not (rule.reviewed_by or "").strip():
+    elif rule.review_status == "approved":
         # Historical seed data used ``approved`` as a technical readiness flag.
-        # It was never professional approval and must not retain that meaning.
+        # Free-text attribution is not verifiable professional evidence, so no
+        # historical seeded rule may retain that meaning.
         rule.review_status = "technical_draft"
     return rule
 
