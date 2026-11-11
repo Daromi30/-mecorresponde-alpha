@@ -16,8 +16,14 @@ from ..derived_invalidation import invalidate_case_derivatives
 from ..evidence_context import atomic_workflow_transaction
 from ..family_manifest import FAMILY_MANIFEST
 from ..models import Action, Calculation, Case, Decision, Evidence, Fact, LegalRuleVersion, LegalSource, RuleEvaluation
+from ..legal_rule_governance import substantive_legal_output_approved
 from ..private_beta_fields import FIELD_SCHEMA, validate_private_fact
-from ..private_beta_release import RELEASE_REASON, INITIAL_FAMILIES, actionable, release_approved
+from ..private_beta_release import (
+    RELEASE_REASON,
+    INITIAL_FAMILIES,
+    actionable,
+    operational_case_review_approved,
+)
 from ..private_beta_review import (
     bind_current_version, facts_version, record_resolution, require_assigned_reviewer,
     require_current_version,
@@ -280,6 +286,7 @@ def approve_private_release(
     ))
     if other_open is not None:
         raise HTTPException(409, "Other human review remains pending")
+    substantive_released = False
     with atomic_workflow_transaction(db) as commit:
         from ..auth_models import ReviewerFamilyAuthorization
         authorization = db.scalar(select(ReviewerFamilyAuthorization).where(
@@ -290,7 +297,9 @@ def approve_private_release(
             raise HTTPException(403, "Family authorization is required")
         record_resolution(review, "APPROVED_FOR_EXTERNAL_RELEASE", payload.reason_code,
                           checklist=payload.checklist.model_dump())
-        case.status = "READY_TO_SUBMIT" if action.type == "SUBMIT_INITIAL_CLAIM" else "DIAGNOSED"
+        # Operational completion alone cannot put a participant case in an
+        # externally actionable state. The substantive gate owns that transition.
+        case.status = "DIAGNOSED"
         audit(db, case.id, "PRE_BETA_RELEASE_APPROVED", {
             "review_id": review.id, "decision_id": decision.id, "action_id": action.id,
             "facts_version": facts_version(db, case.id),
@@ -298,10 +307,19 @@ def approve_private_release(
             "authorization_id": authorization.id,
         }, actor_reviewer_id=principal.actor_id)
         db.flush()
-        if not release_approved(db, case):
+        if not operational_case_review_approved(db, case):
             raise HTTPException(409, "Private release approval could not be verified")
+        substantive_released = substantive_legal_output_approved(db, case)
+        if substantive_released:
+            case.status = "READY_TO_SUBMIT" if action.type == "SUBMIT_INITIAL_CLAIM" else "DIAGNOSED"
         commit()
-    return {"status": "RELEASED", "decision_id": decision.id}
+    if substantive_released:
+        return {"status": "RELEASED", "decision_id": decision.id}
+    return {
+        "status": "OPERATIONAL_REVIEW_APPROVED",
+        "substantive_output_status": "BLOCKED_PENDING_PROFESSIONAL_APPROVAL",
+        "decision_id": decision.id,
+    }
 
 
 @router.post("/reviews/{review_id}/resolve-private")

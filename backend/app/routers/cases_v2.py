@@ -15,9 +15,15 @@ from ..demo_scenarios import SCENARIOS
 from ..documents import DocumentUploadPersistenceError, save_upload
 from ..evidence_context import atomic_workflow_transaction, current_outcome_evidence
 from ..models import Action, AuditEvent, Case, Communication, Deadline, Decision, Document, Evidence, Fact, Outcome
+from ..legal_rule_governance import participant_substantive_output_allowed
 from ..private_beta_fields import validate_private_fact
 from ..private_beta_exclusions import DOWNLOADABLE_DRAFT, capability_allowed
-from ..private_beta_release import PENDING_RESPONSE, private_scope, release_approved
+from ..private_beta_release import (
+    PENDING_RESPONSE,
+    SUBSTANTIVE_PENDING_RESPONSE,
+    operational_case_review_approved,
+    private_scope,
+)
 from ..reviews import HumanReview
 from ..schemas_v2 import (
     CaseCreate, ChargesInput, DocumentFactConfirm, FactUpsert, HumanReviewComplete,
@@ -70,7 +76,11 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
     deadlines = db.scalars(select(Deadline).where(Deadline.case_id == case.id)).all()
     evidence = db.scalars(select(Evidence).where(Evidence.case_id == case.id).order_by(Evidence.created_at.asc())).all()
     reviews = db.scalars(select(HumanReview).where(HumanReview.case_id == case.id).order_by(HumanReview.created_at.desc())).all()
-    pending_release = private_scope(case) and not internal and not release_approved(db, case)
+    substantive_allowed = participant_substantive_output_allowed(db, case)
+    operational_approved = (
+        operational_case_review_approved(db, case) if private_scope(case) else True
+    )
+    pending_release = private_scope(case) and not internal and not substantive_allowed
     valid_decision_ids = {row.id for row in decisions if row.invalidated_at is None}
     valid_action_ids = {row.id for row in actions if row.status != "SUPERSEDED"}
     current_decision_id = case.current_decision_id if case.current_decision_id in valid_decision_ids else None
@@ -87,8 +97,13 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
         "current_decision_id": None if pending_release else current_decision_id,
         "current_action_id": None if private_scope(case) and not internal else current_action_id,
         "release_status": (
-            "NOT_RELEASED" if pending_release and not current_decision_id
-            else "PENDING_HUMAN_REVIEW" if pending_release else "RELEASED"
+            "NOT_RELEASED"
+            if private_scope(case) and not substantive_allowed and not current_decision_id
+            else "BLOCKED_PENDING_PROFESSIONAL_APPROVAL"
+            if private_scope(case) and not substantive_allowed and operational_approved
+            else "PENDING_HUMAN_REVIEW"
+            if private_scope(case) and not substantive_allowed
+            else "RELEASED"
         ),
         "execution_verification": (
             {
@@ -374,11 +389,16 @@ def run_diagnosis(case_id: str, db: Session = Depends(get_db)):
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
+        substantive_allowed = participant_substantive_output_allowed(db, case)
+        pending = (
+            SUBSTANTIVE_PENDING_RESPONSE
+            if private_scope(case) and operational_case_review_approved(db, case)
+            else PENDING_RESPONSE
+        )
         response = {
-            **(PENDING_RESPONSE if private_scope(case) and not release_approved(db, case)
-               else result.to_dict()),
-            "decision_id": case.current_decision_id if release_approved(db, case) else None,
-            "action_id": action.id if release_approved(db, case) else None,
+            **(result.to_dict() if substantive_allowed else pending),
+            "decision_id": case.current_decision_id if substantive_allowed else None,
+            "action_id": action.id if substantive_allowed else None,
         }
         commit()
         return response
@@ -387,7 +407,8 @@ def run_diagnosis(case_id: str, db: Session = Depends(get_db)):
 @router.post("/{case_id}/prepare-claim")
 def prepare_claim(case_id: str, db: Session = Depends(get_db)):
     case = case_for_update_or_404(db, case_id)
-    if private_scope(case) and case.status == "READY_TO_SUBMIT" and release_approved(db, case):
+    if (private_scope(case) and case.status == "READY_TO_SUBMIT"
+            and participant_substantive_output_allowed(db, case)):
         if not capability_allowed(case, DOWNLOADABLE_DRAFT):
             raise HTTPException(409, "Downloadable drafts are unavailable for the private beta")
     with atomic_workflow_transaction(db) as commit:
@@ -502,6 +523,8 @@ def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get
 @router.post("/{case_id}/responses")
 def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)):
     case = case_for_update_or_404(db, case_id)
+    if private_scope(case) and not participant_substantive_output_allowed(db, case):
+        raise HTTPException(409, "Substantive legal output is not approved for release")
     result = analyze_company_response(db, case, payload.text)
     complete_current_action(db, case, only_types={"WAIT_FOR_RESPONSE"})
     db.commit()
@@ -532,8 +555,8 @@ def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)
         try:
             diagnosis, _, _ = diagnose(db, case)
             updated = (
-                PENDING_RESPONSE
-                if private_scope(case) and not release_approved(db, case)
+                SUBSTANTIVE_PENDING_RESPONSE
+                if private_scope(case) and not participant_substantive_output_allowed(db, case)
                 else diagnosis.to_dict()
             )
         except ValueError:

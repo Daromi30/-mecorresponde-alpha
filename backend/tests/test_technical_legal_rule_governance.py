@@ -4,6 +4,7 @@ from sqlalchemy import select
 
 from app.legal_rule_governance import (
     allowed_for_case,
+    participant_substantive_output_allowed,
     professionally_approved,
     technically_executable,
 )
@@ -58,6 +59,12 @@ def test_unknown_or_future_modes_fail_closed_even_for_technical_drafts():
     draft = rule()
     for mode in (None, "", "FUTURE_MODE", "synthetic"):
         assert not allowed_for_case(draft, case(mode))
+
+
+def test_participant_output_gate_allows_only_explicit_synthetic_mode_without_real_approval(db):
+    assert participant_substantive_output_allowed(db, case("SYNTHETIC"))
+    for mode in (None, "", "FUTURE_MODE", "synthetic"):
+        assert not participant_substantive_output_allowed(db, case(mode))
 
 
 def test_unknown_or_pending_rule_state_is_never_executable():

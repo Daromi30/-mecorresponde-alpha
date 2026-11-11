@@ -26,7 +26,8 @@ from .models import (
     RuleEvaluation,
 )
 from .reviews import HumanReview
-from .private_beta_release import private_scope, release_approved
+from .legal_rule_governance import participant_substantive_output_allowed
+from .private_beta_release import operational_case_review_approved, private_scope
 
 
 def _json_value(value: Any) -> Any:
@@ -122,7 +123,11 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
 
     exported_cases: list[dict[str, Any]] = []
     for case in cases:
-        pending_release = private_scope(case) and not release_approved(db, case)
+        substantive_allowed = participant_substantive_output_allowed(db, case)
+        operational_approved = (
+            operational_case_review_approved(db, case) if private_scope(case) else True
+        )
+        pending_release = private_scope(case) and not substantive_allowed
         valid_decision_ids = {row.id for row in decisions[case.id] if row.invalidated_at is None}
         valid_action_ids = {row.id for row in actions[case.id] if row.status != "SUPERSEDED"}
         current_decision_id = case.current_decision_id if case.current_decision_id in valid_decision_ids else None
@@ -132,6 +137,8 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                 "id": case.id,
                 "release_status": (
                     "NOT_RELEASED" if pending_release and not current_decision_id
+                    else "BLOCKED_PENDING_PROFESSIONAL_APPROVAL"
+                    if pending_release and operational_approved
                     else "PENDING_HUMAN_REVIEW" if pending_release else "RELEASED"
                 ),
                 "status": case.status,
