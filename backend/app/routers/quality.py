@@ -16,7 +16,6 @@ from ..demo_boundary import enforce_demo_boundary
 from ..evidence_context import atomic_workflow_transaction, company_response_evidence_context, outcome_evidence_context
 from ..models import Action, AuditEvent, Case, Communication, Decision, Document, Evidence, Fact, Outcome
 from ..legal_rule_governance import participant_substantive_output_allowed
-from ..private_beta_release import private_scope
 from ..reviews import HumanReview
 from ..schemas_v2 import OutcomeInput, ResponseInput
 from ..security import require_case_access
@@ -187,7 +186,7 @@ def dossier_quality(case_id: str, db: Session = Depends(get_db)):
     decisions = db.scalars(
         select(Decision).where(Decision.case_id == case.id).order_by(Decision.created_at.desc())
     ).all()
-    if private_scope(case) and not participant_substantive_output_allowed(db, case):
+    if not participant_substantive_output_allowed(db, case):
         decisions = []
     reviews = db.scalars(
         select(HumanReview)
@@ -229,7 +228,7 @@ def case_timeline(case_id: str, db: Session = Depends(get_db)):
             "at": case.opened_at,
         }
     ]
-    if private_scope(case) and not participant_substantive_output_allowed(db, case):
+    if not participant_substantive_output_allowed(db, case):
         return {"case_id": case.id, "current_status": case.status, "events": events}
 
     documents = db.scalars(
@@ -445,6 +444,8 @@ def case_communications(case_id: str, db: Session = Depends(get_db)):
     case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    if not participant_substantive_output_allowed(db, case):
+        return {"case_id": case.id, "communications": []}
 
     items: list[dict] = []
 

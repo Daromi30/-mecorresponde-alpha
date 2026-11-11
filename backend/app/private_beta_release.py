@@ -119,7 +119,6 @@ def operational_case_review_approved(db: Session, case: Case) -> bool:
 
 
 def require_release_approval(db: Session, case: Case) -> None:
-    if private_scope(case):
-        from .legal_rule_governance import participant_substantive_output_allowed
-        if not participant_substantive_output_allowed(db, case):
-            raise HTTPException(409, "Substantive legal output is not approved for release")
+    from .legal_rule_governance import participant_substantive_output_allowed
+    if not participant_substantive_output_allowed(db, case):
+        raise HTTPException(409, "Substantive legal output is not approved for release")

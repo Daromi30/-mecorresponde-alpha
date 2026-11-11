@@ -232,7 +232,16 @@ def _block_locked_initial_mutation(request: Request, db: Session, case: Case) ->
 
 
 def _enforce_authorized_case_boundaries(request: Request, db: Session, case: Case) -> None:
-    if request.method.upper() == "POST" and request.url.path.rstrip("/").endswith(("/prepare-claim", "/submission")):
+    substantive_action = request.url.path.rstrip("/").endswith((
+        "/prepare-claim",
+        "/submission",
+        "/responses",
+        "/responses/evidenced",
+        "/outcome",
+        "/outcome/evidenced",
+        "/resume-wait",
+    ))
+    if request.method.upper() == "POST" and substantive_action:
         from .private_beta_release import require_release_approval
         require_release_approval(db, case)
     _block_case_user_review_completion(request)

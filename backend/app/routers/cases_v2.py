@@ -78,9 +78,9 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
     reviews = db.scalars(select(HumanReview).where(HumanReview.case_id == case.id).order_by(HumanReview.created_at.desc())).all()
     substantive_allowed = participant_substantive_output_allowed(db, case)
     operational_approved = (
-        operational_case_review_approved(db, case) if private_scope(case) else True
+        operational_case_review_approved(db, case) if private_scope(case) else False
     )
-    pending_release = private_scope(case) and not internal and not substantive_allowed
+    pending_release = not internal and not substantive_allowed
     valid_decision_ids = {row.id for row in decisions if row.invalidated_at is None}
     valid_action_ids = {row.id for row in actions if row.status != "SUPERSEDED"}
     current_decision_id = case.current_decision_id if case.current_decision_id in valid_decision_ids else None
@@ -95,15 +95,17 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
         "title": case.title,
         "raw_intake": case.raw_intake,
         "current_decision_id": None if pending_release else current_decision_id,
-        "current_action_id": None if private_scope(case) and not internal else current_action_id,
+        "current_action_id": None if pending_release else current_action_id,
         "release_status": (
-            "NOT_RELEASED"
-            if private_scope(case) and not substantive_allowed and not current_decision_id
+            "RELEASED"
+            if substantive_allowed
+            else "NOT_RELEASED"
+            if not current_decision_id
             else "BLOCKED_PENDING_PROFESSIONAL_APPROVAL"
-            if private_scope(case) and not substantive_allowed and operational_approved
+            if private_scope(case) and operational_approved
             else "PENDING_HUMAN_REVIEW"
-            if private_scope(case) and not substantive_allowed
-            else "RELEASED"
+            if private_scope(case)
+            else "BLOCKED_UNRECOGNIZED_MODE"
         ),
         "execution_verification": (
             {
@@ -156,7 +158,7 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
         ],
         "actions": [
             {"id": action.id, "type": action.type, "status": action.status, "payload": action.payload_json}
-            for action in ([] if private_scope(case) and not internal else actions)
+            for action in ([] if pending_release else actions)
             if internal or action.status != "SUPERSEDED"
         ],
         "deadlines": [
@@ -172,7 +174,7 @@ def serialize_case(db: Session, case: Case, *, internal: bool = False):
                 "assigned_reviewer_id": review.assigned_reviewer_id,
                 "reviewer_decision": review.reviewer_decision,
             }
-            for review in ([] if private_scope(case) and not internal else reviews)
+            for review in ([] if pending_release else reviews)
             if internal or review.status != "SUPERSEDED"
         ],
     }
@@ -523,7 +525,7 @@ def submission(case_id: str, payload: SubmissionInput, db: Session = Depends(get
 @router.post("/{case_id}/responses")
 def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)):
     case = case_for_update_or_404(db, case_id)
-    if private_scope(case) and not participant_substantive_output_allowed(db, case):
+    if not participant_substantive_output_allowed(db, case):
         raise HTTPException(409, "Substantive legal output is not approved for release")
     result = analyze_company_response(db, case, payload.text)
     complete_current_action(db, case, only_types={"WAIT_FOR_RESPONSE"})
@@ -556,7 +558,7 @@ def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)
             diagnosis, _, _ = diagnose(db, case)
             updated = (
                 SUBSTANTIVE_PENDING_RESPONSE
-                if private_scope(case) and not participant_substantive_output_allowed(db, case)
+                if not participant_substantive_output_allowed(db, case)
                 else diagnosis.to_dict()
             )
         except ValueError:
@@ -567,7 +569,7 @@ def response(case_id: str, payload: ResponseInput, db: Session = Depends(get_db)
 @router.get("/{case_id}/reviews")
 def reviews(case_id: str, db: Session = Depends(get_db)):
     case = case_or_404(db, case_id)
-    if private_scope(case):
+    if not participant_substantive_output_allowed(db, case):
         return []
     rows = db.scalars(
         select(HumanReview).where(HumanReview.case_id == case.id).order_by(HumanReview.created_at.desc())
@@ -604,6 +606,8 @@ def complete_review(case_id: str, review_id: str, payload: HumanReviewComplete, 
 @router.post("/{case_id}/outcome")
 def outcome(case_id: str, payload: OutcomeInput, db: Session = Depends(get_db)):
     case = case_for_update_or_404(db, case_id)
+    if not participant_substantive_output_allowed(db, case):
+        raise HTTPException(409, "Substantive legal output is not approved for release")
     existing = db.scalars(select(Outcome).where(Outcome.case_id == case.id)).first()
     outcome_row = existing if existing else Outcome(case_id=case.id, result_type=payload.result_type)
     if not existing:

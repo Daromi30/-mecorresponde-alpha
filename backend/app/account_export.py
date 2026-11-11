@@ -125,9 +125,9 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
     for case in cases:
         substantive_allowed = participant_substantive_output_allowed(db, case)
         operational_approved = (
-            operational_case_review_approved(db, case) if private_scope(case) else True
+            operational_case_review_approved(db, case) if private_scope(case) else False
         )
-        pending_release = private_scope(case) and not substantive_allowed
+        pending_release = not substantive_allowed
         valid_decision_ids = {row.id for row in decisions[case.id] if row.invalidated_at is None}
         valid_action_ids = {row.id for row in actions[case.id] if row.status != "SUPERSEDED"}
         current_decision_id = case.current_decision_id if case.current_decision_id in valid_decision_ids else None
@@ -136,10 +136,12 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
             {
                 "id": case.id,
                 "release_status": (
-                    "NOT_RELEASED" if pending_release and not current_decision_id
+                    "RELEASED" if substantive_allowed
+                    else "NOT_RELEASED" if not current_decision_id
                     else "BLOCKED_PENDING_PROFESSIONAL_APPROVAL"
-                    if pending_release and operational_approved
-                    else "PENDING_HUMAN_REVIEW" if pending_release else "RELEASED"
+                    if private_scope(case) and operational_approved
+                    else "PENDING_HUMAN_REVIEW" if private_scope(case)
+                    else "BLOCKED_UNRECOGNIZED_MODE"
                 ),
                 "status": case.status,
                 "service_level": case.service_level,
@@ -329,7 +331,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "created_at": _json_value(row.created_at),
                         "completed_at": _json_value(row.completed_at),
                     }
-                    for row in ([] if private_scope(case) else reviews[case.id])
+                    for row in ([] if pending_release else reviews[case.id])
                     if row.status != "SUPERSEDED"
                 ],
                 "audit_events": [
@@ -339,7 +341,7 @@ def build_account_export(db: Session, user: User) -> dict[str, Any]:
                         "payload": row.payload_json,
                         "created_at": _json_value(row.created_at),
                     }
-                    for row in ([] if private_scope(case) else audits[case.id])
+                    for row in ([] if pending_release else audits[case.id])
                 ],
                 "ai_runs": [
                     {
