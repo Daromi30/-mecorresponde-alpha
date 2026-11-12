@@ -259,9 +259,15 @@ def _ensure_rule(
             conditions_json=conditions,
             consequence_json=consequence,
             interpretation=interpretation,
+            review_status="technical_draft",
         )
         db.add(rule)
         db.flush()
+    elif rule.review_status == "approved":
+        # Historical seed data used ``approved`` as a technical readiness flag.
+        # Free-text attribution is not verifiable professional evidence, so no
+        # historical seeded rule may retain that meaning.
+        rule.review_status = "technical_draft"
     return rule
 
 

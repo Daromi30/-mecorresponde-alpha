@@ -17,6 +17,10 @@ INITIAL_FAMILIES = frozenset({"E02-A", "C01"})
 RELEASE_REASON = "PRE_BETA_EXTERNAL_RELEASE"
 EXTERNAL_KINDS = frozenset({"prepare_outbound", "external_step", "workflow_submit"})
 PENDING_RESPONSE = {"status": "PENDING_HUMAN_REVIEW", "reason": "External material is not released"}
+SUBSTANTIVE_PENDING_RESPONSE = {
+    "status": "BLOCKED_PENDING_PROFESSIONAL_APPROVAL",
+    "reason": "Substantive legal output is not approved for release",
+}
 
 
 def private_scope(case: Case) -> bool:
@@ -59,8 +63,8 @@ def ensure_release_review(db: Session, case: Case, decision: Decision, action: A
     })
 
 
-def release_approved(db: Session, case: Case) -> bool:
-    """Whether the current participant-facing result can be shown or acted on."""
+def operational_case_review_approved(db: Session, case: Case) -> bool:
+    """Whether the exact current result passed attributed operational review."""
     if not private_scope(case):
         return True
     # An earlier case approval is never a capability to survive rollback.
@@ -115,5 +119,6 @@ def release_approved(db: Session, case: Case) -> bool:
 
 
 def require_release_approval(db: Session, case: Case) -> None:
-    if private_scope(case) and not release_approved(db, case):
-        raise HTTPException(409, "External material is pending authorized human review")
+    from .legal_rule_governance import participant_substantive_output_allowed
+    if not participant_substantive_output_allowed(db, case):
+        raise HTTPException(409, "Substantive legal output is not approved for release")

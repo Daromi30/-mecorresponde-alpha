@@ -34,7 +34,12 @@ def test_readiness_separates_internal_real_data_public_beta_and_launch_blockers(
     }
     checks = {item["key"]: item for item in body["checks"]}
     assert checks["resolution_family_registry"]["ok"] is True
-    assert checks["reviewed_legal_catalog"]["ok"] is True
+    assert checks["technical_legal_catalog"]["ok"] is True
+    assert checks["technical_legal_catalog"]["metadata"]["legal_approval"] == "PENDING"
+    assert checks["reviewed_legal_catalog"]["ok"] is False
+    assert checks["reviewed_legal_catalog"]["severity"] == "BETA_BLOCKER"
+    assert "reviewed_legal_catalog" not in body["internal_beta_blockers"]
+    assert "reviewed_legal_catalog" in body["beta_blockers"]
     assert checks["protected_backoffice"]["ok"] is True
     assert checks["all_family_acceptance"]["ok"] is True
     assert checks["guided_browser_input_contract"]["ok"] is True

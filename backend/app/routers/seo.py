@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..family_manifest import FAMILY_MANIFEST
+from ..legal_rule_governance import professionally_approved
 from ..models import LegalRuleVersion, LegalSource
 from ..seo_pages import SEO_BY_PATH, SEO_PROBLEM_PAGES
 
@@ -39,6 +40,8 @@ def _legal_sources(db: Session, family: str) -> list[dict[str, str]]:
     seen: set[str] = set()
     result: list[dict[str, str]] = []
     for row in rows:
+        if not professionally_approved(row):
+            continue
         if row.rule_id in seen:
             continue
         source = db.get(LegalSource, row.source_id)

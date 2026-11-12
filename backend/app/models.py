@@ -151,7 +151,7 @@ class LegalRuleVersion(Base):
     conditions_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     consequence_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     interpretation: Mapped[str] = mapped_column(Text)
-    review_status: Mapped[str] = mapped_column(String(30), default="approved")
+    review_status: Mapped[str] = mapped_column(String(30), default="technical_draft")
     reviewed_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 

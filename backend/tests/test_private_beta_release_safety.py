@@ -15,7 +15,12 @@ from app.engine.e02 import evaluate_e02a
 from app.engine.questions import next_question
 from app.private_beta_fields import FIELD_SCHEMA
 from app.services_v2 import latest_facts
-from app.private_beta_release import RELEASE_REASON, ensure_release_review, release_approved
+from app.legal_rule_governance import substantive_legal_output_approved
+from app.private_beta_release import (
+    RELEASE_REASON,
+    ensure_release_review,
+    operational_case_review_approved,
+)
 from app.private_beta_review import bind_current_version
 from app.reviews import HumanReview
 from app import real_beta_gate as gate
@@ -105,6 +110,8 @@ def _assign_and_approve(client, review, reviewer):
     }).status_code == 200
     approved = client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL)
     assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "OPERATIONAL_REVIEW_APPROVED"
+    assert approved.json()["substantive_output_status"] == "BLOCKED_PENDING_PROFESSIONAL_APPROVAL"
     return approved
 
 
@@ -170,22 +177,44 @@ def test_private_release_requires_assigned_reviewer_for_current_decision(
 
     _assign_and_approve(client, review, reviewer)
     assert client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL).status_code in {403, 409}
+    current_case = db.get(Case, case_id)
+    assert operational_case_review_approved(db, current_case)
+    assert not substantive_legal_output_approved(db, current_case)
     released = client.post(f"/api/cases/{case_id}/prepare-claim")
-    assert released.status_code == 200, released.text
-    assert released.json() == {"status": "PENDING_HUMAN_REVIEW", "reason": "External material is not released"}
+    assert released.status_code == 409
+    assert "Substantive legal output is not approved" in released.json()["detail"]
     assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
-    draft_review = db.scalar(select(HumanReview).where(
-        HumanReview.case_id == case_id, HumanReview.reason == RELEASE_REASON,
+    assert not db.scalars(select(HumanReview).where(
+        HumanReview.case_id == case_id,
+        HumanReview.reason == RELEASE_REASON,
         HumanReview.status == "OPEN",
-    ))
-    assert draft_review is not None and draft_review.id != review.id
-    _assign_and_approve(client, draft_review, reviewer)
-    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
-    assert client.post(f"/api/cases/{case_id}/prepare-claim").status_code == 409
+    )).all()
+    assert client.post(f"/api/cases/{case_id}/submission", json={"submitted_on": "2026-09-01"}).status_code == 409
     participant_case = client.get(f"/api/cases/{case_id}")
     assert participant_case.status_code == 200
-    assert participant_case.json()["current_action_id"] is None
-    assert participant_case.json()["actions"] == []
+    participant_body = participant_case.json()
+    assert participant_body["release_status"] == "BLOCKED_PENDING_PROFESSIONAL_APPROVAL"
+    assert participant_body["status"] == "DIAGNOSED"
+    assert participant_body["status"] != "READY_TO_SUBMIT"
+    assert participant_body["current_decision_id"] is None
+    assert participant_body["current_action_id"] is None
+    assert participant_body["decisions"] == participant_body["actions"] == []
+    post_review_export = client.get("/api/auth/export")
+    assert post_review_export.status_code == 200
+    exported_case = next(row for row in post_review_export.json()["cases"] if row["id"] == case_id)
+    assert exported_case["release_status"] == "BLOCKED_PENDING_PROFESSIONAL_APPROVAL"
+    assert exported_case["facts"]  # The participant's own factual input remains available.
+    assert exported_case["decisions"] == exported_case["actions"] == []
+    assert exported_case["calculations"] == exported_case["rule_evaluations"] == []
+    assert client.get(f"/api/cases/{case_id}/legal-sources").json() == {
+        "decision_id": None, "sources": [],
+    }
+    quality = client.get(f"/api/cases/{case_id}/quality").json()
+    assert quality["gates"]["current_decision_id"] is None
+    assert quality["gates"]["rules_evaluated"] == 0
+    timeline = client.get(f"/api/cases/{case_id}/timeline")
+    assert timeline.status_code == 200
+    assert [event["type"] for event in timeline.json()["events"]] == ["CASE_OPENED"]
 
 
 def test_fact_change_and_rediagnosis_cannot_reuse_prior_release_approval(
@@ -203,7 +232,7 @@ def test_fact_change_and_rediagnosis_cannot_reuse_prior_release_approval(
         HumanReview.status == "OPEN",
     ))
     _assign_and_approve(client, review, reviewer)
-    assert release_approved(db, case)
+    assert operational_case_review_approved(db, case)
 
     changed = client.post(f"/api/cases/{case_id}/facts", json={
         "key": "electricity.billing.billed_amount",
@@ -215,7 +244,7 @@ def test_fact_change_and_rediagnosis_cannot_reuse_prior_release_approval(
     db.expire_all()
     case = db.get(Case, case_id)
     assert case.current_decision_id is None
-    assert not release_approved(db, case)
+    assert not operational_case_review_approved(db, case)
 
     rediagnosed = client.post(f"/api/cases/{case_id}/diagnose")
     assert rediagnosed.status_code == 200, rediagnosed.text
@@ -225,7 +254,7 @@ def test_fact_change_and_rediagnosis_cannot_reuse_prior_release_approval(
     db.expire_all()
     case = db.get(Case, case_id)
     assert case.current_decision_id != first_decision_id
-    assert not release_approved(db, case)
+    assert not operational_case_review_approved(db, case)
     reviews = db.scalars(select(HumanReview).where(
         HumanReview.case_id == case_id,
         HumanReview.reason == RELEASE_REASON,
@@ -245,12 +274,12 @@ def test_release_approval_cannot_survive_global_rollback(client, db, future_test
     ))
     _assign_and_approve(client, review, reviewer)
     case = db.get(Case, case_id)
-    assert release_approved(db, case)
+    assert operational_case_review_approved(db, case)
     release = db.get(RealBetaRelease, case.real_beta_release_id)
     release.status = "CLOSED"
     db.commit()
     assert not gate.real_beta_gate_open(db)
-    assert not release_approved(db, case)
+    assert not operational_case_review_approved(db, case)
     detail = client.get(f"/api/cases/{case_id}")
     assert detail.status_code == 200
     assert detail.json()["decisions"] == detail.json()["actions"] == []

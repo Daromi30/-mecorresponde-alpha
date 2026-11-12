@@ -195,7 +195,7 @@ def test_base_renderer_fails_closed_before_ready_action_if_rule_review_is_revoke
 
     blocked = client.post(f"/api/cases/{case_id}/prepare-claim")
     assert blocked.status_code == 422
-    assert "Reviewed legal rule version missing" in blocked.json()["detail"]
+    assert "Eligible legal rule version missing" in blocked.json()["detail"]
     assert db.scalar(
         select(func.count()).select_from(Action).where(
             Action.case_id == case_id,

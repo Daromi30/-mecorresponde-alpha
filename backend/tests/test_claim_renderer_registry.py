@@ -201,7 +201,7 @@ def test_price_reduction_route_refuses_to_invent_a_proportional_amount(db):
     assert "no se inventa automáticamente" in package["text"]
 
 
-def test_claim_rendering_fails_closed_if_reviewed_rule_is_not_approved(db):
+def test_claim_rendering_fails_closed_if_rule_is_not_technically_executable(db):
     scenario = EXTENSION_FAMILY_SCENARIOS["E05"]
     case, _ = _build_ready_case(db, "E05", scenario)
     rule_id = FAMILY_MANIFEST["E05"].rule_ids[0]
@@ -209,5 +209,5 @@ def test_claim_rendering_fails_closed_if_reviewed_rule_is_not_approved(db):
     rule.review_status = "pending"
     db.commit()
 
-    with pytest.raises(ValueError, match="Reviewed legal rule version missing"):
+    with pytest.raises(ValueError, match="Eligible legal rule version missing"):
         svc.prepare_claim_package(db, case)

@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 from alembic import command
@@ -11,12 +12,62 @@ from app.auth_models import Reviewer
 from app.backoffice_auth import create_reviewer
 from app.db import Base, SessionLocal, engine
 from app.migrations import upgrade_database
-from app.models import AuditEvent, Case, Document
+from app.models import AuditEvent, Case, Document, LegalRuleVersion, LegalSource
 
 
 def drop_version_table() -> None:
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+
+
+def test_legal_rule_governance_rollback_never_manufactures_approval():
+    Base.metadata.drop_all(bind=engine)
+    drop_version_table()
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        db.add(LegalSource(
+            id="SYNTHETIC_SOURCE",
+            authority="Synthetic test authority",
+            title="Synthetic migration source",
+            official_url="https://example.invalid/synthetic",
+        ))
+        db.flush()
+        rule = LegalRuleVersion(
+            rule_id="SYNTHETIC_RULE",
+            version=1,
+            valid_from=date(2026, 1, 1),
+            source_id="SYNTHETIC_SOURCE",
+            article="synthetic",
+            conditions_json={},
+            consequence_json={},
+            interpretation="synthetic migration sentinel",
+            review_status="approved",
+            reviewed_by="legacy free text",
+        )
+        db.add(rule)
+        db.commit()
+        rule_id = rule.id
+
+    backend_dir = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_dir / "alembic"))
+    with engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.stamp(config, "0014_derived_invalidation")
+
+    upgrade_database()
+    with SessionLocal() as db:
+        assert db.get(LegalRuleVersion, rule_id).review_status == "technical_draft"
+
+    with engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.downgrade(config, "0014_derived_invalidation")
+    with SessionLocal() as db:
+        assert db.get(LegalRuleVersion, rule_id).review_status == "technical_draft"
+
+    upgrade_database()
+    with SessionLocal() as db:
+        assert db.get(LegalRuleVersion, rule_id).review_status == "technical_draft"
 
 
 def test_alembic_adopts_existing_alpha_and_builds_empty_database():
@@ -36,7 +87,7 @@ def test_alembic_adopts_existing_alpha_and_builds_empty_database():
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id) is not None
         revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0014_derived_invalidation"
+        assert revision == "0015_legal_rule_governance"
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
         assert db.get(Case, sentinel_id).demo_scenario_id is None
 
@@ -112,7 +163,7 @@ def test_real_beta_migration_upgrades_legacy_rows_and_is_reversible():
     upgrade_database()
     with SessionLocal() as db:
         assert db.get(Case, sentinel_id).mode == "SYNTHETIC"
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0014_derived_invalidation"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0015_legal_rule_governance"
     assert "real_beta_invitations" in inspect(engine).get_table_names()
 
     with engine.begin() as conn:
@@ -154,7 +205,7 @@ def test_reviewer_migration_from_0008_preserves_historical_audit_and_reverses():
     with SessionLocal() as db:
         assert db.get(Case, case_id).mode == "SYNTHETIC"
         assert db.get(AuditEvent, event_id).actor_reviewer_id is None
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0014_derived_invalidation"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0015_legal_rule_governance"
     assert "reviewers" in inspect(engine).get_table_names()
 
     with engine.begin() as conn:
@@ -187,7 +238,7 @@ def test_substantive_review_scope_migration_is_empty_and_reversible():
     with SessionLocal() as db:
         assert db.get(Reviewer, reviewer_id) is not None
         assert db.execute(text("SELECT COUNT(*) FROM reviewer_family_authorizations")).scalar_one() == 0
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0014_derived_invalidation"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0015_legal_rule_governance"
     with engine.begin() as conn:
         config.attributes["connection"] = conn
         command.downgrade(config, "0011_document_storage_ops")

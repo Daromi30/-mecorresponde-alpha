@@ -8,12 +8,13 @@ from . import services_v2 as svc
 from .engine.guarded_gateway import GuardedModelGateway
 from .family_manifest import FAMILY_MANIFEST, supported_family_codes
 from .legal_source_registry import is_trusted_official_legal_url, reconcile_legal_sources
+from .legal_rule_governance import allowed_for_case
 from .models import LegalRuleVersion, LegalSource
 
 _INSTALLED = False
 
 
-def _verified_basis_for_preparable_decision(db, decision):
+def _verified_basis_for_preparable_decision(db, decision, case):
     """Resolve every exact reviewed rule version attached to a preparable decision.
 
     Some legitimate actions are deliberately emitted before a substantive rule result is
@@ -36,11 +37,10 @@ def _verified_basis_for_preparable_decision(db, decision):
             select(LegalRuleVersion).where(
                 LegalRuleVersion.rule_id == rule_id,
                 LegalRuleVersion.version == version,
-                LegalRuleVersion.review_status == "approved",
             )
         )
-        if rule is None:
-            raise ValueError(f"Reviewed legal rule version missing for {rule_id} v{version}")
+        if rule is None or not allowed_for_case(rule, case):
+            raise ValueError(f"Eligible legal rule version missing for {rule_id} v{version}")
         source = db.get(LegalSource, rule.source_id)
         if (
             source is None
@@ -178,7 +178,7 @@ def install_all_families() -> tuple[str, ...]:
             if (case.family or "") in REGISTERED_EXTENSION_FAMILIES:
                 return prepare_registered_claim_package(db, case)
 
-            verified_basis = _verified_basis_for_preparable_decision(db, decision)
+            verified_basis = _verified_basis_for_preparable_decision(db, decision, case)
 
             preceding = current
             result = previous_prepare_claim(db, case)

@@ -12,7 +12,7 @@ from app import real_beta_gate as gate
 from app.auth_models import RealBetaInvitation, RealBetaRelease, ReleaseApproval, User
 from app.config import settings
 from app.models import Case
-from app.private_beta_release import release_approved
+from app.private_beta_release import operational_case_review_approved
 from app.services_v2 import upsert_fact
 from release_test_support import eligible_test_release
 
@@ -191,7 +191,7 @@ def test_membership_and_release_output_rollback(db, synthetic_prerequisites):
     release.status = "CLOSED"
     db.commit()
     assert not gate.admission_active(db, member.id)
-    assert not release_approved(db, case)
+    assert not operational_case_review_approved(db, case)
     with pytest.raises(HTTPException) as denied:
         upsert_fact(db, case, "electricity.billing.billing_period", "2026-09")
     assert denied.value.status_code == 403

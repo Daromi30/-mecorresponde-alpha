@@ -6,6 +6,7 @@ from ..db import get_db
 from ..demo_boundary import enforce_demo_boundary
 from ..evidence_context import atomic_workflow_transaction
 from ..models import Case
+from ..private_beta_release import require_release_approval
 from ..security import require_case_access
 from ..wait_resume import resume_wait_action
 
@@ -22,6 +23,7 @@ def resume_wait(case_id: str, db: Session = Depends(get_db)):
     case = lock_case_for_update(db, case_id)
     if case is None:
         raise HTTPException(404, "Case not found")
+    require_release_approval(db, case)
 
     with atomic_workflow_transaction(db) as commit:
         try:

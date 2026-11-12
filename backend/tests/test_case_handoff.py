@@ -82,7 +82,7 @@ def test_case_handoff_contains_current_facts_and_exact_legal_provenance(client):
     assert provenance
     rule = next(row for row in provenance if row["rule_id"] == "ELEC_ADDON_END_WITH_SUPPLY")
     assert rule["article"] == "32.4"
-    assert rule["review_status"] == "approved"
+    assert rule["review_status"] == "technical_draft"
     assert rule["source"]["official_url"].startswith("https://www.boe.es/")
     assert rule["source"]["status"] == "active"
 

@@ -8,7 +8,8 @@ from app.auth_models import ReviewerFamilyAuthorization
 from app.family_manifest import FAMILY_MANIFEST
 from app.models import Action, AuditEvent, Calculation, Case, Decision, Evidence, RuleEvaluation
 from app.main import app
-from app.private_beta_release import RELEASE_REASON, release_approved
+from app.legal_rule_governance import substantive_legal_output_approved
+from app.private_beta_release import RELEASE_REASON, operational_case_review_approved
 from app.reviews import HumanReview
 from app import real_beta_gate as gate
 from test_private_beta_release_safety import APPROVAL, _admit, _record_required_facts
@@ -80,7 +81,7 @@ def test_scope_is_explicit_family_specific_and_revocable(client, db, future_test
     review.assigned_reviewer_id = reviewer.id  # Simulate a pre-existing assignment after scope revocation.
     db.commit()
     assert client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL).status_code == 403
-    assert not release_approved(db, db.get(Case, case_id))
+    assert not operational_case_review_approved(db, db.get(Case, case_id))
     assert db.scalar(select(ReviewerFamilyAuthorization.id).where(
         ReviewerFamilyAuthorization.reviewer_id == reviewer.id,
         ReviewerFamilyAuthorization.family == "C01",
@@ -105,7 +106,7 @@ def test_unassigned_or_wrong_reviewer_cannot_resolve(client, db, future_test_gat
     assert client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL).status_code == 403
     assert resolve(client, review, "ESCALATE", "LEGAL_UNCERTAINTY").status_code == 403
     assert client.get(f"/api/admin/reviews/{review.id}/context").status_code == 403
-    assert not release_approved(db, db.get(Case, case_id))
+    assert not operational_case_review_approved(db, db.get(Case, case_id))
 
 
 def test_information_request_cannot_introduce_free_text_or_unlisted_field(client, db, future_test_gate):
@@ -115,7 +116,7 @@ def test_information_request_cannot_introduce_free_text_or_unlisted_field(client
         assert resolve(client, review, "REQUEST_INFORMATION", "INSUFFICIENT_INFORMATION", [field]).status_code == 422
     assert resolve(client, review, "REQUEST_INFORMATION", "ACTION_BLOCKED", ["purchase.price"]).status_code == 422
     assert db.get(HumanReview, review.id).status == "OPEN"
-    assert not release_approved(db, db.get(Case, case_id))
+    assert not operational_case_review_approved(db, db.get(Case, case_id))
 
 
 @pytest.mark.parametrize("outcome,reason,field,status", [
@@ -132,7 +133,7 @@ def test_nonapproval_outcomes_block_release(client, db, future_test_gate, outcom
     assert response.status_code == 200, response.text
     db.expire_all()
     case = db.get(Case, case_id)
-    assert case.status == status and not release_approved(db, case)
+    assert case.status == status and not operational_case_review_approved(db, case)
     assert db.get(Action, prior_action.id).status == "SUPERSEDED"
     assert client.get(f"/api/cases/{case_id}").json()["decisions"] == []
     assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
@@ -162,7 +163,7 @@ def test_fact_correction_reanalyzes_and_requires_new_review(client, db, future_t
     case = db.get(Case, case_id)
     assert case.current_decision_id != old_decision and case.current_action_id != old_action
     assert db.get(Action, old_action).status == "SUPERSEDED"
-    assert not release_approved(db, case)
+    assert not operational_case_review_approved(db, case)
     assert client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL).status_code in {403, 409}
     new_review = db.scalar(select(HumanReview).where(
         HumanReview.case_id == case_id, HumanReview.reason == RELEASE_REASON,
@@ -177,34 +178,33 @@ def test_valid_review_is_version_bound_and_revocation_blocks_old_approval(client
     assign(client, review, reviewer)
     assert client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL).status_code == 200
     case = db.get(Case, case_id)
-    assert release_approved(db, case)
+    assert operational_case_review_approved(db, case)
     assert client.put(f"/api/admin/reviewers/{reviewer.id}/technical-scope", json={"families": []}).status_code == 200
-    assert not release_approved(db, case)
+    assert not operational_case_review_approved(db, case)
     assert client.put(f"/api/admin/reviewers/{reviewer.id}/technical-scope", json={"families": ["E02-A"]}).status_code == 200
-    assert not release_approved(db, case)  # A new authorization cannot resurrect an old approval.
+    assert not operational_case_review_approved(db, case)  # A new authorization cannot resurrect an old approval.
 
 
-def test_prepared_draft_needs_its_own_review_before_handoff(client, db, future_test_gate):
+def test_operational_review_cannot_prepare_claim_from_unapproved_rule(client, db, future_test_gate):
     case_id, reviewer, review = ready(client, db)
     assign(client, review, reviewer)
-    assert client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL).status_code == 200
+    approved = client.post(f"/api/admin/reviews/{review.id}/approve-release", json=APPROVAL)
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "OPERATIONAL_REVIEW_APPROVED"
+    assert approved.json()["substantive_output_status"] == "BLOCKED_PENDING_PROFESSIONAL_APPROVAL"
     prepared = client.post(f"/api/cases/{case_id}/prepare-claim")
-    assert prepared.status_code == 200 and prepared.json()["status"] == "PENDING_HUMAN_REVIEW"
-    assert "text" not in str(prepared.json()) and "amount" not in str(prepared.json())
+    assert prepared.status_code == 409
+    assert "Substantive legal output is not approved" in prepared.json()["detail"]
     assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
     assert client.post(f"/api/cases/{case_id}/submission", json={"submitted_on": "2026-09-01"}).status_code == 409
-    draft_review = db.scalar(select(HumanReview).where(
-        HumanReview.case_id == case_id, HumanReview.reason == RELEASE_REASON,
+    case = db.get(Case, case_id)
+    assert operational_case_review_approved(db, case)
+    assert not substantive_legal_output_approved(db, case)
+    assert not db.scalars(select(HumanReview).where(
+        HumanReview.case_id == case_id,
+        HumanReview.reason == RELEASE_REASON,
         HumanReview.status == "OPEN",
-    ))
-    assert draft_review is not None and draft_review.id != review.id
-    assign(client, draft_review, reviewer)
-    assert client.post(f"/api/admin/reviews/{draft_review.id}/approve-release", json=APPROVAL).status_code == 200
-    assert client.get(f"/api/cases/{case_id}/handoff").status_code == 409
-    first_package = client.post(f"/api/cases/{case_id}/prepare-claim")
-    second_package = client.post(f"/api/cases/{case_id}/prepare-claim")
-    assert first_package.status_code == second_package.status_code == 409
-    assert release_approved(db, db.get(Case, case_id))
+    )).all()
 
 
 def test_private_participant_outputs_stay_neutral_before_review(client, db, future_test_gate):
@@ -239,7 +239,11 @@ def _login_backoffice(client, login_id, password):
 def _participant_review_metadata_absent(client, case_id, reviewer_ids, private_note):
     detail = client.get(f"/api/cases/{case_id}")
     assert detail.status_code == 200
-    assert detail.json()["decisions"] and detail.json()["actions"] == []
+    assert detail.json()["release_status"] == "BLOCKED_PENDING_PROFESSIONAL_APPROVAL"
+    assert detail.json()["status"] == "DIAGNOSED"
+    assert detail.json()["status"] != "READY_TO_SUBMIT"
+    assert detail.json()["decisions"] == detail.json()["actions"] == []
+    assert detail.json()["current_decision_id"] is None
     assert detail.json()["current_action_id"] is None
     assert detail.json()["human_reviews"] == []
     reviews = client.get(f"/api/cases/{case_id}/reviews")
@@ -247,8 +251,17 @@ def _participant_review_metadata_absent(client, case_id, reviewer_ids, private_n
     exported = client.get("/api/auth/export")
     assert exported.status_code == 200
     private_export = next(row for row in exported.json()["cases"] if row["id"] == case_id)
-    assert private_export["decisions"] and private_export["actions"]
+    assert private_export["release_status"] == "BLOCKED_PENDING_PROFESSIONAL_APPROVAL"
+    assert private_export["facts"]
+    assert private_export["decisions"] == private_export["actions"] == []
+    assert private_export["calculations"] == private_export["rule_evaluations"] == []
     assert private_export["human_reviews"] == private_export["audit_events"] == []
+    assert client.get(f"/api/cases/{case_id}/legal-sources").json() == {
+        "decision_id": None, "sources": [],
+    }
+    assert [event["type"] for event in client.get(
+        f"/api/cases/{case_id}/timeline"
+    ).json()["events"]] == ["CASE_OPENED"]
     for response in (detail.json(), reviews.json(), private_export,
                      client.get(f"/api/cases/{case_id}/timeline").json(),
                      client.get(f"/api/cases/{case_id}/quality").json()):
@@ -332,7 +345,7 @@ def test_revoked_family_scope_immediately_removes_all_private_reads(client, db, 
         }).status_code == 403
         assert client.put(scope_url, json={"families": ["E02-A"]}).status_code == 200
         assert reviewer_client.get(case_url).status_code == 200
-        assert not release_approved(db, db.get(Case, case_id))
+        assert not operational_case_review_approved(db, db.get(Case, case_id))
 
 
 @pytest.mark.parametrize("note", [None, "Synthetic evidence note for one fact"])
